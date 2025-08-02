@@ -8,24 +8,29 @@ const mongoose = require('mongoose');
 // Import des routes
 const authRoutes = require('./routes/auth');
 const gameRoutes = require('./routes/game');
+const debugRoutes = require('./routes/debug');
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:3000',
+    origin: 'http://localhost:5173', // autorise le front Vite
     methods: ['GET', 'POST'],
     credentials: true
   }
 });
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: 'http://localhost:5173',
+  credentials: true
+}));
 app.use(express.json());
 
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/game', gameRoutes);
+app.use('/api/debug', debugRoutes);
 
 // Connexion à MongoDB
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/memoryMaster')

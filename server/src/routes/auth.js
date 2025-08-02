@@ -17,4 +17,9 @@ router.route('/profile')
   .get(protect, getProfile)
   .put(protect, updateProfile);
 
+// GET /api/auth/me — retourne le profil de l'utilisateur connecté
+router.get('/me', protect, (req, res) => {
+  res.json(req.user);
+});
+
 module.exports = router;

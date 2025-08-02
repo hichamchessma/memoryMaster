@@ -585,10 +585,12 @@ async function handlePlayCard(game, player, cardIndex, targetIndex) {
   game.turnEndTime = new Date(Date.now() + game.turnTimeLimit);
 }
 
+// plus utilisé, logique déplacée dans usePower
 async function handleUsePower(game, player, powerCard) {
-  // Implémenter la logique des pouvoirs spéciaux
-  // (À compléter selon les règles du jeu)
+  return null;
 }
+// (Ancienne fonction, plus utilisée. Logique déplacée dans usePower)
+
 
 async function handleThrowNow(game, player) {
   // Implémenter la logique de ThrowNow
@@ -1006,185 +1008,141 @@ exports.endTurn = async (req, res, next) => {
 // Utiliser un pouvoir spécial (Valet, Dame, Roi)
 exports.usePower = async (req, res, next) => {
   let session = null;
-  
   try {
     const { code } = req.params;
-    const { powerType, targetCardId, targetPlayerId } = req.body;
+    const { powerType, option, targetCardId, targetPlayerId, cardId1, cardId2, playerId1, playerId2 } = req.body;
     const userId = req.user.id;
 
-    // Démarrer une session pour la transaction
     session = await mongoose.startSession();
     session.startTransaction();
 
-    // Trouver la partie avec verrouillage pour éviter les conflits
     const game = await Game.findOne({ code })
       .session(session)
       .populate('players.user')
       .select('+deck');
-      
+
     if (!game) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Partie non trouvée' 
-      });
+      return res.status(404).json({ success: false, message: 'Partie non trouvée' });
     }
-
-    // Vérifier que c'est bien le tour du joueur
     if (game.currentPlayer.toString() !== userId) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Ce n\'est pas votre tour' 
-      });
+      return res.status(400).json({ success: false, message: 'Ce n\'est pas votre tour' });
     }
-
-    // Vérifier que la partie est en cours
     if (game.status !== 'playing') {
       await session.abortTransaction();
       session.endSession();
-      return res.status(400).json({ 
-        success: false, 
-        message: 'La partie n\'est pas en cours' 
-      });
+      return res.status(400).json({ success: false, message: 'La partie n\'est pas en cours' });
     }
-
-    // Trouver le joueur actif
     const currentPlayer = game.players.find(p => p.user._id.toString() === userId);
     if (!currentPlayer) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Joueur non trouvé dans la partie' 
-      });
+      return res.status(404).json({ success: false, message: 'Joueur non trouvé dans la partie' });
     }
-
-    // Vérifier que le type de pouvoir est valide
     if (!['J', 'Q', 'K'].includes(powerType)) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Type de pouvoir invalide' 
-      });
+      return res.status(400).json({ success: false, message: 'Type de pouvoir invalide' });
     }
-
-    // Vérifier que le pouvoir n'a pas déjà été utilisé
     const powerKey = `${powerType.toLowerCase()}Used`;
     if (currentPlayer.powers[powerKey]) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(400).json({ 
-        success: false, 
-        message: `Vous avez déjà utilisé le pouvoir ${powerType} dans cette partie` 
-      });
+      return res.status(400).json({ success: false, message: `Vous avez déjà utilisé le pouvoir ${powerType} dans cette partie` });
     }
-
     let result = {};
-    let targetPlayer = null;
-
-    // Vérifier la cible si nécessaire
-    if (['Q', 'K'].includes(powerType) && !targetPlayerId) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({ 
-        success: false, 
-        message: `Une cible est requise pour le pouvoir ${powerType}` 
-      });
-    }
-
-    // Trouver le joueur cible si spécifié
-    if (targetPlayerId) {
-      targetPlayer = game.players.find(p => p.user._id.toString() === targetPlayerId);
-      if (!targetPlayer) {
+    // Option "activate" = activer le pouvoir, sinon "integrate" = intégrer la carte et chasser
+    if (option === 'activate') {
+      switch (powerType) {
+        case 'J': // Valet: regarder une de ses propres cartes
+          if (!targetCardId) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(400).json({ success: false, message: 'Veuillez sélectionner votre carte à regarder' });
+          }
+          // On simule la "révélation" temporaire côté client, ici on ne fait qu'informer
+          result = { message: 'Vous pouvez regarder votre carte', cardId: targetCardId, duration: 10 };
+          // Défausser le Valet de la main du joueur (suppression côté client ou à gérer ici)
+          break;
+        case 'Q': // Dame: regarder une carte d'un adversaire
+          if (!targetPlayerId || !targetCardId) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(400).json({ success: false, message: 'Cible et carte requises pour la Dame' });
+          }
+          const targetPlayerQ = game.players.find(p => p.user._id.toString() === targetPlayerId);
+          if (!targetPlayerQ) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(404).json({ success: false, message: 'Joueur cible non trouvé' });
+          }
+          result = { message: 'Vous pouvez regarder la carte de votre adversaire', cardId: targetCardId, playerId: targetPlayerId, duration: 10 };
+          // Défausser la Dame
+          break;
+        case 'K': // Roi: échanger deux cartes entre deux joueurs différents
+          if (!playerId1 || !playerId2 || !cardId1 || !cardId2 || playerId1 === playerId2) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(400).json({ success: false, message: 'Veuillez sélectionner deux joueurs différents et leurs cartes à échanger' });
+          }
+          const p1 = game.players.find(p => p.user._id.toString() === playerId1);
+          const p2 = game.players.find(p => p.user._id.toString() === playerId2);
+          if (!p1 || !p2) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(404).json({ success: false, message: 'Un des joueurs sélectionnés n\'existe pas' });
+          }
+          const c1Idx = p1.cards.findIndex(c => c._id.toString() === cardId1);
+          const c2Idx = p2.cards.findIndex(c => c._id.toString() === cardId2);
+          if (c1Idx === -1 || c2Idx === -1) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(404).json({ success: false, message: 'Une des cartes sélectionnées n\'existe pas' });
+          }
+          // Échange effectif
+          const temp = p1.cards[c1Idx];
+          p1.cards[c1Idx] = p2.cards[c2Idx];
+          p2.cards[c2Idx] = temp;
+          result = { message: 'Échange effectué avec succès' };
+          // Défausser le Roi
+          break;
+      }
+    } else if (option === 'integrate') {
+      // On intègre la carte spéciale dans la main et on chasse une carte (à gérer côté client ou ici)
+      if (!targetCardId) {
         await session.abortTransaction();
         session.endSession();
-        return res.status(404).json({ 
-          success: false, 
-          message: 'Joueur cible non trouvé' 
-        });
+        return res.status(400).json({ success: false, message: 'Veuillez sélectionner la carte à chasser' });
       }
+      // Suppression de la carte chassée de la main du joueur
+      const idx = currentPlayer.cards.findIndex(c => c._id.toString() === targetCardId);
+      if (idx === -1) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(404).json({ success: false, message: 'Carte à chasser non trouvée dans votre main' });
+      }
+      currentPlayer.cards.splice(idx, 1);
+      result = { message: 'Carte spéciale intégrée, carte chassée' };
+    } else {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({ success: false, message: 'Option invalide' });
     }
-
-    // Exécuter le pouvoir spécifique
-    switch (powerType) {
-      case 'J': // Valet - Échanger une carte avec un autre joueur
-        if (!targetCardId) {
-          await session.abortTransaction();
-          session.endSession();
-          return res.status(400).json({ 
-            success: false, 
-            message: 'Veuillez sélectionner une carte à échanger' 
-          });
-        }
-        result = await handleJackPower(game, currentPlayer, targetPlayer, targetCardId, session);
-        break;
-        
-      case 'Q': // Dame - Comparer une carte avec un autre joueur
-        if (!targetCardId) {
-          await session.abortTransaction();
-          session.endSession();
-          return res.status(400).json({ 
-            success: false, 
-            message: 'Veuillez sélectionner une carte à comparer' 
-          });
-        }
-        result = await handleQueenPower(game, currentPlayer, targetPlayer, targetCardId, session);
-        break;
-        
-      case 'K': // Roi - Regarder la main d'un autre joueur
-        result = await handleKingPower(game, currentPlayer, targetPlayer, session);
-        break;
-    }
-
-    // Marquer le pouvoir comme utilisé
     currentPlayer.powers[powerKey] = true;
-    
-    // Enregistrer l'action
     game.actions.push({
       type: 'power_used',
       player: currentPlayer.user._id,
       power: powerType,
-      targetPlayer: targetPlayer ? targetPlayer.user._id : null,
       timestamp: new Date()
     });
-
-    // Sauvegarder les modifications
     await game.save({ session });
     await session.commitTransaction();
     session.endSession();
-
-    // Préparer la réponse
-    const gameData = game.toObject();
-    
-    // Nettoyer les données sensibles
-    delete gameData.__v;
-    gameData.players.forEach(player => {
-      delete player.socketId;
-      // Ne pas révéler les cartes des autres joueurs
-      if (player.user._id.toString() !== userId) {
-        player.cards = player.cards.map(card => ({
-          id: card.id,
-          value: card.isVisible ? card.value : 'HIDDEN',
-          isFlipped: card.isFlipped,
-          isVisible: card.isVisible,
-          position: card.position
-        }));
-      }
-    });
-
-    res.status(200).json({
-      success: true,
-      message: `Pouvoir ${powerType} utilisé avec succès`,
-      game: gameData,
-      ...result
-    });
-
+    res.status(200).json({ success: true, ...result });
   } catch (error) {
-    console.error('Erreur lors de l\'utilisation du pouvoir:', error);
     if (session) {
       await session.abortTransaction();
       session.endSession();
@@ -1192,124 +1150,10 @@ exports.usePower = async (req, res, next) => {
     next(error);
   }
 };
+// Anciennes définitions et doublons de usePower supprimés
 
-// Fonction utilitaire pour gérer le pouvoir du Valet (échange de cartes)
-async function handleJackPower(game, currentPlayer, targetPlayer, targetCardId, session) {
-  // Vérifier que la carte cible appartient bien au joueur actuel
-  const cardIndex = currentPlayer.cards.findIndex(c => c._id.toString() === targetCardId);
-  if (cardIndex === -1) {
-    throw new Error('Carte non trouvée dans votre main');
-  }
-  
-  // Vérifier que le joueur cible a des cartes
-  if (targetPlayer.cards.length === 0) {
-    throw new Error('Le joueur cible n\'a pas de cartes');
-  }
-  
-  // Choisir une carte aléatoire chez le joueur cible
-  const randomIndex = Math.floor(Math.random() * targetPlayer.cards.length);
-  const targetCard = targetPlayer.cards[randomIndex];
-  
-  // Échanger les cartes
-  const playerCard = currentPlayer.cards[cardIndex];
-  currentPlayer.cards[cardIndex] = targetCard;
-  targetPlayer.cards[randomIndex] = playerCard;
-  
-  // Enregistrer l'action
-  game.actions.push({
-    type: 'card_swapped',
-    fromPlayer: currentPlayer.user._id,
-    toPlayer: targetPlayer.user._id,
-    cardFrom: playerCard.value,
-    cardTo: targetCard.value,
-    timestamp: new Date()
-  });
-  
-  await game.save({ session });
-  
-  return {
-    message: `Vous avez échangé une carte avec ${targetPlayer.user.firstName}`,
-    cardReceived: targetCard.value,
-    cardGiven: playerCard.value
-  };
-}
 
-// Fonction utilitaire pour gérer le pouvoir de la Dame (comparaison de cartes)
-async function handleQueenPower(game, currentPlayer, targetPlayer, targetCardId, session) {
-  // Vérifier que la carte cible appartient bien au joueur actuel
-  const cardIndex = currentPlayer.cards.findIndex(c => c._id.toString() === targetCardId);
-  if (cardIndex === -1) {
-    throw new Error('Carte non trouvée dans votre main');
-  }
-  
-  // Choisir une carte aléatoire chez le joueur cible
-  const randomIndex = Math.floor(Math.random() * targetPlayer.cards.length);
-  const targetCard = targetPlayer.cards[randomIndex];
-  const playerCard = currentPlayer.cards[cardIndex];
-  
-  // Comparer les valeurs des cartes
-  const playerCardValue = getCardValue(playerCard.value);
-  const targetCardValue = getCardValue(targetCard.value);
-  
-  let message = '';
-  
-  if (playerCardValue > targetCardValue) {
-    message = `Votre carte (${playerCard.value}) est plus forte que celle de ${targetPlayer.user.firstName} (${targetCard.value})`;
-  } else if (playerCardValue < targetCardValue) {
-    message = `Votre carte (${playerCard.value}) est plus faible que celle de ${targetPlayer.user.firstName} (${targetCard.value})`;
-  } else {
-    message = `Égalité entre votre carte (${playerCard.value}) et celle de ${targetPlayer.user.firstName} (${targetCard.value})`;
-  }
-  
-  // Enregistrer l'action
-  game.actions.push({
-    type: 'card_compared',
-    player1: currentPlayer.user._id,
-    player2: targetPlayer.user._id,
-    card1: playerCard.value,
-    card2: targetCard.value,
-    result: message,
-    timestamp: new Date()
-  });
-  
-  await game.save({ session });
-  
-  return {
-    message,
-    comparison: {
-      yourCard: playerCard.value,
-      theirCard: targetCard.value,
-      result: playerCardValue > targetCardValue ? 'win' : 
-              playerCardValue < targetCardValue ? 'lose' : 'draw'
-    }
-  };
-}
-
-// Fonction utilitaire pour gérer le pouvoir du Roi (regarder la main d'un joueur)
-async function handleKingPower(game, currentPlayer, targetPlayer, session) {
-  // Révéler toutes les cartes du joueur cible au joueur actuel
-  const revealedCards = targetPlayer.cards.map(card => ({
-    id: card._id,
-    value: card.value,
-    isVisible: true
-  }));
-  
-  // Enregistrer l'action
-  game.actions.push({
-    type: 'hand_revealed',
-    player: currentPlayer.user._id,
-    targetPlayer: targetPlayer.user._id,
-    timestamp: new Date()
-  });
-  
-  await game.save({ session });
-  
-  return {
-    message: `Vous avez regardé la main de ${targetPlayer.user.firstName}`,
-    revealedHand: revealedCards,
-    targetPlayerId: targetPlayer.user._id
-  };
-}
+// Anciennes fonctions utilitaires des pouvoirs spéciaux supprimées (toute la logique est dans usePower)
 
 // Fonction utilitaire pour obtenir la valeur numérique d'une carte
 function getCardValue(cardValue) {

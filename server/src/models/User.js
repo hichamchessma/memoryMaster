@@ -28,13 +28,11 @@ const userSchema = new mongoose.Schema({
   },
   age: {
     type: Number,
-    required: [true, 'L\'âge est requis'],
     min: [12, 'L\'âge minimum est de 12 ans'],
     max: [120, 'L\'âge maximum est de 120 ans']
   },
   nationality: {
     type: String,
-    required: [true, 'La nationalité est requise'],
     trim: true
   },
   elo: {

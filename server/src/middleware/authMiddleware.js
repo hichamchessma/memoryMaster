@@ -14,10 +14,26 @@ const protect = async (req, res, next) => {
       // Extraire le token du header
       token = req.headers.authorization.split(' ')[1];
 
-      // Vérifier le token
+      // DEV MODE: bypass si token == 'dev-token'
+      if (token === 'dev-token' && (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV)) {
+        req.user = {
+          _id: 'dev-user-id',
+          firstName: 'Dev',
+          lastName: 'User',
+          email: 'dev@memorymaster.local',
+          age: 30,
+          nationality: 'FR',
+          elo: 1000,
+          totalPoints: 0,
+          avatar: '',
+          role: 'admin',
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+        return next();
+      }
+      // Vérifier le token normalement sinon
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-      // Récupérer l'utilisateur à partir du token
       req.user = await User.findById(decoded.id).select('-password');
       next();
     } catch (error) {

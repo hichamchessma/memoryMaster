@@ -56,14 +56,26 @@ exports.login = async (req, res, next) => {
 
     // Vérifier si l'utilisateur existe
     const user = await User.findOne({ email }).select('+password');
+    
+    // --- LOG DE DÉBOGAGE ---
+    console.log(`[Login Attempt] Email: ${email}`);
     if (!user) {
-      return res.status(401).json({ message: 'Email ou mot de passe incorrect' });
+      console.log('[Login Result] Utilisateur non trouvé.');
+      return res.status(401).json({ message: 'Identifiants invalides' });
     }
+    console.log(`[Login Debug] Utilisateur trouvé: ${user.email}`);
+    console.log(`[Login Debug] Hash stocké: ${user.password}`);
+    // --- FIN LOG ---
 
     // Vérifier le mot de passe
     const isMatch = await user.comparePassword(password);
+    
+    // --- LOG DE DÉBOGAGE ---
+    console.log(`[Login Result] La comparaison du mot de passe a retourné: ${isMatch}`);
+    // --- FIN LOG ---
+
     if (!isMatch) {
-      return res.status(401).json({ message: 'Email ou mot de passe incorrect' });
+      return res.status(401).json({ message: 'Identifiants invalides' });
     }
 
     // Mettre à jour la dernière connexion
