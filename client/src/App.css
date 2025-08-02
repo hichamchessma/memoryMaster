@@ -1,7 +1,103 @@
+html {
+  margin: 0;
+  padding: 0;
+}
+
+/* === MemoryMaster Homepage Custom Styles === */
+
+.homepage-bg {
+  background-image: url('background-memorymasters.jpg') !important;
+  background-size: cover !important;
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+  min-height: 100vh;
+  position: relative;
+  background-color: #e91e63 !important;
+}
+
+.homepage-overlay {
+  background: rgba(30, 30, 40, 0.65);
+  backdrop-filter: blur(2px);
+  z-index: 1;
+}
+
+.homepage-content {
+  z-index: 2;
+  color: #fff;
+  text-shadow: 0 2px 16px rgba(0,0,0,0.4);
+  padding: 2rem 1rem;
+  border-radius: 1.5rem;
+  background: rgba(30, 30, 40, 0.18);
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+  max-width: 650px;
+  margin: 3rem auto;
+}
+
+.homepage-content h1 {
+  font-family: 'Montserrat', 'Segoe UI', Arial, sans-serif;
+  font-size: 2.8rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  margin-bottom: 1.2rem;
+}
+
+.homepage-content p {
+  font-size: 1.25rem;
+  margin-bottom: 2rem;
+}
+
+.homepage-content .btn-main {
+  background: linear-gradient(90deg, #ffb300 0%, #ff6f00 100%);
+  color: #fff;
+  font-weight: bold;
+  border: none;
+  border-radius: 2rem;
+  padding: 0.9rem 2.2rem;
+  font-size: 1.2rem;
+  margin: 0 0.5rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+  transition: transform 0.18s, box-shadow 0.18s, background 0.18s;
+  cursor: pointer;
+}
+.homepage-content .btn-main:hover {
+  background: linear-gradient(90deg, #ff6f00 0%, #ffb300 100%);
+  transform: translateY(-2px) scale(1.04);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.22);
+}
+
+.homepage-content .btn-secondary {
+  background: linear-gradient(90deg, #00c9ff 0%, #92fe9d 100%);
+  color: #222;
+  font-weight: 600;
+  border: none;
+  border-radius: 2rem;
+  padding: 0.9rem 2.2rem;
+  font-size: 1.1rem;
+  margin: 0 0.5rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+  transition: transform 0.18s, box-shadow 0.18s, background 0.18s;
+  cursor: pointer;
+}
+.homepage-content .btn-secondary:hover {
+  background: linear-gradient(90deg, #92fe9d 0%, #00c9ff 100%);
+  transform: translateY(-2px) scale(1.04);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.16);
+}
+
+@keyframes fadein {
+  0% { opacity: 0; transform: translateY(30px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.animate-fadein {
+  animation: fadein 1.2s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+/* === End homepage custom styles === */
+
 #root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
+  max-width: 100vw;
+  margin: 0;
+  padding: 0;
   text-align: center;
 }
 

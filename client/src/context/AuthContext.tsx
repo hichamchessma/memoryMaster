@@ -29,6 +29,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   // Vérifier l'état d'authentification au chargement
   useEffect(() => {
+    // DEV ONLY: auto-login d'un utilisateur fictif si aucun token n'est présent
+    if (import.meta.env.DEV && !localStorage.getItem('token')) {
+      const devUser = {
+        _id: 'dev-user-id',
+        firstName: 'Dev',
+        lastName: 'User',
+        email: 'dev@memorymaster.local',
+        age: 30,
+        nationality: 'FR',
+        elo: 1000,
+        totalPoints: 0,
+        avatar: '',
+        token: 'dev-token',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      setUser(devUser as User);
+      setIsLoading(false);
+      localStorage.setItem('token', 'dev-token');
+      return;
+    }
     const checkAuth = async () => {
       const token = localStorage.getItem('token');
       if (!token) {
@@ -36,6 +57,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
+      // DEV ONLY: si token est 'dev-token', injecte le user de dev sans appel API
+      if (import.meta.env.DEV && token === 'dev-token') {
+        const devUser = {
+          _id: 'dev-user-id',
+          firstName: 'Dev',
+          lastName: 'User',
+          email: 'dev@memorymaster.local',
+          age: 30,
+          nationality: 'FR',
+          elo: 1000,
+          totalPoints: 0,
+          avatar: '',
+          token: 'dev-token',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        setUser(devUser as User);
+        setIsLoading(false);
+        return;
+      }
       try {
         const response = await api.get<User>('/auth/me');
         if (response.success && response.data) {

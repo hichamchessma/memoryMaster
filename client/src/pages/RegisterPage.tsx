@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -28,8 +29,16 @@ const registerSchema = z
     path: ['confirmPassword'],
   });
 
+interface SeededUser {
+  id: string;
+  firstName: string;
+  email: string;
+}
+
 const RegisterPage = () => {
   const [isLoading, setIsLoading] = useState(false);
+  const [seededUsers, setSeededUsers] = useState<SeededUser[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState<string>('');
   const navigate = useNavigate();
   const { login } = useAuth();
 
@@ -68,16 +77,61 @@ const RegisterPage = () => {
           token: response.data.token,
         });
         
-        // Rediriger vers la page d'accueil
-        navigate('/');
+        // Rediriger vers le tableau de bord
+        navigate('/dashboard');
         toast.success('Inscription réussie ! Bienvenue !');
       } else {
         toast.error(response.error || 'Une erreur est survenue lors de l\'inscription');
       }
-    } catch (error: any) {
-      console.error('Erreur d\'inscription:', error);
-      const errorMessage = error.response?.data?.error || 'Une erreur est survenue lors de l\'inscription';
-      toast.error(errorMessage);
+    } catch (error) {
+      console.error("Erreur d'inscription:", error);
+      alert("Une erreur est survenue lors de l'inscription");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSeedUsers = async () => {
+    try {
+      const response = await axios.post<{ message: string; users: SeededUser[] }>('http://localhost:5000/api/debug/seed');
+      toast.success(response.data.message);
+      setSeededUsers(response.data.users || []);
+      if (response.data.users && response.data.users.length > 0) {
+        setSelectedUserId(response.data.users[0].id);
+      }
+    } catch (error) {
+      console.error('Erreur lors de l\'injection des utilisateurs:', error);
+      toast.error('Une erreur est survenue lors de l\'injection des utilisateurs.');
+    }
+  };
+
+  const handleLoginAsSeededUser = async () => {
+    if (!selectedUserId) {
+      toast.error('Veuillez sélectionner un utilisateur.');
+      return;
+    }
+
+    const userToLogin = seededUsers.find(u => u.id === selectedUserId);
+    if (!userToLogin) return;
+
+    setIsLoading(true);
+    try {
+      const response = await api.post('/auth/login', {
+        email: userToLogin.email,
+        password: 'password123', // Mot de passe par défaut pour les utilisateurs de test
+      });
+
+      // Si la requête réussit, la réponse d'axios contient directement les données utilisateur et le token
+      if (response.data && response.data.token) {
+        login(response.data); // Le contexte Auth attend l'objet utilisateur complet et le token
+        navigate('/dashboard');
+        toast.success(`Connecté en tant que ${userToLogin.firstName}`);
+      } else {
+        // Gérer les cas où la réponse n'a pas le format attendu
+        toast.error('La connexion a échoué : réponse inattendue du serveur.');
+      }
+    } catch (error) {
+      toast.error('La connexion a échoué.');
     } finally {
       setIsLoading(false);
     }
@@ -314,6 +368,40 @@ const RegisterPage = () => {
                 </a>
               </div>
             </div>
+          </div>
+
+          <div className="mt-8 border-t border-gray-200 dark:border-gray-700 pt-6">
+            <button
+              type="button"
+              onClick={handleSeedUsers}
+              className="w-full flex justify-center bg-green-500 text-white py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+            >
+              Injecter les utilisateurs de test
+            </button>
+
+            {seededUsers.length > 0 && (
+              <div className="mt-4 space-y-4">
+                <select
+                  value={selectedUserId}
+                  onChange={(e) => setSelectedUserId(e.target.value)}
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                >
+                  {seededUsers.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.firstName}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={handleLoginAsSeededUser}
+                  disabled={isLoading}
+                  className="w-full flex justify-center bg-blue-500 text-white py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                >
+                  {isLoading ? 'Connexion...' : 'Se connecter en tant que...'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

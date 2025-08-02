@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import type { LoginFormData } from '../types';
 import { toast } from 'react-toastify';
@@ -17,11 +17,7 @@ const loginSchema = z.object({
 const LoginPage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
-  const location = useLocation();
   const { login } = useAuth();
-  
-  // Récupérer l'URL de redirection après connexion
-  const from = location.state?.from?.pathname || '/';
 
   // Initialiser le formulaire avec react-hook-form et zod
   const {
@@ -50,8 +46,8 @@ const LoginPage = () => {
           token: response.data.token,
         });
         
-        // Rediriger vers la page d'origine ou la page d'accueil
-        navigate(from, { replace: true });
+        // Redirection vers le tableau de bord
+        navigate('/dashboard', { replace: true });
         toast.success('Connexion réussie !');
       } else {
         toast.error(response.error || 'Une erreur est survenue lors de la connexion');

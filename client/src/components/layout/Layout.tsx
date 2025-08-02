@@ -4,7 +4,7 @@ import 'react-toastify/dist/ReactToastify.css';
 
 // Composants temporaires
 const Header = () => (
-  <header className="bg-white dark:bg-gray-800 shadow">
+  <header className="bg-transparent shadow-none">
     <div className="container mx-auto px-4 py-4">
       <h1 className="text-2xl font-bold text-gray-900 dark:text-white">MemoryMaster</h1>
     </div>
@@ -12,7 +12,7 @@ const Header = () => (
 );
 
 const Footer = () => (
-  <footer className="bg-white dark:bg-gray-800 shadow-inner mt-auto">
+  <footer className="bg-transparent shadow-none mt-auto">
     <div className="container mx-auto px-4 py-4 text-center text-gray-600 dark:text-gray-300">
       <p>© {new Date().getFullYear()} MemoryMaster. Tous droits réservés.</p>
     </div>
@@ -21,15 +21,16 @@ const Footer = () => (
 
 const Layout = () => {
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
-      <Header />
-      
-      <main className="flex-grow container mx-auto px-4 py-8">
-        <Outlet />
-      </main>
-      
-      <Footer />
-      <ToastContainer position="bottom-right" />
+    <div className="homepage-bg min-h-screen flex flex-col relative">
+
+      <div className="relative z-10 flex flex-col min-h-screen">
+
+        <main className="flex-grow container mx-auto px-4 py-8">
+          <Outlet />
+        </main>
+        <Footer />
+        <ToastContainer position="bottom-right" />
+      </div>
     </div>
   );
 };
