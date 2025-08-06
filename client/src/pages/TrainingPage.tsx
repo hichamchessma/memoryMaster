@@ -1,66 +1,220 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-
-interface PlayerZoneProps {
-  position: 'top' | 'bottom';
-  playerName: string;
-}
-
 import cardBack from '../assets/cards/card_back.png';
+
+interface CardState {
+  id: string;     // Identifiant unique pour chaque carte
+  value: number;  // 0-51 pour les 52 cartes, -1 pour carte non distribuée
+  isFlipped: boolean;
+  updated?: number; // Timestamp pour forcer les mises à jour
+}
 
 interface PlayerZoneProps {
   position: 'top' | 'bottom';
   playerName: string;
   cardsDealt: number;
+  cards: CardState[];
+  onCardClick?: (index: number) => void;
 }
 
-const PlayerZone: React.FC<PlayerZoneProps> = ({ position, playerName, cardsDealt }) => {
+// Fonction utilitaire pour obtenir le chemin de l'image d'une carte
+const getCardImage = (value: number): string => {
+  if (value === -1) return ''; // Retourne une chaîne vide pour les cartes non distribuées
+  
+  const suits = ['c', 'd', 'h', 's'];
+  const ranks = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'j', 'q', 'k'];
+  
+  const suitIndex = Math.floor((value % 52) / 13); // S'assure que l'index est entre 0 et 3
+  const rankIndex = (value % 52) % 13; // S'assure que l'index est entre 0 et 12
+  
+  // Format: card_1c.png, card_2d.png, etc.
+  const imageName = `card_${ranks[rankIndex]}${suits[suitIndex]}.png`;
+  
+  // Utilisation d'une importation dynamique pour les assets
+  try {
+    return new URL(`../assets/cards/${imageName}`, import.meta.url).href;
+  } catch (e) {
+    console.error(`Impossible de charger l'image de la carte: ${imageName} (valeur: ${value})`, e);
+    return '';
+  }
+};
+
+const PlayerZone: React.FC<PlayerZoneProps> = ({ position, playerName, cardsDealt, cards = [], onCardClick = () => {} }) => {
   return (
     <div className="flex flex-col items-center justify-center h-full">
       {/* Board de 4 cartes face cachée */}
       {position === 'bottom' && cardsDealt > 0 && (
         <div className="flex flex-row items-center justify-center mb-2">
-          {Array.from({ length: cardsDealt }).map((_, idx) => (
+          {cards.slice(0, cardsDealt).map((card, idx) => (
             <div
               key={idx}
-              className="card-shine w-16 h-24 mx-2 rounded shadow-md border-2 border-gray-300 bg-white relative overflow-hidden flex items-center justify-center"
+              className="card-shine w-16 h-24 mx-2 rounded shadow-md border-2 border-gray-300 bg-white relative overflow-hidden"
+              style={{
+                cursor: card.value !== -1 ? 'pointer' : 'default',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                transform: 'scale(1)',
+                zIndex: 1,
+                transformStyle: 'preserve-3d',
+              }}
+              onClick={() => card.value !== -1 && onCardClick(idx)}
+              onMouseEnter={(e) => {
+                if (card.value === -1) return;
+                e.currentTarget.style.transform = 'scale(1.15) translateY(-10px)';
+                e.currentTarget.style.zIndex = '20';
+                e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.2)';
+              }}
+              onMouseLeave={(e) => {
+                if (card.value === -1) return;
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.zIndex = '1';
+                e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
+              }}
             >
-              <img
-                src={cardBack}
-                alt="Carte cachée"
-                className="w-full h-full object-cover rounded select-none pointer-events-none"
-                draggable="false"
-              />
+              <div 
+                className="relative w-full h-full" 
+                style={{
+                  transformStyle: 'preserve-3d',
+                  transition: 'transform 0.6s',
+                  transform: card.isFlipped ? 'rotateY(180deg)' : 'rotateY(0)',
+                  pointerEvents: 'none' // Empêche les interactions avec les éléments enfants
+                }}
+              >
+                {/* Face arrière */}
+                <div 
+                  className="absolute w-full h-full" 
+                  style={{
+                    WebkitBackfaceVisibility: 'hidden',
+                    backfaceVisibility: 'hidden',
+                    transform: 'rotateY(0deg)'
+                  }}
+                >
+                  <img
+                    src={cardBack}
+                    alt="Dos de carte"
+                    className="w-full h-full object-cover rounded select-none"
+                    draggable="false"
+                  />
+                </div>
+                
+                {/* Face avant */}
+                <div 
+                  className="absolute w-full h-full" 
+                  style={{
+                    WebkitBackfaceVisibility: 'hidden',
+                    backfaceVisibility: 'hidden',
+                    transform: 'rotateY(180deg)'
+                  }}
+                >
+                  <img
+                    src={getCardImage(card.value)}
+                    alt={`Carte ${card.value}`}
+                    className="w-full h-full object-cover rounded select-none"
+                    draggable="false"
+                    onError={(e) => {
+                      // En cas d'erreur de chargement de l'image
+                      const target = e.target as HTMLImageElement;
+                      target.src = cardBack;
+                      target.alt = 'Dos de carte';
+                    }}
+                  />
+                </div>
+              </div>
             </div>
           ))}
         </div>
       )}
-      {/* Avatar + nom */}
-      <div className="flex flex-row items-center justify-center mb-1">
-        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-yellow-300 to-orange-400 border-4 border-white shadow-lg flex items-center justify-center mr-2">
-          <span role="img" aria-label="avatar" className="text-2xl select-none">{position === 'top' ? '👑' : '🧠'}</span>
+
+      {/* Avatar et nom du joueur */}
+      <div className={`flex flex-col items-center ${position === 'bottom' ? 'mt-2' : 'mb-2'}`}>
+        <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center text-2xl">
+          {position === 'top' ? '👤' : '👤'}
         </div>
-        <div className="text-2xl font-extrabold text-white drop-shadow-lg tracking-wide" style={{letterSpacing: '2px'}}>{playerName}</div>
+        <span className="text-sm font-medium mt-1">{playerName}</span>
       </div>
-      {/* Board de 4 cartes face cachée pour le haut */}
+
+      {/* Cartes du joueur (pour le joueur du haut) */}
       {position === 'top' && cardsDealt > 0 && (
         <div className="flex flex-row items-center justify-center mt-2">
-          {Array.from({ length: cardsDealt }).map((_, idx) => (
+          {cards.slice(0, cardsDealt).map((card, idx) => (
             <div
               key={idx}
-              className="card-shine w-16 h-24 mx-2 rounded shadow-md border-2 border-gray-300 bg-white relative overflow-hidden flex items-center justify-center"
+              className="card-shine w-16 h-24 mx-2 rounded shadow-md border-2 border-gray-300 bg-white relative overflow-hidden"
+              style={{
+                cursor: card.value !== -1 ? 'pointer' : 'default',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                transform: 'scale(1)',
+                zIndex: 1,
+                transformStyle: 'preserve-3d',
+              }}
+              onClick={() => card.value !== -1 && onCardClick(idx)}
+              onMouseEnter={(e) => {
+                if (card.value === -1) return;
+                e.currentTarget.style.transform = 'scale(1.15) translateY(-10px)';
+                e.currentTarget.style.zIndex = '20';
+                e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.2)';
+              }}
+              onMouseLeave={(e) => {
+                if (card.value === -1) return;
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.zIndex = '1';
+                e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
+              }}
             >
-              <img
-                src={cardBack}
-                alt="Carte cachée"
-                className="w-full h-full object-cover rounded select-none pointer-events-none"
-                draggable="false"
-              />
+              <div 
+                className="relative w-full h-full" 
+                style={{
+                  transformStyle: 'preserve-3d',
+                  transition: 'transform 0.6s',
+                  transform: card.isFlipped ? 'rotateY(180deg)' : 'rotateY(0)',
+                  pointerEvents: 'none' // Empêche les interactions avec les éléments enfants
+                }}
+              >
+                {/* Face arrière */}
+                <div 
+                  className="absolute w-full h-full" 
+                  style={{
+                    WebkitBackfaceVisibility: 'hidden',
+                    backfaceVisibility: 'hidden',
+                    transform: 'rotateY(0deg)'
+                  }}
+                >
+                  <img
+                    src={cardBack}
+                    alt="Dos de carte"
+                    className="w-full h-full object-cover rounded select-none"
+                    draggable="false"
+                  />
+                </div>
+                
+                {/* Face avant */}
+                <div 
+                  className="absolute w-full h-full" 
+                  style={{
+                    WebkitBackfaceVisibility: 'hidden',
+                    backfaceVisibility: 'hidden',
+                    transform: 'rotateY(180deg)'
+                  }}
+                >
+                  <img
+                    src={getCardImage(card.value)}
+                    alt={`Carte ${card.value}`}
+                    className="w-full h-full object-cover rounded select-none"
+                    draggable="false"
+                    onError={(e) => {
+                      // En cas d'erreur de chargement de l'image
+                      const target = e.target as HTMLImageElement;
+                      target.src = cardBack;
+                      target.alt = 'Dos de carte';
+                    }}
+                  />
+                </div>
+              </div>
+
             </div>
           ))}
         </div>
       )}
-  </div>
+    </div>
   );
 };
 
@@ -70,54 +224,192 @@ const TrainingPage: React.FC = () => {
   const player1HandRef = React.useRef<HTMLDivElement>(null);
   const player2HandRef = React.useRef<HTMLDivElement>(null);
 
+  // État pour le deck et la distribution
   const [isDealing, setIsDealing] = React.useState(false);
+  const [dealingCard, setDealingCard] = React.useState<{to: 'top'|'bottom', index: number, cardValue: number} | null>(null);
+  const [player1Cards, setPlayer1Cards] = React.useState<CardState[]>([]);
+  const [player2Cards, setPlayer2Cards] = React.useState<CardState[]>([]);
   const [cardsDealt, setCardsDealt] = React.useState(0);
-  const [dealingCard, setDealingCard] = React.useState<{to: 'top'|'bottom', index: number}|null>(null);
-  const TOTAL_CARDS = 4;
-  const DEAL_DURATION = 2200; // ms (2.2s)
-  const DEAL_PER_CARD = DEAL_DURATION / TOTAL_CARDS;
+
+  // Initialiser et mélanger le deck au chargement
+  React.useEffect(() => {
+    initializeDeck();
+  }, []);
+
+  // Gérer l'animation de la carte en cours de distribution
+  React.useEffect(() => {
+    if (dealingCard) {
+      // Ici, nous pourrions ajouter des effets sonores ou d'autres animations
+      // liées à la carte en cours de distribution
+      const timer = setTimeout(() => {
+        // Nettoyer l'animation après un délai
+        setDealingCard(null);
+      }, 500); // Durée de l'animation en ms
+
+      return () => clearTimeout(timer);
+    }
+  }, [dealingCard]);
+
+  // Initialise un nouveau jeu
+  const initializeDeck = () => {
+    // Créer un nouveau tableau avec des objets uniques pour chaque carte
+    const initialCards = Array(4).fill(null).map((_, i) => ({
+      id: `card-${i}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      value: -1,
+      isFlipped: false
+    }));
+    
+    setPlayer1Cards([...initialCards]);
+    setPlayer2Cards([...initialCards]);
+    setCardsDealt(0);
+  };
 
   // Pour stocker les positions deck/main (pour animation)
   const [dealAnim, setDealAnim] = React.useState<null | {
     from: {x: number, y: number},
     to: {x: number, y: number},
     toPlayer: 'top'|'bottom',
-    index: number
+    index: number,
+    cardValue: number
   }>(null);
+
+  // Délai fixe pour la distribution des cartes (en ms)
+  const DEAL_DELAY = 300;
+
+  // Gère le clic sur une carte
+  const handleCardClick = (player: 'top' | 'bottom', index: number) => {
+    // Vérifie si l'index est valide
+    if (index < 0 || index >= 4) return; // 4 cartes par joueur
+    
+    if (player === 'top') {
+      setPlayer1Cards(prevCards => {
+        const newCards = [...prevCards];
+        if (newCards[index].value !== -1) {
+          newCards[index] = { 
+            ...newCards[index],
+            isFlipped: !newCards[index].isFlipped 
+          };
+        }
+        return newCards;
+      });
+    } else {
+      setPlayer2Cards(prevCards => {
+        const newCards = [...prevCards];
+        if (newCards[index].value !== -1) {
+          newCards[index] = { 
+            ...newCards[index],
+            isFlipped: !newCards[index].isFlipped 
+          };
+        }
+        return newCards;
+      });
+    }
+  };
 
   // Lance la distribution stylée
   const handleStartNewGame = async () => {
-    setIsDealing(true);
+    if (isDealing) return; // Éviter les clics multiples
+    
+    // Réinitialiser le jeu
+    initializeDeck();
+    
+    // Attendre que le deck soit initialisé
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // Crée un nouveau deck mélangé (2 jeux de 52 cartes)
+    const newDeck = [...Array(52).keys(), ...Array(52).keys()]
+      .sort(() => Math.random() - 0.5);
+    
+    // Réinitialiser les cartes des joueurs avec des IDs uniques
+    const resetCards = () => 
+      Array(4).fill(null).map((_, i) => ({
+        id: `card-${i}-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        value: -1,
+        isFlipped: false
+      }));
+      
+    setPlayer1Cards(resetCards());
+    setPlayer2Cards(resetCards());
     setCardsDealt(0);
-    for (let i = 0; i < TOTAL_CARDS; i++) {
-      // alterne top/bottom
-      const toPlayer = i % 2 === 0 ? 'top' : 'bottom';
-      setDealingCard({to: toPlayer, index: i});
-      // calcule positions deck/main
-      await new Promise<void>((resolve) => {
+    
+    setIsDealing(true);
+    
+    // Distribue 4 cartes à chaque joueur
+    for (let i = 0; i < 4; i++) {
+      // Distribution au joueur 1 (top) - prendre les cartes paires
+      const cardValue1 = newDeck[i * 2];
+      setPlayer1Cards(prev => {
+        const newCards = [...prev];
+        newCards[i] = {
+          ...newCards[i],
+          value: cardValue1,
+          isFlipped: false
+        };
+        return newCards;
+      });
+      
+      // Animation pour le joueur 1
+      await new Promise(resolve => {
         setTimeout(() => {
           const deck = deckRef.current;
-          const hand = (toPlayer === 'top' ? player1HandRef : player2HandRef).current;
+          const hand = player1HandRef.current;
           if (deck && hand) {
             const deckRect = deck.getBoundingClientRect();
             const handRect = hand.getBoundingClientRect();
-            // On vise le centre de la main, décalé selon l’index
-            const cardOffset = (i>>1) * 72; // 72px par carte
+            const cardOffset = i * 72;
             const from = {x: deckRect.left + deckRect.width/2, y: deckRect.top + deckRect.height/2};
             const to = {
-              x: handRect.left + handRect.width/2 + (toPlayer==='top'?-1:1)*cardOffset - 36,
+              x: handRect.left + handRect.width/2 - 108 + cardOffset,
               y: handRect.top + handRect.height/2
             };
-            setDealAnim({from, to, toPlayer, index: i});
+            setDealAnim({from, to, toPlayer: 'top', index: i, cardValue: cardValue1});
           }
-          resolve();
+          resolve(null);
         }, 10);
       });
-      // Attend l’animation (600ms)
-      await new Promise(res=>setTimeout(res, 600));
+      
+      await new Promise(resolve => setTimeout(resolve, DEAL_DELAY));
       setDealAnim(null);
-      setCardsDealt(prev => prev+1);
+      
+      // Distribution au joueur 2 (bottom) - prendre les cartes impaires
+      const cardValue2 = newDeck[i * 2 + 1];
+      setPlayer2Cards(prev => {
+        const newCards = [...prev];
+        newCards[i] = {
+          ...newCards[i],
+          value: cardValue2,
+          isFlipped: false
+        };
+        return newCards;
+      });
+      
+      // Animation pour le joueur 2
+      await new Promise(resolve => {
+        setTimeout(() => {
+          const deck = deckRef.current;
+          const hand = player2HandRef.current;
+          if (deck && hand) {
+            const deckRect = deck.getBoundingClientRect();
+            const handRect = hand.getBoundingClientRect();
+            const cardOffset = i * 72;
+            const from = {x: deckRect.left + deckRect.width/2, y: deckRect.top + deckRect.height/2};
+            const to = {
+              x: handRect.left + handRect.width/2 - 108 + cardOffset,
+              y: handRect.top + handRect.height/2
+            };
+            setDealAnim({from, to, toPlayer: 'bottom', index: i, cardValue: cardValue2});
+          }
+          resolve(null);
+        }, 10);
+      });
+      
+      await new Promise(resolve => setTimeout(resolve, DEAL_DELAY));
+      setDealAnim(null);
+      
+      // Mettre à jour le nombre de cartes distribuées
+      setCardsDealt(i + 1);
     }
+    
     setDealingCard(null);
     setIsDealing(false);
   };
@@ -137,13 +429,15 @@ const TrainingPage: React.FC = () => {
   // Carte animée en vol (flyingCard) avec rotation progressive
   const flyingCard = dealAnim ? (
     <div 
+      className="absolute w-16 h-24 rounded shadow-lg border-2 border-white bg-white z-50"
       style={{
-        position: 'fixed',
-        left: dealAnim.from.x - 32, // -32px pour centrer (car width: 64px)
-        top: dealAnim.from.y - 48,  // -48px pour centrer (car height: 96px)
+        left: `${dealAnim.from.x}px`,
+        top: `${dealAnim.from.y}px`,
+        transform: 'translate(-50%, -50%)',
+        transition: 'all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)',
         zIndex: 1000,
-        pointerEvents: 'none',
-        transform: `translate(0, 0)`
+        transformStyle: 'preserve-3d',
+        pointerEvents: 'none'
       }}
     >
       <div 
@@ -221,7 +515,13 @@ const TrainingPage: React.FC = () => {
       {/* Joueur 1 (haut) */}
       <div className="row-start-2 row-end-3 flex items-end justify-center min-h-[40px]">
         <div ref={player1HandRef} style={{minHeight: 0}}>
-          <PlayerZone position="top" playerName="Joueur 1" cardsDealt={cardsDealt} />
+          <PlayerZone 
+            position="top" 
+            playerName="Joueur 1" 
+            cardsDealt={cardsDealt} 
+            cards={player1Cards}
+            onCardClick={(index) => handleCardClick('top', index)}
+          />
         </div>
       </div>
       {/* Plateau (milieu) : deck à gauche, pile à droite, centre vide */}
@@ -247,7 +547,13 @@ const TrainingPage: React.FC = () => {
       {/* Joueur 2 (bas) */}
       <div className="row-start-4 row-end-5 flex items-start justify-center min-h-[60px]">
         <div ref={player2HandRef} style={{minHeight: 0}}>
-          <PlayerZone position="bottom" playerName="Joueur 2" cardsDealt={cardsDealt} />
+          <PlayerZone 
+            position="bottom" 
+            playerName="Joueur 2" 
+            cardsDealt={cardsDealt} 
+            cards={player2Cards}
+            onCardClick={(index) => handleCardClick('bottom', index)}
+          />
         </div>
       </div>
     </div>
