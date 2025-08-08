@@ -248,6 +248,10 @@ const TrainingPage: React.FC = () => {
   const [player1Cards, setPlayer1Cards] = React.useState<CardState[]>([]);
   const [player2Cards, setPlayer2Cards] = React.useState<CardState[]>([]);
   const [cardsDealt, setCardsDealt] = React.useState(0);
+  const [drawnCard, setDrawnCard] = React.useState<{value: number, isFlipped: boolean} | null>(null);
+  const [showCardActions, setShowCardActions] = React.useState(false);
+  const [selectingCardToReplace, setSelectingCardToReplace] = React.useState(false);
+  const [deck, setDeck] = React.useState<number[]>([]);
 
   // Initialiser et mélanger le deck au chargement
   React.useEffect(() => {
@@ -279,6 +283,11 @@ const TrainingPage: React.FC = () => {
       isFlipped: false
     }));
     
+    // Créer un nouveau deck mélangé (2 jeux de 52 cartes)
+    const newDeck = [...Array(52).keys(), ...Array(52).keys()]
+      .sort(() => Math.random() - 0.5);
+    
+    setDeck(newDeck);
     setPlayer1Cards([...initialCards]);
     setPlayer2Cards([...initialCards]);
     setCardsDealt(0);
@@ -290,6 +299,9 @@ const TrainingPage: React.FC = () => {
       player1: { count: 0, indexes: [] },
       player2: { count: 0, indexes: [] }
     });
+    setDrawnCard(null);
+    setShowCardActions(false);
+    setSelectingCardToReplace(false);
   };
 
   // Pour stocker les positions deck/main (pour animation)
@@ -336,6 +348,11 @@ const TrainingPage: React.FC = () => {
   
   // Fonction pour gérer le passage au tour suivant
   const handleTurnEnd = React.useCallback((currentPlayer: 'player1' | 'player2') => {
+    // Réinitialiser les états de la carte piochée
+    setDrawnCard(null);
+    setShowCardActions(false);
+    setSelectingCardToReplace(false);
+    
     // Changer de joueur
     const nextPlayer = currentPlayer === 'player1' ? 'player2' : 'player1';
     console.log('Passage au joueur', nextPlayer);
@@ -382,6 +399,13 @@ const TrainingPage: React.FC = () => {
           console.log('Fin du temps pour', currentPlayerLocal);
           clearInterval(timerRef.current!);
           
+          // Si une carte a été piochée mais aucune action n'a été effectuée, la défausser
+          if (drawnCard) {
+            setDrawnCard(null);
+            setShowCardActions(false);
+            setSelectingCardToReplace(false);
+          }
+          
           // Gérer la fin du tour
           handleTurnEnd(currentPlayerLocal);
           
@@ -390,7 +414,7 @@ const TrainingPage: React.FC = () => {
         return prev - 1;
       });
     }, 1000);
-  }, [currentPlayer, handleTurnEnd]);
+  }, [currentPlayer, handleTurnEnd, drawnCard]);
   
   // Mettre à jour la référence quand la fonction change
   React.useEffect(() => {
@@ -475,6 +499,40 @@ const TrainingPage: React.FC = () => {
   const handleCardClick = (player: 'top' | 'bottom', index: number) => {
     // Vérifie si l'index est valide
     if (index < 0 || index >= 4) return; // 4 cartes par joueur
+    
+    // Si on est en train de sélectionner une carte à remplacer
+    if (selectingCardToReplace) {
+      const playerCards = player === 'top' ? player1Cards : player2Cards;
+      
+      // Vérifier si le joueur actuel est bien celui qui doit jouer
+      const isCurrentPlayer = (player === 'top' && currentPlayer === 'player1') || 
+                             (player === 'bottom' && currentPlayer === 'player2');
+      
+      if (isCurrentPlayer && drawnCard) {
+        // Remplacer la carte sélectionnée par la carte piochée
+        const newCards = [...playerCards];
+        newCards[index] = {
+          ...newCards[index],
+          value: drawnCard.value,
+          isFlipped: false
+        };
+        
+        if (player === 'top') {
+          setPlayer1Cards(newCards);
+        } else {
+          setPlayer2Cards(newCards);
+        }
+        
+        // Réinitialiser les états
+        setDrawnCard(null);
+        setShowCardActions(false);
+        setSelectingCardToReplace(false);
+        
+        // Passer au tour suivant
+        handleTurnEnd(currentPlayer);
+      }
+      return;
+    }
     
     // En phase d'avant tour, on laisse chaque joueur retourner 2 cartes
     if (gamePhase === 'before_round') {
@@ -780,14 +838,33 @@ const TrainingPage: React.FC = () => {
       >
         <span className="mr-2">🆕</span> Start a new game
       </button>
-      {/* Bouton Dashboard en haut à droite */}
-      <button
-        className="absolute top-3 right-3 z-30 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg w-12 h-12 flex items-center justify-center text-2xl border-2 border-white focus:outline-none focus:ring-2 focus:ring-blue-400"
-        title="Retour au Dashboard"
-        onClick={() => navigate('/dashboard')}
-      >
-        <span role="img" aria-label="Dashboard">🏠</span>
-      </button>
+      {/* Boutons en haut à droite */}
+      <div className="absolute top-3 right-3 z-30 flex space-x-2">
+        <button
+          className="bg-purple-600 hover:bg-purple-700 text-white rounded-full shadow-lg w-12 h-12 flex items-center justify-center text-2xl border-2 border-white focus:outline-none focus:ring-2 focus:ring-purple-400"
+          title="Afficher les cartes (2s)"
+          onClick={() => {
+            // Retourner toutes les cartes
+            setPlayer1Cards(prev => prev.map(card => ({ ...card, isFlipped: true })));
+            setPlayer2Cards(prev => prev.map(card => ({ ...card, isFlipped: true })));
+            
+            // Les remettre face cachée après 2 secondes
+            setTimeout(() => {
+              setPlayer1Cards(prev => prev.map(card => ({ ...card, isFlipped: false })));
+              setPlayer2Cards(prev => prev.map(card => ({ ...card, isFlipped: false })));
+            }, 2000);
+          }}
+        >
+          <span role="img" aria-label="Voir les cartes">👁️</span>
+        </button>
+        <button
+          className="bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg w-12 h-12 flex items-center justify-center text-2xl border-2 border-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+          title="Retour au Dashboard"
+          onClick={() => navigate('/dashboard')}
+        >
+          <span role="img" aria-label="Dashboard">🏠</span>
+        </button>
+      </div>
       {/* Titre */}
       <div className="absolute top-0 left-0 w-full flex items-center justify-center z-20" style={{margin:0,padding:0}}>
         <div className="flex items-center space-x-4">
@@ -851,11 +928,82 @@ const TrainingPage: React.FC = () => {
             </div>
           </div>
           
+          {/* Carte piochée */}
+          {drawnCard && (
+            <div className="relative mb-4 z-50">
+              <div className="w-24 h-36 mx-auto mb-2">
+                <img
+                  src={getCardImage(drawnCard.value)}
+                  alt="Carte piochée"
+                  className="w-full h-full object-cover rounded-lg shadow-lg"
+                />
+              </div>
+              {showCardActions && (
+                <div className="flex flex-col space-y-2 mt-2">
+                  <button
+                    onClick={() => {
+                      // Défausser la carte
+                      setDrawnCard(null);
+                      setShowCardActions(false);
+                      // Passer au tour suivant
+                      handleTurnEnd(currentPlayer);
+                    }}
+                    className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-medium"
+                  >
+                    Défausser
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowCardActions(false);
+                      setSelectingCardToReplace(true);
+                      // Le joueur doit maintenant cliquer sur une carte à remplacer
+                    }}
+                    className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-medium"
+                  >
+                    Ajouter à ma main
+                  </button>
+                </div>
+              )}
+              {selectingCardToReplace && (
+                <div className="text-yellow-300 text-sm mt-2">
+                  Cliquez sur la carte à remplacer
+                </div>
+              )}
+            </div>
+          )}
+          
           {/* Défausse */}
           <div className="flex flex-col items-center">
-            <div className="w-24 h-36 bg-gray-800 border-4 border-yellow-400 rounded-xl shadow-xl flex flex-col items-center justify-center mb-2 relative">
-              <span className="text-white">Défausse</span>
+            <div 
+              className="w-24 h-36 bg-gray-800 border-4 border-yellow-400 rounded-xl shadow-xl flex flex-col items-center justify-center mb-2 relative cursor-pointer hover:border-yellow-300 transition-colors"
+              onClick={async () => {
+                // Ne rien faire si ce n'est pas le tour du joueur ou si une action est en cours
+                if (!isPlayerTurn || showCardActions || selectingCardToReplace || drawnCard) return;
+                
+                // Piocher une carte du deck
+                if (deck.length > 0) {
+                  const newDeck = [...deck];
+                  const cardValue = newDeck.pop();
+                  setDeck(newDeck);
+                  
+                  if (cardValue !== undefined) {
+                    setDrawnCard({ value: cardValue, isFlipped: false });
+                    setShowCardActions(true);
+                    
+                    // Mettre en pause le minuteur pendant que le joueur prend sa décision
+                    if (timerRef.current) {
+                      clearInterval(timerRef.current);
+                    }
+                  }
+                } else {
+                  console.log('Le deck est vide');
+                }
+              }}
+            >
+              <span className="text-white">Piocher</span>
+              <div className="absolute bottom-2 text-xs text-gray-300">{deck.length} cartes</div>
             </div>
+            <div className="text-sm text-gray-300 mt-1">Cliquez pour piocher</div>
           </div>
         </div>
       </div>
