@@ -253,6 +253,12 @@ const TrainingPage: React.FC = () => {
   const [selectingCardToReplace, setSelectingCardToReplace] = React.useState(false);
   const [deck, setDeck] = React.useState<number[]>([]);
   const [discardPile, setDiscardPile] = React.useState<number | null>(null);
+  const [isDeckGlowing, setIsDeckGlowing] = React.useState(false);
+  const [drawnCardAnim, setDrawnCardAnim] = React.useState<{
+    value: number;
+    position: {x: number, y: number};
+    isRevealed: boolean;
+  } | null>(null);
 
   // Initialiser et mélanger le deck au chargement
   React.useEffect(() => {
@@ -794,6 +800,95 @@ const TrainingPage: React.FC = () => {
            (player === 'player2' && gamePhase === 'player2_turn');
   };
 
+  // Effet pour gérer l'animation de la carte piochée
+  React.useEffect(() => {
+    if (drawnCard) {
+      // Activer l'effet de brillance du deck
+      setIsDeckGlowing(true);
+      
+      // Démarrer l'animation de la carte piochée après un court délai
+      const timer = setTimeout(() => {
+        setDrawnCardAnim({
+          value: drawnCard.value,
+          position: {x: window.innerWidth / 2, y: window.innerHeight / 2},
+          isRevealed: false
+        });
+        
+        // Retourner la carte après un court délai
+        setTimeout(() => {
+          setDrawnCardAnim(prev => prev ? {...prev, isRevealed: true} : null);
+        }, 300);
+        
+        // Cacher l'animation après 2 secondes
+        setTimeout(() => {
+          setDrawnCardAnim(null);
+          setIsDeckGlowing(false);
+        }, 2000);
+      }, 300);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [drawnCard]);
+
+  // Carte piochée en animation
+  const drawnCardAnimation = drawnCardAnim ? (
+    <div 
+      className="fixed z-[1000] w-24 h-36 transition-all duration-500 ease-out"
+      style={{
+        left: `${drawnCardAnim.position.x}px`,
+        top: `${drawnCardAnim.position.y}px`,
+        transform: 'translate(-50%, -50%)',
+        transformStyle: 'preserve-3d',
+        transition: 'all 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
+      }}
+    >
+      <div 
+        className="relative w-full h-full"
+        style={{
+          transform: drawnCardAnim.isRevealed ? 'rotateY(180deg)' : 'rotateY(0deg)',
+          transformStyle: 'preserve-3d',
+          transition: 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
+        }}
+      >
+        {/* Face arrière */}
+        <div 
+          className="absolute w-full h-full rounded-lg shadow-2xl overflow-hidden border-2 border-white"
+          style={{
+            backfaceVisibility: 'hidden',
+            transform: 'rotateY(0deg)',
+            boxShadow: '0 0 30px rgba(255, 255, 0, 0.7)',
+          }}
+        >
+          <img
+            src={cardBack}
+            alt="Dos de carte"
+            className="w-full h-full object-cover"
+          />
+        </div>
+        {/* Face avant */}
+        <div 
+          className="absolute w-full h-full rounded-lg shadow-2xl overflow-hidden border-2 border-white"
+          style={{
+            backfaceVisibility: 'hidden',
+            transform: 'rotateY(180deg)',
+            boxShadow: '0 0 30px rgba(0, 255, 255, 0.7)',
+          }}
+        >
+          <img
+            src={getCardImage(drawnCardAnim.value)}
+            alt="Carte piochée"
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              const target = e.target as HTMLImageElement;
+              target.src = cardBack;
+              target.alt = 'Dos de carte';
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   // Carte animée en vol (flyingCard) avec animation fluide et réaliste
   const flyingCard = dealAnim ? (
     <div 
@@ -892,6 +987,7 @@ const TrainingPage: React.FC = () => {
       className="h-screen w-full bg-cover bg-center homepage-bg grid grid-rows-[min-content_minmax(40px,0.9fr)_1.7fr_minmax(40px,0.9fr)] text-gray-200 overflow-hidden relative"
     >
       {flyingCard}
+      {drawnCardAnimation}
       {/* Bouton Start a new game en haut à gauche */}
       <button
         className="absolute top-3 left-3 z-30 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow-lg px-4 py-2 flex items-center justify-center text-base font-bold border-2 border-white focus:outline-none focus:ring-2 focus:ring-green-400 disabled:opacity-60 disabled:cursor-not-allowed"
@@ -972,7 +1068,13 @@ const TrainingPage: React.FC = () => {
         <div className="flex flex-col items-center ml-6">
           <div 
             ref={deckRef} 
-            className="w-24 h-36 bg-blue-800 border-4 border-white rounded-xl shadow-xl flex flex-col items-center justify-center mb-2 relative cursor-pointer hover:border-blue-300 transition-colors"
+            className={`w-24 h-36 bg-blue-800 border-4 border-white rounded-xl shadow-xl flex flex-col items-center justify-center mb-2 relative cursor-pointer hover:border-blue-300 transition-all duration-500 ${
+              isDeckGlowing ? 'ring-4 ring-yellow-400 ring-opacity-80' : ''
+            }`}
+            style={{
+              boxShadow: isDeckGlowing ? '0 0 30px rgba(255, 255, 0, 0.7)' : '0 4px 8px rgba(0, 0, 0, 0.3)',
+              transition: 'all 0.3s ease-in-out',
+            }}
             onClick={async () => {
               // Ne rien faire si ce n'est pas le tour du joueur ou si une action est en cours
               if (!isPlayerTurn || showCardActions || selectingCardToReplace || drawnCard) return;
@@ -984,8 +1086,19 @@ const TrainingPage: React.FC = () => {
                 setDeck(newDeck);
                 
                 if (cardValue !== undefined) {
-                  setDrawnCard({ value: cardValue, isFlipped: false });
-                  setShowCardActions(true);
+                  // Démarrer l'animation de pioche
+                  const deckRect = deckRef.current?.getBoundingClientRect();
+                  if (deckRect) {
+                    setDrawnCard({ 
+                      value: cardValue, 
+                      isFlipped: false 
+                    });
+                  }
+                  
+                  // Afficher les actions après l'animation
+                  setTimeout(() => {
+                    setShowCardActions(true);
+                  }, 2000);
                   
                   // Mettre en pause le minuteur pendant que le joueur prend sa décision
                   if (timerRef.current) {
