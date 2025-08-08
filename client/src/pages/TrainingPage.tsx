@@ -267,6 +267,11 @@ const TrainingPage: React.FC = () => {
     setCurrentPlayer('player1');
     setIsPlayerTurn(false);
     setTimeLeft(15);
+    setGamePhase('preparation');
+    setCardsFlipped({
+      player1: { count: 0, indexes: [] },
+      player2: { count: 0, indexes: [] }
+    });
   };
 
   // Pour stocker les positions deck/main (pour animation)
@@ -281,11 +286,25 @@ const TrainingPage: React.FC = () => {
   // Délai fixe pour la distribution des cartes (en ms)
   const DEAL_DELAY = 300;
   
+  // Gestion des phases de jeu
+  type GamePhase = 'preparation' | 'before_round' | 'player1_turn' | 'player2_turn';
+  const [gamePhase, setGamePhase] = React.useState<GamePhase>('preparation');
+  
+  // Suivi des cartes retournées en phase 'avant tour'
+  const [cardsFlipped, setCardsFlipped] = React.useState<{
+    player1: {count: number, indexes: number[]},
+    player2: {count: number, indexes: number[]}
+  }>({
+    player1: { count: 0, indexes: [] },
+    player2: { count: 0, indexes: [] }
+  });
+  
   // Gestion du tour de jeu
   const [currentPlayer, setCurrentPlayer] = React.useState<'player1' | 'player2'>('player1');
   const [timeLeft, setTimeLeft] = React.useState<number>(15);
   const [isPlayerTurn, setIsPlayerTurn] = React.useState<boolean>(false);
   const timerRef = React.useRef<NodeJS.Timeout | null>(null);
+  const beforeRoundTimerRef = React.useRef<NodeJS.Timeout | null>(null);
   
   // Formatage du temps restant en MM:SS
   const formatTime = (seconds: number): string => {
@@ -294,11 +313,34 @@ const TrainingPage: React.FC = () => {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
   
-  // Gestion du minuteur de tour
+  // Référence pour stocker la fonction de démarrage du tour
+  const startTurnTimerRef = React.useRef<() => void>(() => {});
+  
+  // Fonction pour gérer le passage au tour suivant
+  const handleTurnEnd = React.useCallback((currentPlayer: 'player1' | 'player2') => {
+    // Changer de joueur
+    const nextPlayer = currentPlayer === 'player1' ? 'player2' : 'player1';
+    console.log('Passage au joueur', nextPlayer);
+    
+    // Mettre à jour le joueur actuel
+    setCurrentPlayer(nextPlayer);
+    
+    // Démarrer le timer pour le prochain joueur après un court délai
+    setTimeout(() => {
+      setTimeLeft(15);
+      if (startTurnTimerRef.current) {
+        startTurnTimerRef.current();
+      }
+    }, 500);
+  }, []);
+  
+  // Fonction pour démarrer le timer du tour
   const startTurnTimer = React.useCallback(() => {
+    console.log('Démarrage du minuteur de tour pour', currentPlayer);
+    
     // Activer le tour du joueur
     setIsPlayerTurn(true);
-    // Réinitialiser le temps
+    // Réinitialiser le temps à 15 secondes
     setTimeLeft(15);
     
     // Nettoyer l'ancien timer s'il existe
@@ -306,46 +348,158 @@ const TrainingPage: React.FC = () => {
       clearInterval(timerRef.current);
     }
     
+    // Créer une copie locale de currentPlayer pour la fermeture
+    const currentPlayerLocal = currentPlayer;
+    
     // Démarrer le nouveau timer
     timerRef.current = setInterval(() => {
       setTimeLeft(prev => {
         if (prev <= 1) {
           // Fin du tour, passer au joueur suivant
+          console.log('Fin du temps pour', currentPlayerLocal);
           clearInterval(timerRef.current!);
-          setCurrentPlayer(prevPlayer => {
-            const nextPlayer = prevPlayer === 'player1' ? 'player2' : 'player1';
-            startTurnTimer(); // Redémarrer le timer pour le prochain joueur
-            return nextPlayer;
-          });
-          return 15; // Réinitialiser le compteur
+          
+          // Gérer la fin du tour
+          handleTurnEnd(currentPlayerLocal);
+          
+          return 0;
         }
         return prev - 1;
       });
     }, 1000);
-  }, []);
+  }, [currentPlayer, handleTurnEnd]);
   
-  // Nettoyer l'intervalle quand le composant est démonté
+  // Mettre à jour la référence quand la fonction change
+  React.useEffect(() => {
+    if (startTurnTimer) {
+      startTurnTimerRef.current = startTurnTimer;
+    }
+  }, [startTurnTimer]);
+  
+  // Gestion du minuteur de 5 secondes pour la phase 'avant tour'
+  const startBeforeRoundTimer = React.useCallback(() => {
+    console.log('Démarrage du minuteur de 5 secondes pour la phase de mémorisation');
+    
+    // Nettoyer l'ancien timer s'il existe
+    if (beforeRoundTimerRef.current) {
+      clearInterval(beforeRoundTimerRef.current);
+    }
+    
+    // Démarrer le compte à rebours de 5 secondes
+    setTimeLeft(5);
+    
+    // Mettre à jour le temps toutes les secondes
+    beforeRoundTimerRef.current = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          // Fin du temps, passer au jeu normal
+          clearInterval(beforeRoundTimerRef.current!);
+          console.log('Fin de la phase de mémorisation, passage au jeu normal');
+          
+          // Retourner toutes les cartes
+          setPlayer1Cards(prev => prev.map(card => ({ ...card, isFlipped: false })));
+          setPlayer2Cards(prev => prev.map(card => ({ ...card, isFlipped: false })));
+          
+          // Passer à la phase de jeu normale
+          setGamePhase('player1_turn');
+          setCurrentPlayer('player1');
+          setIsPlayerTurn(true);
+          
+          // Démarrer le timer du premier tour en utilisant la référence
+          if (startTurnTimerRef.current) {
+            startTurnTimerRef.current();
+          }
+          
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, [setGamePhase, setCurrentPlayer, setIsPlayerTurn, setTimeLeft, setPlayer1Cards, setPlayer2Cards]);
+  
+  // Nettoyer les intervalles quand le composant est démonté
   React.useEffect(() => {
     return () => {
       if (timerRef.current) {
         clearInterval(timerRef.current);
       }
+      if (beforeRoundTimerRef.current) {
+        clearInterval(beforeRoundTimerRef.current);
+      }
     };
   }, []);
   
-  // Démarrer le premier tour quand le jeu commence
+  // Gérer le démarrage du jeu après la distribution
   React.useEffect(() => {
-    if (cardsDealt === 4) { // Quand toutes les cartes sont distribuées
-      startTurnTimer();
+    if (cardsDealt === 4 && gamePhase === 'preparation') {
+      console.log('Distribution terminée, passage à la phase avant tour');
+      
+      // Réinitialiser l'état des cartes retournées
+      setCardsFlipped({
+        player1: { count: 0, indexes: [] },
+        player2: { count: 0, indexes: [] }
+      });
+      
+      // Passer à la phase avant tour
+      setGamePhase('before_round');
+      setCurrentPlayer('player1');
+      setIsPlayerTurn(true);
+      setTimeLeft(5);
     }
-  }, [cardsDealt, startTurnTimer]);
+  }, [cardsDealt, gamePhase]);
 
   // Gère le clic sur une carte
   const handleCardClick = (player: 'top' | 'bottom', index: number) => {
     // Vérifie si l'index est valide
     if (index < 0 || index >= 4) return; // 4 cartes par joueur
     
-    // Vérifier si c'est bien le tour du joueur qui clique
+    // En phase d'avant tour, on laisse chaque joueur retourner 2 cartes
+    if (gamePhase === 'before_round') {
+      const playerKey = player === 'top' ? 'player1' : 'player2';
+      const playerCards = player === 'top' ? player1Cards : player2Cards;
+      
+      // Vérifier si la carte est déjà retournée
+      if (playerCards[index].isFlipped) return;
+      
+      // Vérifier si le joueur a déjà retourné 2 cartes
+      if (cardsFlipped[playerKey].count >= 2) return;
+      
+      // Retourner la carte
+      const newCards = [...playerCards];
+      newCards[index] = { ...newCards[index], isFlipped: true };
+      
+      if (player === 'top') {
+        setPlayer1Cards(newCards);
+      } else {
+        setPlayer2Cards(newCards);
+      }
+      
+      // Mettre à jour le compteur de cartes retournées et vérifier si on doit démarrer le minuteur
+      setCardsFlipped(prev => {
+        const updated = {
+          ...prev,
+          [playerKey]: {
+            count: prev[playerKey].count + 1,
+            indexes: [...prev[playerKey].indexes, index]
+          }
+        };
+        
+        // Vérifier si les deux joueurs ont retourné 2 cartes
+        if (updated.player1.count === 2 && updated.player2.count === 2) {
+          console.log('Les deux joueurs ont retourné leurs cartes, démarrage du minuteur de 5 secondes');
+          // Utiliser un setTimeout pour s'assurer que l'état est mis à jour avant de démarrer le minuteur
+          setTimeout(() => {
+            startBeforeRoundTimer();
+          }, 0);
+        }
+        
+        return updated;
+      });
+      
+      return;
+    }
+    
+    // Logique de jeu normale (après la phase d'avant tour)
     const isPlayer1Turn = currentPlayer === 'player1';
     if ((player === 'top' && !isPlayer1Turn) || 
         (player === 'bottom' && isPlayer1Turn)) {
@@ -399,6 +553,12 @@ const TrainingPage: React.FC = () => {
         isFlipped: false
       }));
       
+    // Réinitialiser l'état des cartes retournées
+    setCardsFlipped({
+      player1: { count: 0, indexes: [] },
+      player2: { count: 0, indexes: [] }
+    });
+    
     setPlayer1Cards(resetCards());
     setPlayer2Cards(resetCards());
     setCardsDealt(0);
@@ -483,7 +643,19 @@ const TrainingPage: React.FC = () => {
     
     setDealingCard(null);
     setIsDealing(false);
-    // Le timer démarrera automatiquement grâce à l'effet sur cardsDealt
+    
+    // Démarrer la phase d'avant tour
+    console.log('Démarrage de la phase avant tour');
+    setGamePhase('before_round');
+    setCurrentPlayer('player1');
+    setIsPlayerTurn(true);
+    setTimeLeft(5); // 5 secondes pour la phase de mémorisation
+    
+    // Réinitialiser l'état des cartes retournées
+    setCardsFlipped({
+      player1: { count: 0, indexes: [] },
+      player2: { count: 0, indexes: [] }
+    });
   };
 
 
@@ -583,7 +755,26 @@ const TrainingPage: React.FC = () => {
       </button>
       {/* Titre */}
       <div className="absolute top-0 left-0 w-full flex items-center justify-center z-20" style={{margin:0,padding:0}}>
-        <span className="bg-yellow-400 bg-opacity-90 text-gray-900 px-4 py-1 rounded-xl shadow-xl text-xl font-extrabold tracking-widest border-2 border-white drop-shadow-lg uppercase">Mode Entraînement</span>
+        <div className="flex items-center space-x-4">
+          <span className="bg-yellow-400 bg-opacity-90 text-gray-900 px-4 py-1 rounded-xl shadow-xl text-xl font-extrabold tracking-widest border-2 border-white drop-shadow-lg uppercase">
+            Mode Entraînement
+          </span>
+          {gamePhase !== 'preparation' && (
+            <span className={`px-4 py-1 rounded-full text-white font-bold text-lg shadow-lg ${
+              gamePhase === 'before_round' 
+                ? 'bg-blue-500 animate-pulse' 
+                : gamePhase === 'player1_turn' 
+                  ? 'bg-green-500' 
+                  : 'bg-red-500'
+            }`}>
+              {gamePhase === 'before_round' 
+                ? 'Phase de mémorisation' 
+                : gamePhase === 'player1_turn' 
+                  ? 'Tour du Joueur 1' 
+                  : 'Tour du Joueur 2'}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Joueur 1 (haut) */}
