@@ -318,8 +318,8 @@ const TrainingPage: React.FC = () => {
     cardValue: number
   }>(null);
 
-  // Délai fixe pour la distribution des cartes (en ms)
-  const DEAL_DELAY = 300;
+  // Délai pour la distribution des cartes (en ms)
+  const DEAL_DELAY = 400; // Augmenté pour une animation plus fluide
   
   // Gestion des phases de jeu
   type GamePhase = 'preparation' | 'before_round' | 'player1_turn' | 'player2_turn';
@@ -693,7 +693,16 @@ const TrainingPage: React.FC = () => {
               x: handRect.left + handRect.width/2 - 108 + cardOffset,
               y: handRect.top + handRect.height/2
             };
-            setDealAnim({from, to, toPlayer: 'top', index: i, cardValue: cardValue1});
+            // Ajouter un léger délai pour que l'animation soit plus visible
+            setTimeout(() => {
+              setDealAnim({
+                from: { x: from.x, y: from.y },
+                to: { x: to.x, y: to.y },
+                toPlayer: 'top',
+                index: i,
+                cardValue: cardValue1
+              });
+            }, 20);
           }
           resolve(null);
         }, 10);
@@ -728,7 +737,16 @@ const TrainingPage: React.FC = () => {
               x: handRect.left + handRect.width/2 - 108 + cardOffset,
               y: handRect.top + handRect.height/2
             };
-            setDealAnim({from, to, toPlayer: 'bottom', index: i, cardValue: cardValue2});
+            // Ajouter un léger délai pour que l'animation soit plus visible
+            setTimeout(() => {
+              setDealAnim({
+                from: { x: from.x, y: from.y },
+                to: { x: to.x, y: to.y },
+                toPlayer: 'bottom',
+                index: i,
+                cardValue: cardValue2
+              });
+            }, 20);
           }
           resolve(null);
         }, 10);
@@ -776,61 +794,95 @@ const TrainingPage: React.FC = () => {
            (player === 'player2' && gamePhase === 'player2_turn');
   };
 
-  // Carte animée en vol (flyingCard) avec rotation progressive
+  // Carte animée en vol (flyingCard) avec animation fluide et réaliste
   const flyingCard = dealAnim ? (
     <div 
-      className="absolute w-16 h-24 rounded shadow-lg border-2 border-white bg-white z-50"
+      className="absolute w-16 h-24 z-50"
       style={{
         left: `${dealAnim.from.x}px`,
         top: `${dealAnim.from.y}px`,
         transform: 'translate(-50%, -50%)',
-        transition: 'all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)',
         zIndex: 1000,
         transformStyle: 'preserve-3d',
-        pointerEvents: 'none'
+        pointerEvents: 'none',
+        willChange: 'transform, left, top',
+        transition: 'none',
       }}
     >
       <div 
+        className="relative w-full h-full"
         style={{
-          width: '64px',
-          height: '96px',
-          borderRadius: '8px',
-          boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
-          animation: `cardDeal 0.6s cubic-bezier(.6,-0.28,.74,.05) forwards`,
+          animation: `cardDeal 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards`,
           transformOrigin: 'center',
-          position: 'absolute',
-          top: 0,
-          left: 0
+          willChange: 'transform',
         }}
       >
         <style>
           {`
             @keyframes cardDeal {
               0% {
-                transform: translate(0, 0) rotateY(0deg);
+                transform: 
+                  translate(0, 0) 
+                  rotateY(0deg) 
+                  rotateZ(0deg) 
+                  scale(1);
+                opacity: 1;
+              }
+              20% {
+                transform: 
+                  translate(
+                    ${(dealAnim.to.x - dealAnim.from.x) * 0.2}px, 
+                    ${(dealAnim.to.y - dealAnim.from.y) * 0.2}px
+                  )
+                  rotateY(180deg)
+                  rotateZ(5deg)
+                  scale(1.1);
+                opacity: 1;
+              }
+              80% {
+                transform: 
+                  translate(
+                    ${(dealAnim.to.x - dealAnim.from.x) * 1.1}px, 
+                    ${(dealAnim.to.y - dealAnim.from.y) * 1.1}px
+                  )
+                  rotateY(540deg)
+                  rotateZ(-2deg)
+                  scale(0.95);
+                opacity: 1;
               }
               100% {
-                transform: translate(
-                  ${dealAnim.to.x - dealAnim.from.x}px, 
-                  ${dealAnim.to.y - dealAnim.from.y}px
-                ) rotateY(720deg);
+                transform: 
+                  translate(
+                    ${dealAnim.to.x - dealAnim.from.x}px, 
+                    ${dealAnim.to.y - dealAnim.from.y}px
+                  )
+                  rotateY(720deg)
+                  rotateZ(0deg)
+                  scale(1);
+                opacity: 0;
               }
             }
           `}
         </style>
-        <img
-          src={cardBack}
-          alt="Carte en vol"
+        <div 
+          className="absolute w-full h-full rounded-lg shadow-xl overflow-hidden border-2 border-white"
           style={{
-            width: '100%',
-            height: '100%',
-            borderRadius: '8px',
-            objectFit: 'cover',
-            backfaceVisibility: 'hidden',
             transformStyle: 'preserve-3d',
-            boxShadow: '0 2px 6px rgba(0,0,0,0.2)'
+            backfaceVisibility: 'hidden',
+            transition: 'transform 0.3s ease-out',
           }}
-        />
+        >
+          <img
+            src={cardBack}
+            alt="Carte en vol"
+            className="w-full h-full object-cover"
+            style={{
+              borderRadius: '6px',
+              backfaceVisibility: 'hidden',
+              transformStyle: 'preserve-3d',
+            }}
+          />
+        </div>
       </div>
     </div>
   ) : null;
