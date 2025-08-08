@@ -2,6 +2,24 @@ import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import cardBack from '../assets/cards/card_back.png';
 
+// Style pour mettre en évidence le joueur actif
+const activePlayerStyle = {
+  border: '3px solid #4CAF50',
+  borderRadius: '8px',
+  padding: '5px',
+  transition: 'all 0.3s ease-in-out',
+  boxShadow: '0 0 10px rgba(76, 175, 80, 0.5)'
+};
+
+// Style par défaut pour les joueurs inactifs
+const inactivePlayerStyle = {
+  border: '3px solid transparent',
+  borderRadius: '8px',
+  padding: '5px',
+  transition: 'all 0.3s ease-in-out',
+  boxShadow: 'none'
+};
+
 interface CardState {
   id: string;     // Identifiant unique pour chaque carte
   value: number;  // 0-51 pour les 52 cartes, -1 pour carte non distribuée
@@ -322,12 +340,13 @@ const TrainingPage: React.FC = () => {
     const nextPlayer = currentPlayer === 'player1' ? 'player2' : 'player1';
     console.log('Passage au joueur', nextPlayer);
     
-    // Mettre à jour le joueur actuel
+    // Mettre à jour le joueur actuel et la phase de jeu
     setCurrentPlayer(nextPlayer);
+    setGamePhase(nextPlayer === 'player1' ? 'player1_turn' : 'player2_turn');
     
     // Démarrer le timer pour le prochain joueur après un court délai
     setTimeout(() => {
-      setTimeLeft(15);
+      setTimeLeft(7); // Réduit à 7 secondes
       if (startTurnTimerRef.current) {
         startTurnTimerRef.current();
       }
@@ -338,10 +357,14 @@ const TrainingPage: React.FC = () => {
   const startTurnTimer = React.useCallback(() => {
     console.log('Démarrage du minuteur de tour pour', currentPlayer);
     
+    // Mettre à jour la phase de jeu en fonction du joueur actuel
+    const newPhase = currentPlayer === 'player1' ? 'player1_turn' : 'player2_turn';
+    setGamePhase(newPhase);
+    
     // Activer le tour du joueur
     setIsPlayerTurn(true);
-    // Réinitialiser le temps à 15 secondes
-    setTimeLeft(15);
+    // Réinitialiser le temps à 7 secondes
+    setTimeLeft(7);
     
     // Nettoyer l'ancien timer s'il existe
     if (timerRef.current) {
@@ -499,35 +522,43 @@ const TrainingPage: React.FC = () => {
       return;
     }
     
-    // Logique de jeu normale (après la phase d'avant tour)
+    // Après la phase 'before_round', les cartes ne peuvent plus être retournées
+    if (gamePhase === 'player1_turn' || gamePhase === 'player2_turn') {
+      console.log('La phase de retournement des cartes est terminée');
+      return;
+    }
+    
+    console.log('Tentative de retournement - Phase:', gamePhase, 'Joueur actuel:', currentPlayer, 'Clic sur:', player);
+    
+    // Vérifier si c'est bien le tour du joueur qui clique
     const isPlayer1Turn = currentPlayer === 'player1';
-    if ((player === 'top' && !isPlayer1Turn) || 
-        (player === 'bottom' && isPlayer1Turn)) {
+    const isCorrectPlayer = (player === 'top' && isPlayer1Turn) || (player === 'bottom' && !isPlayer1Turn);
+    
+    if (!isCorrectPlayer) {
+      console.log('Ce n\'est pas votre tour!');
       return;
     }
 
+    // Retourner la carte du joueur concerné
+    const updateCards = (prevCards: CardState[]) => {
+      // Ne pas retourner si la carte est déjà face visible ou n'existe pas
+      if (prevCards[index].isFlipped || prevCards[index].value === -1) {
+        return prevCards;
+      }
+      
+      console.log('Retournement de la carte', index, 'du joueur', player);
+      const newCards = [...prevCards];
+      newCards[index] = { 
+        ...newCards[index],
+        isFlipped: true 
+      };
+      return newCards;
+    };
+
     if (player === 'top') {
-      setPlayer1Cards(prevCards => {
-        const newCards = [...prevCards];
-        if (newCards[index].value !== -1) {
-          newCards[index] = { 
-            ...newCards[index],
-            isFlipped: !newCards[index].isFlipped 
-          };
-        }
-        return newCards;
-      });
+      setPlayer1Cards(updateCards);
     } else {
-      setPlayer2Cards(prevCards => {
-        const newCards = [...prevCards];
-        if (newCards[index].value !== -1) {
-          newCards[index] = { 
-            ...newCards[index],
-            isFlipped: !newCards[index].isFlipped 
-          };
-        }
-        return newCards;
-      });
+      setPlayer2Cards(updateCards);
     }
   };
 
@@ -658,9 +689,7 @@ const TrainingPage: React.FC = () => {
     });
   };
 
-
-
-  // Désactive le scroll global quand la page est montée
+  // Effet pour gérer le défilement de la page
   useEffect(() => {
     const originalHtml = document.documentElement.style.overflow;
     const originalBody = document.body.style.overflow;
@@ -671,6 +700,12 @@ const TrainingPage: React.FC = () => {
       document.body.style.overflow = originalBody;
     };
   }, []);
+
+  // Fonction utilitaire pour déterminer si c'est le tour d'un joueur
+  const isPlayerActive = (player: 'player1' | 'player2') => {
+    return (player === 'player1' && gamePhase === 'player1_turn') || 
+           (player === 'player2' && gamePhase === 'player2_turn');
+  };
 
   // Carte animée en vol (flyingCard) avec rotation progressive
   const flyingCard = dealAnim ? (
@@ -780,13 +815,15 @@ const TrainingPage: React.FC = () => {
       {/* Joueur 1 (haut) */}
       <div className="row-start-2 row-end-3 flex items-end justify-center min-h-[40px]">
         <div ref={player1HandRef} style={{minHeight: 0}}>
-          <PlayerZone 
-            position="top" 
-            playerName="Joueur 1" 
-            cardsDealt={cardsDealt} 
-            cards={player1Cards}
-            onCardClick={(index) => handleCardClick('top', index)}
-          />
+          <div style={isPlayerActive('player1') ? activePlayerStyle : inactivePlayerStyle}>
+            <PlayerZone 
+              position="top" 
+              playerName="Joueur 1" 
+              cardsDealt={cardsDealt} 
+              cards={player1Cards}
+              onCardClick={(index) => handleCardClick('top', index)}
+            />
+          </div>
         </div>
       </div>
       {/* Plateau (milieu) : deck à gauche, pile à droite, centre vide */}
@@ -826,13 +863,15 @@ const TrainingPage: React.FC = () => {
       {/* Joueur 2 (bas) */}
       <div className="row-start-4 row-end-5 flex items-start justify-center min-h-[60px]">
         <div ref={player2HandRef} style={{minHeight: 0}}>
-          <PlayerZone 
-            position="bottom"
-            playerName="Joueur 2" 
-            cardsDealt={cardsDealt} 
-            cards={player2Cards}
-            onCardClick={(index) => handleCardClick('bottom', index)}
-          />
+          <div style={isPlayerActive('player2') ? activePlayerStyle : inactivePlayerStyle}>
+            <PlayerZone 
+              position="bottom" 
+              playerName="Joueur 2" 
+              cardsDealt={cardsDealt} 
+              cards={player2Cards}
+              onCardClick={(index) => handleCardClick('bottom', index)}
+            />
+          </div>
         </div>
       </div>
     </div>
