@@ -252,6 +252,7 @@ const TrainingPage: React.FC = () => {
   const [showCardActions, setShowCardActions] = React.useState(false);
   const [selectingCardToReplace, setSelectingCardToReplace] = React.useState(false);
   const [deck, setDeck] = React.useState<number[]>([]);
+  const [discardPile, setDiscardPile] = React.useState<number | null>(null);
 
   // Initialiser et mélanger le deck au chargement
   React.useEffect(() => {
@@ -287,7 +288,10 @@ const TrainingPage: React.FC = () => {
     const newDeck = [...Array(52).keys(), ...Array(52).keys()]
       .sort(() => Math.random() - 0.5);
     
-    setDeck(newDeck);
+    // Retirer 8 cartes du deck pour la distribution initiale (4 par joueur)
+    const initialDeck = newDeck.slice(8);
+    
+    setDeck(initialDeck);
     setPlayer1Cards([...initialCards]);
     setPlayer2Cards([...initialCards]);
     setCardsDealt(0);
@@ -302,6 +306,7 @@ const TrainingPage: React.FC = () => {
     setDrawnCard(null);
     setShowCardActions(false);
     setSelectingCardToReplace(false);
+    setDiscardPile(null);
   };
 
   // Pour stocker les positions deck/main (pour animation)
@@ -509,6 +514,12 @@ const TrainingPage: React.FC = () => {
                              (player === 'bottom' && currentPlayer === 'player2');
       
       if (isCurrentPlayer && drawnCard) {
+        // Mettre l'ancienne carte dans la défausse
+        const oldCardValue = playerCards[index].value;
+        if (oldCardValue !== -1) {  // Ne pas défausser les cartes vides
+          setDiscardPile(oldCardValue);
+        }
+        
         // Remplacer la carte sélectionnée par la carte piochée
         const newCards = [...playerCards];
         newCards[index] = {
@@ -971,10 +982,13 @@ const TrainingPage: React.FC = () => {
                   <button
                     onClick={() => {
                       // Défausser la carte
-                      setDrawnCard(null);
-                      setShowCardActions(false);
-                      // Passer au tour suivant
-                      handleTurnEnd(currentPlayer);
+                      if (drawnCard) {
+                        setDiscardPile(drawnCard.value);
+                        setDrawnCard(null);
+                        setShowCardActions(false);
+                        // Passer au tour suivant
+                        handleTurnEnd(currentPlayer);
+                      }
                     }}
                     className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-medium"
                   >
@@ -1002,10 +1016,22 @@ const TrainingPage: React.FC = () => {
           
           {/* Défausse */}
           <div className="flex flex-col items-center">
-            <div className="w-24 h-36 bg-gray-800 border-4 border-yellow-400 rounded-xl shadow-xl flex flex-col items-center justify-center mb-2 relative">
-              <span className="absolute -top-3 left-2 bg-yellow-400 text-gray-900 font-bold px-2 py-1 rounded-full text-xs shadow">Défausse</span>
-              <span className="text-3xl">🗑️</span>
-              <span className="mt-2 text-sm font-bold">Défausse</span>
+            <div className="w-24 h-36 bg-gray-800 border-4 border-yellow-400 rounded-xl shadow-xl flex flex-col items-center justify-center mb-2 relative overflow-hidden">
+              <span className="absolute -top-3 left-2 bg-yellow-400 text-gray-900 font-bold px-2 py-1 rounded-full text-xs shadow z-10">Défausse</span>
+              {discardPile !== null ? (
+                <div className="w-full h-full">
+                  <img
+                    src={getCardImage(discardPile)}
+                    alt="Carte défaussée"
+                    className="w-full h-full object-cover rounded-lg"
+                  />
+                </div>
+              ) : (
+                <>
+                  <span className="text-3xl">🗑️</span>
+                  <span className="mt-2 text-sm font-bold">Défausse</span>
+                </>
+              )}
             </div>
           </div>
         </div>
