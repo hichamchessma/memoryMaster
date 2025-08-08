@@ -907,11 +907,39 @@ const TrainingPage: React.FC = () => {
       <div className="row-start-3 row-end-4 flex justify-start items-center relative min-h-[140px]">
         {/* Deck à gauche */}
         <div className="flex flex-col items-center ml-6">
-          <div ref={deckRef} className="w-24 h-36 bg-blue-800 border-4 border-white rounded-xl shadow-xl flex flex-col items-center justify-center mb-2 relative">
+          <div 
+            ref={deckRef} 
+            className="w-24 h-36 bg-blue-800 border-4 border-white rounded-xl shadow-xl flex flex-col items-center justify-center mb-2 relative cursor-pointer hover:border-blue-300 transition-colors"
+            onClick={async () => {
+              // Ne rien faire si ce n'est pas le tour du joueur ou si une action est en cours
+              if (!isPlayerTurn || showCardActions || selectingCardToReplace || drawnCard) return;
+              
+              // Piocher une carte du deck
+              if (deck.length > 0) {
+                const newDeck = [...deck];
+                const cardValue = newDeck.pop();
+                setDeck(newDeck);
+                
+                if (cardValue !== undefined) {
+                  setDrawnCard({ value: cardValue, isFlipped: false });
+                  setShowCardActions(true);
+                  
+                  // Mettre en pause le minuteur pendant que le joueur prend sa décision
+                  if (timerRef.current) {
+                    clearInterval(timerRef.current);
+                  }
+                }
+              } else {
+                console.log('Le deck est vide');
+              }
+            }}
+          >
             <span className="absolute -top-3 left-2 bg-yellow-400 text-gray-900 font-bold px-2 py-1 rounded-full text-xs shadow">Cartes</span>
             <span className="text-3xl">🂠</span>
-            <span className="mt-2 text-sm font-bold">Deck</span>
+            <span className="mt-2 text-sm font-bold">Piocher</span>
+            <div className="absolute bottom-2 text-xs text-gray-200">{deck.length} cartes</div>
           </div>
+          <div className="text-sm text-gray-300 mt-1">Cliquez pour piocher</div>
         </div>
         {/* Zone centrale avec les informations de jeu */}
         <div className="flex flex-col items-center justify-center">
@@ -974,36 +1002,11 @@ const TrainingPage: React.FC = () => {
           
           {/* Défausse */}
           <div className="flex flex-col items-center">
-            <div 
-              className="w-24 h-36 bg-gray-800 border-4 border-yellow-400 rounded-xl shadow-xl flex flex-col items-center justify-center mb-2 relative cursor-pointer hover:border-yellow-300 transition-colors"
-              onClick={async () => {
-                // Ne rien faire si ce n'est pas le tour du joueur ou si une action est en cours
-                if (!isPlayerTurn || showCardActions || selectingCardToReplace || drawnCard) return;
-                
-                // Piocher une carte du deck
-                if (deck.length > 0) {
-                  const newDeck = [...deck];
-                  const cardValue = newDeck.pop();
-                  setDeck(newDeck);
-                  
-                  if (cardValue !== undefined) {
-                    setDrawnCard({ value: cardValue, isFlipped: false });
-                    setShowCardActions(true);
-                    
-                    // Mettre en pause le minuteur pendant que le joueur prend sa décision
-                    if (timerRef.current) {
-                      clearInterval(timerRef.current);
-                    }
-                  }
-                } else {
-                  console.log('Le deck est vide');
-                }
-              }}
-            >
-              <span className="text-white">Piocher</span>
-              <div className="absolute bottom-2 text-xs text-gray-300">{deck.length} cartes</div>
+            <div className="w-24 h-36 bg-gray-800 border-4 border-yellow-400 rounded-xl shadow-xl flex flex-col items-center justify-center mb-2 relative">
+              <span className="absolute -top-3 left-2 bg-yellow-400 text-gray-900 font-bold px-2 py-1 rounded-full text-xs shadow">Défausse</span>
+              <span className="text-3xl">🗑️</span>
+              <span className="mt-2 text-sm font-bold">Défausse</span>
             </div>
-            <div className="text-sm text-gray-300 mt-1">Cliquez pour piocher</div>
           </div>
         </div>
       </div>
