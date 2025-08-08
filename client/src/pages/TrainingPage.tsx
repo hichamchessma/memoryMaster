@@ -250,6 +250,8 @@ const TrainingPage: React.FC = () => {
     }
   }, [dealingCard]);
 
+
+
   // Initialise un nouveau jeu
   const initializeDeck = () => {
     // Créer un nouveau tableau avec des objets uniques pour chaque carte
@@ -262,6 +264,9 @@ const TrainingPage: React.FC = () => {
     setPlayer1Cards([...initialCards]);
     setPlayer2Cards([...initialCards]);
     setCardsDealt(0);
+    setCurrentPlayer('player1');
+    setIsPlayerTurn(false);
+    setTimeLeft(15);
   };
 
   // Pour stocker les positions deck/main (pour animation)
@@ -275,12 +280,78 @@ const TrainingPage: React.FC = () => {
 
   // Délai fixe pour la distribution des cartes (en ms)
   const DEAL_DELAY = 300;
+  
+  // Gestion du tour de jeu
+  const [currentPlayer, setCurrentPlayer] = React.useState<'player1' | 'player2'>('player1');
+  const [timeLeft, setTimeLeft] = React.useState<number>(15);
+  const [isPlayerTurn, setIsPlayerTurn] = React.useState<boolean>(false);
+  const timerRef = React.useRef<NodeJS.Timeout | null>(null);
+  
+  // Formatage du temps restant en MM:SS
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+  
+  // Gestion du minuteur de tour
+  const startTurnTimer = React.useCallback(() => {
+    // Activer le tour du joueur
+    setIsPlayerTurn(true);
+    // Réinitialiser le temps
+    setTimeLeft(15);
+    
+    // Nettoyer l'ancien timer s'il existe
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+    
+    // Démarrer le nouveau timer
+    timerRef.current = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          // Fin du tour, passer au joueur suivant
+          clearInterval(timerRef.current!);
+          setCurrentPlayer(prevPlayer => {
+            const nextPlayer = prevPlayer === 'player1' ? 'player2' : 'player1';
+            startTurnTimer(); // Redémarrer le timer pour le prochain joueur
+            return nextPlayer;
+          });
+          return 15; // Réinitialiser le compteur
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, []);
+  
+  // Nettoyer l'intervalle quand le composant est démonté
+  React.useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, []);
+  
+  // Démarrer le premier tour quand le jeu commence
+  React.useEffect(() => {
+    if (cardsDealt === 4) { // Quand toutes les cartes sont distribuées
+      startTurnTimer();
+    }
+  }, [cardsDealt, startTurnTimer]);
 
   // Gère le clic sur une carte
   const handleCardClick = (player: 'top' | 'bottom', index: number) => {
     // Vérifie si l'index est valide
     if (index < 0 || index >= 4) return; // 4 cartes par joueur
     
+    // Vérifier si c'est bien le tour du joueur qui clique
+    const isPlayer1Turn = currentPlayer === 'player1';
+    if ((player === 'top' && !isPlayer1Turn) || 
+        (player === 'bottom' && isPlayer1Turn)) {
+      return;
+    }
+
     if (player === 'top') {
       setPlayer1Cards(prevCards => {
         const newCards = [...prevCards];
@@ -412,7 +483,10 @@ const TrainingPage: React.FC = () => {
     
     setDealingCard(null);
     setIsDealing(false);
+    // Le timer démarrera automatiquement grâce à l'effet sur cardsDealt
   };
+
+
 
   // Désactive le scroll global quand la page est montée
   useEffect(() => {
@@ -534,21 +608,35 @@ const TrainingPage: React.FC = () => {
             <span className="mt-2 text-sm font-bold">Deck</span>
           </div>
         </div>
-        {/* Défausse juste à droite du deck */}
-        <div className="flex flex-col items-center ml-6">
-          <div className="w-24 h-36 bg-gray-800 border-4 border-yellow-400 rounded-xl shadow-xl flex flex-col items-center justify-center mb-2 relative">
-            <span className="mb-1">Pile</span>
-            <span className="text-2xl">🗑️</span>
-            <span className="absolute -top-3 left-2 bg-gray-300 text-gray-800 font-bold px-2 py-1 rounded-full text-xs shadow">Défausse</span>
+        {/* Zone centrale avec les informations de jeu */}
+        <div className="flex flex-col items-center justify-center">
+          <div className="text-center mb-4">
+            <div className="text-2xl font-bold mb-2">Memory Master</div>
+            <div className="text-lg mb-2">Mode Entraînement</div>
+            {isPlayerTurn && (
+              <div className="text-yellow-300 font-medium animate-pulse">
+                {currentPlayer === 'player1' ? 'Joueur 1' : 'Joueur 2'}, à vous de jouer !
+              </div>
+            )}
+            <div className="mt-2 text-sm bg-black bg-opacity-30 px-3 py-1 rounded-full">
+              Temps restant: {formatTime(timeLeft)}
+            </div>
+          </div>
+          
+          {/* Défausse */}
+          <div className="flex flex-col items-center">
+            <div className="w-24 h-36 bg-gray-800 border-4 border-yellow-400 rounded-xl shadow-xl flex flex-col items-center justify-center mb-2 relative">
+              <span className="text-white">Défausse</span>
+            </div>
           </div>
         </div>
-        {/* Le centre reste vide */}
       </div>
+
       {/* Joueur 2 (bas) */}
       <div className="row-start-4 row-end-5 flex items-start justify-center min-h-[60px]">
         <div ref={player2HandRef} style={{minHeight: 0}}>
           <PlayerZone 
-            position="bottom" 
+            position="bottom"
             playerName="Joueur 2" 
             cardsDealt={cardsDealt} 
             cards={player2Cards}
