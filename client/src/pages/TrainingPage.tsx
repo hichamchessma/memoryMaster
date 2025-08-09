@@ -517,7 +517,7 @@ const TrainingPage: React.FC = () => {
   };
 
   // Gère la pénalité de défausse rapide
-  const handleQuickDiscardPenalty = async (player: 'player1' | 'player2') => {
+  const handleQuickDiscardPenalty = async (player: 'player1' | 'player2', cardIndex: number) => {
     if (deck.length < 2) {
       console.log('Pas assez de cartes dans le deck pour la pénalité');
       return;
@@ -528,49 +528,61 @@ const TrainingPage: React.FC = () => {
     const penaltyCards = [newDeck.pop()!, newDeck.pop()!];
     setDeck(newDeck);
 
-    // Mettre à jour les cartes du joueur et afficher chaque carte pendant 5 secondes
+    // Animer la distribution des cartes pénalité
     for (let i = 0; i < 2; i++) {
+      // Ajouter la carte avec animation
       if (player === 'player1') {
         setPlayer1Cards(prev => {
           const newCards = [...prev];
-          const emptyIndex = newCards.findIndex(card => card.value === -1);
-          if (emptyIndex !== -1) {
-            newCards[emptyIndex] = {
-              ...newCards[emptyIndex],
-              value: penaltyCards[i],
-              isFlipped: true
-            };
-          }
+          // Trouver un emplacement vide ou utiliser le même index si possible
+          let targetIndex = newCards.findIndex(card => card.value === -1);
+          if (targetIndex === -1) targetIndex = cardIndex; // Fallback à l'index cliqué
+          
+          newCards[targetIndex] = {
+            ...newCards[targetIndex],
+            value: penaltyCards[i],
+            isFlipped: true,
+            id: `penalty-${Date.now()}-${i}` // Nouvel ID pour forcer le rendu
+          };
           return newCards;
         });
       } else {
         setPlayer2Cards(prev => {
           const newCards = [...prev];
-          const emptyIndex = newCards.findIndex(card => card.value === -1);
-          if (emptyIndex !== -1) {
-            newCards[emptyIndex] = {
-              ...newCards[emptyIndex],
-              value: penaltyCards[i],
-              isFlipped: true
-            };
-          }
+          let targetIndex = newCards.findIndex(card => card.value === -1);
+          if (targetIndex === -1) targetIndex = cardIndex; // Fallback à l'index cliqué
+          
+          newCards[targetIndex] = {
+            ...newCards[targetIndex],
+            value: penaltyCards[i],
+            isFlipped: true,
+            id: `penalty-${Date.now()}-${i}` // Nouvel ID pour forcer le rendu
+          };
           return newCards;
         });
       }
 
-      // Attendre 5 secondes avant de passer à la carte suivante
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      // Attendre 4 secondes avant de retourner la carte
+      await new Promise(resolve => setTimeout(resolve, 4000));
       
       // Retourner la carte face cachée
       if (player === 'player1') {
-        setPlayer1Cards(prev => prev.map(card => ({...card, isFlipped: false})));
+        setPlayer1Cards(prev => prev.map(card => ({
+          ...card,
+          isFlipped: false,
+          // Ne pas réinitialiser l'ID pour éviter les clignotements
+        })));
       } else {
-        setPlayer2Cards(prev => prev.map(card => ({...card, isFlipped: false})));
+        setPlayer2Cards(prev => prev.map(card => ({
+          ...card,
+          isFlipped: false,
+          // Ne pas réinitialiser l'ID pour éviter les clignotements
+        })));
       }
       
       // Petite pause entre les cartes
       if (i === 0) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
     
@@ -587,6 +599,24 @@ const TrainingPage: React.FC = () => {
     
     // Vérifier si on est en mode défausse rapide (après la phase de mémorisation)
     if (gamePhase !== 'preparation' && gamePhase !== 'before_round' && discardPile !== null) {
+      // Retourner la carte cliquée face visible
+      if (player === 'top') {
+        setPlayer1Cards(prev => {
+          const newCards = [...prev];
+          newCards[index] = { ...newCards[index], isFlipped: true };
+          return newCards;
+        });
+      } else {
+        setPlayer2Cards(prev => {
+          const newCards = [...prev];
+          newCards[index] = { ...newCards[index], isFlipped: true };
+          return newCards;
+        });
+      }
+      
+      // Petite pause pour montrer la carte
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
       const topCardValue = getCardValue(discardPile);
       const clickedCardValue = getCardValue(playerCards[index].value);
       
@@ -623,7 +653,7 @@ const TrainingPage: React.FC = () => {
         return;
       } else {
         // Mauvaise carte - appliquer la pénalité
-        await handleQuickDiscardPenalty(playerKey);
+        await handleQuickDiscardPenalty(playerKey, index);
         return;
       }
     }
@@ -1245,11 +1275,6 @@ const TrainingPage: React.FC = () => {
             <div className="mt-2 text-sm bg-black bg-opacity-30 px-3 py-1 rounded-full">
               Temps restant: {formatTime(timeLeft)}
             </div>
-            {quickDiscardActive && discardPile !== null && (
-              <div className="mt-2 text-sm bg-blue-600 bg-opacity-70 px-3 py-1 rounded-full">
-                Défausse rapide active ! Défaussez un {getCardValue(discardPile) + 1}
-              </div>
-            )}
             {isInPenalty && (
               <div className="mt-2 text-sm bg-red-600 bg-opacity-70 px-3 py-1 rounded-full animate-pulse">
                 Mauvaise carte ! Pénalité en cours...
