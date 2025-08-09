@@ -58,31 +58,40 @@ const getCardImage = (value: number): string => {
 };
 
 const PlayerZone: React.FC<PlayerZoneProps> = ({ position, playerName, cardsDealt, cards = [], onCardClick = () => {} }) => {
+  // Filtrer les cartes pour ne garder que celles qui ont une valeur (value !== -1)
+  const validCards = cards.slice(0, cardsDealt).filter(card => card.value !== -1);
+  
+  // Fonction pour gérer le clic sur une carte
+  const handleCardClick = (card: CardState) => {
+    const originalIndex = cards.findIndex(c => c.id === card.id);
+    if (originalIndex !== -1) {
+      onCardClick(originalIndex);
+    }
+  };
+  
   return (
     <div className="flex flex-col items-center justify-center h-full">
-      {/* Board de 4 cartes face cachée */}
-      {position === 'bottom' && cardsDealt > 0 && (
+      {/* Board de cartes face cachée */}
+      {position === 'bottom' && validCards.length > 0 && (
         <div className="flex flex-row items-center justify-center mb-2">
-          {cards.slice(0, cardsDealt).map((card, idx) => (
+          {validCards.map((card, idx) => (
             <div
-              key={idx}
+              key={`${card.id || idx}-${card.value}`}
               className="card-shine w-16 h-24 mx-2 rounded shadow-md border-2 border-gray-300 bg-white relative overflow-hidden"
               style={{
-                cursor: card.value !== -1 ? 'pointer' : 'default',
+                cursor: 'pointer',
                 transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                 transform: 'scale(1)',
                 zIndex: 1,
                 transformStyle: 'preserve-3d',
               }}
-              onClick={() => card.value !== -1 && onCardClick(idx)}
+              onClick={() => handleCardClick(card)}
               onMouseEnter={(e) => {
-                if (card.value === -1) return;
                 e.currentTarget.style.transform = 'scale(1.15) translateY(-10px)';
                 e.currentTarget.style.zIndex = '20';
                 e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.2)';
               }}
               onMouseLeave={(e) => {
-                if (card.value === -1) return;
                 e.currentTarget.style.transform = 'scale(1)';
                 e.currentTarget.style.zIndex = '1';
                 e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
@@ -151,28 +160,26 @@ const PlayerZone: React.FC<PlayerZoneProps> = ({ position, playerName, cardsDeal
       </div>
 
       {/* Cartes du joueur (pour le joueur du haut) */}
-      {position === 'top' && cardsDealt > 0 && (
+      {position === 'top' && validCards.length > 0 && (
         <div className="flex flex-row items-center justify-center mt-2">
-          {cards.slice(0, cardsDealt).map((card, idx) => (
+          {validCards.map((card, idx) => (
             <div
-              key={idx}
+              key={`${card.id || idx}-${card.value}`}
               className="card-shine w-16 h-24 mx-2 rounded shadow-md border-2 border-gray-300 bg-white relative overflow-hidden"
               style={{
-                cursor: card.value !== -1 ? 'pointer' : 'default',
+                cursor: 'pointer',
                 transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                 transform: 'scale(1)',
                 zIndex: 1,
                 transformStyle: 'preserve-3d',
               }}
-              onClick={() => card.value !== -1 && onCardClick(idx)}
+              onClick={() => handleCardClick(card)}
               onMouseEnter={(e) => {
-                if (card.value === -1) return;
                 e.currentTarget.style.transform = 'scale(1.15) translateY(-10px)';
                 e.currentTarget.style.zIndex = '20';
                 e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.2)';
               }}
               onMouseLeave={(e) => {
-                if (card.value === -1) return;
                 e.currentTarget.style.transform = 'scale(1)';
                 e.currentTarget.style.zIndex = '1';
                 e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
@@ -629,17 +636,27 @@ const TrainingPage: React.FC = () => {
         // Mettre à jour la défausse
         setDiscardPile(discardedCard);
         
-        // Retirer la carte de la main du joueur
-        newCards[index] = {
-          ...newCards[index],
-          value: -1,
-          isFlipped: false
-        };
-        
+        // Retirer complètement la carte du jeu
         if (player === 'top') {
-          setPlayer1Cards(newCards);
+          setPlayer1Cards(prev => {
+            const updatedCards = [...prev];
+            updatedCards[index] = {
+              ...updatedCards[index],
+              value: -1,
+              isFlipped: false
+            };
+            return updatedCards;
+          });
         } else {
-          setPlayer2Cards(newCards);
+          setPlayer2Cards(prev => {
+            const updatedCards = [...prev];
+            updatedCards[index] = {
+              ...updatedCards[index],
+              value: -1,
+              isFlipped: false
+            };
+            return updatedCards;
+          });
         }
         
         // Vérifier si le joueur a gagné
