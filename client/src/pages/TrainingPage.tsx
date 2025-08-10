@@ -1224,8 +1224,8 @@ const TrainingPage: React.FC = () => {
           </div>
         </div>
       </div>
-      {/* Plateau (milieu) : deck à gauche, pile à droite, centre vide */}
-      <div className="row-start-3 row-end-4 flex justify-start items-center relative min-h-[140px]">
+      {/* Plateau (milieu) : deck (gauche) • centre (info + carte piochée) • défausse (droite) */}
+      <div className="row-start-3 row-end-4 flex justify-between items-center relative min-h-[240px] px-6 gap-6">
         {/* Deck à gauche */}
         <div className="flex flex-col items-center ml-6">
           <div 
@@ -1278,9 +1278,52 @@ const TrainingPage: React.FC = () => {
             <div className="absolute bottom-2 text-xs text-gray-200">{deck.length} cartes</div>
           </div>
           <div className="text-sm text-gray-300 mt-1">Cliquez pour piocher</div>
+          {/* Panneau de carte piochée sous le deck */}
+          {drawnCard && (
+            <div className="mt-3 w-44 bg-black/45 backdrop-blur-md rounded-2xl px-4 py-3 shadow-2xl border border-white/20">
+              <div className="w-28 h-40 mx-auto mb-3 drop-shadow-2xl">
+                <img
+                  src={getCardImage(drawnCard.value)}
+                  alt="Carte piochée"
+                  className="w-full h-full object-cover rounded-xl shadow-2xl ring-2 ring-white/70"
+                />
+              </div>
+              {showCardActions && (
+                <div className="flex flex-col space-y-2">
+                  <button
+                    onClick={() => {
+                      if (drawnCard) {
+                        setDiscardPile(drawnCard.value);
+                        setDrawnCard(null);
+                        setShowCardActions(false);
+                        handleTurnEnd(currentPlayer);
+                      }
+                    }}
+                    className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg text-sm font-semibold shadow"
+                  >
+                    Défausser
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowCardActions(false);
+                      setSelectingCardToReplace(true);
+                    }}
+                    className="bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-semibold shadow"
+                  >
+                    Ajouter à ma main
+                  </button>
+                </div>
+              )}
+              {selectingCardToReplace && (
+                <div className="text-yellow-300 text-xs mt-2 bg-black/30 px-3 py-1 rounded-full text-center">
+                  Cliquez sur la carte à remplacer
+                </div>
+              )}
+            </div>
+          )}
         </div>
         {/* Zone centrale avec les informations de jeu */}
-        <div className="flex flex-col items-center justify-center relative">
+        <div className="flex flex-col items-center justify-center relative flex-1">
           <div className="text-center mb-4">
             <div className="text-2xl font-bold mb-2">Memory Master</div>
             <div className="text-lg mb-2">Mode Entraînement</div>
@@ -1299,72 +1342,26 @@ const TrainingPage: React.FC = () => {
             )}
           </div>
           
-          {/* Carte piochée (overlay absolu pour ne pas pousser la mise en page) */}
-          {drawnCard && (
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 z-50">
-              <div className="w-24 h-36 mx-auto mb-2">
+          {/* La défausse est dans la colonne de droite */}
+        </div>
+        {/* Défausse (colonne droite) */}
+        <div className="flex flex-col items-center mr-6">
+          <div className="w-28 h-40 bg-gray-900/70 border-4 border-yellow-400 rounded-2xl shadow-2xl flex flex-col items-center justify-center mb-2 relative overflow-hidden backdrop-blur-sm">
+            <span className="absolute -top-3 left-2 bg-yellow-400 text-gray-900 font-extrabold px-2 py-1 rounded-full text-xs shadow z-10">Défausse</span>
+            {discardPile !== null ? (
+              <div className="w-full h-full">
                 <img
-                  src={getCardImage(drawnCard.value)}
-                  alt="Carte piochée"
-                  className="w-full h-full object-cover rounded-lg shadow-lg"
+                  src={getCardImage(discardPile)}
+                  alt="Carte défaussée"
+                  className="w-full h-full object-cover rounded-xl"
                 />
               </div>
-              {showCardActions && (
-                <div className="flex flex-col space-y-2 mt-2">
-                  <button
-                    onClick={() => {
-                      // Défausser la carte
-                      if (drawnCard) {
-                        setDiscardPile(drawnCard.value);
-                        setDrawnCard(null);
-                        setShowCardActions(false);
-                        // Passer au tour suivant
-                        handleTurnEnd(currentPlayer);
-                      }
-                    }}
-                    className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-medium"
-                  >
-                    Défausser
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowCardActions(false);
-                      setSelectingCardToReplace(true);
-                      // Le joueur doit maintenant cliquer sur une carte à remplacer
-                    }}
-                    className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-medium"
-                  >
-                    Ajouter à ma main
-                  </button>
-                </div>
-              )}
-              {selectingCardToReplace && (
-                <div className="text-yellow-300 text-sm mt-2">
-                  Cliquez sur la carte à remplacer
-                </div>
-              )}
-            </div>
-          )}
-          
-          {/* Défausse */}
-          <div className="flex flex-col items-center">
-            <div className="w-24 h-36 bg-gray-800 border-4 border-yellow-400 rounded-xl shadow-xl flex flex-col items-center justify-center mb-2 relative overflow-hidden">
-              <span className="absolute -top-3 left-2 bg-yellow-400 text-gray-900 font-bold px-2 py-1 rounded-full text-xs shadow z-10">Défausse</span>
-              {discardPile !== null ? (
-                <div className="w-full h-full">
-                  <img
-                    src={getCardImage(discardPile)}
-                    alt="Carte défaussée"
-                    className="w-full h-full object-cover rounded-lg"
-                  />
-                </div>
-              ) : (
-                <>
-                  <span className="text-3xl">🗑️</span>
-                  <span className="mt-2 text-sm font-bold">Défausse</span>
-                </>
-              )}
-            </div>
+            ) : (
+              <>
+                <span className="text-3xl">🗑️</span>
+                <span className="mt-2 text-sm font-bold">Défausse</span>
+              </>
+            )}
           </div>
         </div>
       </div>
