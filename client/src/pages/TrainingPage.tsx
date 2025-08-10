@@ -33,6 +33,7 @@ interface PlayerZoneProps {
   cardsDealt: number;
   cards: CardState[];
   onCardClick?: (index: number) => void;
+  highlight?: boolean;
 }
 
 // Fonction utilitaire pour obtenir le chemin de l'image d'une carte
@@ -57,7 +58,7 @@ const getCardImage = (value: number): string => {
   }
 };
 
-const PlayerZone: React.FC<PlayerZoneProps> = ({ position, playerName, cardsDealt, cards = [], onCardClick = () => {} }) => {
+const PlayerZone: React.FC<PlayerZoneProps> = ({ position, playerName, cardsDealt, cards = [], onCardClick = () => {}, highlight = false }) => {
   // Filtrer les cartes pour ne garder que celles qui ont une valeur (value !== -1)
   const validCards = cards.slice(0, cardsDealt).filter(card => card.value !== -1);
   
@@ -71,13 +72,22 @@ const PlayerZone: React.FC<PlayerZoneProps> = ({ position, playerName, cardsDeal
   
   return (
     <div className="flex flex-col items-center justify-center h-full">
+      {/* CSS local pour un halo bleu sans réduire l'opacité de la carte */}
+      <style>{`
+        @keyframes blueGlow {
+          0% { box-shadow: 0 0 0 0 rgba(56,189,248,0.0), 0 0 6px 2px rgba(56,189,248,0.55); }
+          50% { box-shadow: 0 0 10px 2px rgba(56,189,248,0.9), 0 0 20px 6px rgba(56,189,248,0.6); }
+          100% { box-shadow: 0 0 0 0 rgba(56,189,248,0.0), 0 0 6px 2px rgba(56,189,248,0.55); }
+        }
+        .card-blue-glow { animation: blueGlow 1.2s ease-in-out infinite; }
+      `}</style>
       {/* Board de cartes face cachée */}
       {position === 'bottom' && validCards.length > 0 && (
         <div className="flex flex-row items-center justify-center mb-2">
           {validCards.map((card, idx) => (
             <div
               key={`${card.id || idx}-${card.value}`}
-              className="card-shine w-16 h-24 mx-2 rounded shadow-md border-2 border-gray-300 bg-white relative overflow-hidden"
+              className={`card-shine w-16 h-24 mx-2 rounded shadow-md border-2 border-gray-300 bg-white relative overflow-hidden ${highlight ? 'ring-2 ring-sky-400 card-blue-glow' : ''}`}
               style={{
                 cursor: 'pointer',
                 transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -165,7 +175,7 @@ const PlayerZone: React.FC<PlayerZoneProps> = ({ position, playerName, cardsDeal
           {validCards.map((card, idx) => (
             <div
               key={`${card.id || idx}-${card.value}`}
-              className="card-shine w-16 h-24 mx-2 rounded shadow-md border-2 border-gray-300 bg-white relative overflow-hidden"
+              className={`card-shine w-16 h-24 mx-2 rounded shadow-md border-2 border-gray-300 bg-white relative overflow-hidden ${highlight ? 'ring-2 ring-sky-400 card-blue-glow' : ''}`}
               style={{
                 cursor: 'pointer',
                 transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -1220,6 +1230,7 @@ const TrainingPage: React.FC = () => {
               cardsDealt={cardsDealt} 
               cards={player1Cards}
               onCardClick={(index) => handleCardClick('top', index)}
+              highlight={selectingCardToReplace && currentPlayer === 'player1'}
             />
           </div>
         </div>
@@ -1376,6 +1387,7 @@ const TrainingPage: React.FC = () => {
               cardsDealt={cardsDealt} 
               cards={player2Cards}
               onCardClick={(index) => handleCardClick('bottom', index)}
+              highlight={selectingCardToReplace && currentPlayer === 'player2'}
             />
           </div>
         </div>
