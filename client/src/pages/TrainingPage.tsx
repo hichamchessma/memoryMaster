@@ -60,7 +60,7 @@ const getCardImage = (value: number): string => {
 
 const PlayerZone: React.FC<PlayerZoneProps> = ({ position, playerName, cardsDealt, cards = [], onCardClick = () => {}, highlight = false }) => {
   // Filtrer les cartes pour ne garder que celles qui ont une valeur (value !== -1)
-  const validCards = cards.slice(0, cardsDealt).filter(card => card.value !== -1);
+  const validCards = cards.filter(card => card.value !== -1);
   
   // Fonction pour gérer le clic sur une carte
   const handleCardClick = (card: CardState) => {
@@ -83,7 +83,7 @@ const PlayerZone: React.FC<PlayerZoneProps> = ({ position, playerName, cardsDeal
       `}</style>
       {/* Board de cartes face cachée */}
       {position === 'bottom' && validCards.length > 0 && (
-        <div className="flex flex-row items-center justify-center mb-2">
+        <div className="flex flex-row flex-wrap items-center justify-center mb-2">
           {validCards.map((card, idx) => (
             <div
               key={`${card.id || idx}-${card.value}`}
@@ -171,7 +171,7 @@ const PlayerZone: React.FC<PlayerZoneProps> = ({ position, playerName, cardsDeal
 
       {/* Cartes du joueur (pour le joueur du haut) */}
       {position === 'top' && validCards.length > 0 && (
-        <div className="flex flex-row items-center justify-center mt-2">
+        <div className="flex flex-row flex-wrap items-center justify-center mt-2">
           {validCards.map((card, idx) => (
             <div
               key={`${card.id || idx}-${card.value}`}
@@ -551,30 +551,42 @@ const TrainingPage: React.FC = () => {
       if (player === 'player1') {
         setPlayer1Cards(prev => {
           const newCards = [...prev];
-          // Trouver un emplacement vide ou utiliser le même index si possible
-          let targetIndex = newCards.findIndex(card => card.value === -1);
-          if (targetIndex === -1) targetIndex = cardIndex; // Fallback à l'index cliqué
-          
-          newCards[targetIndex] = {
-            ...newCards[targetIndex],
-            value: penaltyCards[i],
-            isFlipped: true,
-            id: `penalty-${Date.now()}-${i}` // Nouvel ID pour forcer le rendu
-          };
+          // Trouver un emplacement vide, sinon ajouter une nouvelle carte à la fin
+          const emptyIndex = newCards.findIndex(card => card.value === -1);
+          if (emptyIndex !== -1) {
+            newCards[emptyIndex] = {
+              ...newCards[emptyIndex],
+              value: penaltyCards[i],
+              isFlipped: true,
+              id: `penalty-${Date.now()}-${i}`
+            };
+          } else {
+            newCards.push({
+              id: `penalty-${Date.now()}-${i}`,
+              value: penaltyCards[i],
+              isFlipped: true
+            });
+          }
           return newCards;
         });
       } else {
         setPlayer2Cards(prev => {
           const newCards = [...prev];
-          let targetIndex = newCards.findIndex(card => card.value === -1);
-          if (targetIndex === -1) targetIndex = cardIndex; // Fallback à l'index cliqué
-          
-          newCards[targetIndex] = {
-            ...newCards[targetIndex],
-            value: penaltyCards[i],
-            isFlipped: true,
-            id: `penalty-${Date.now()}-${i}` // Nouvel ID pour forcer le rendu
-          };
+          const emptyIndex = newCards.findIndex(card => card.value === -1);
+          if (emptyIndex !== -1) {
+            newCards[emptyIndex] = {
+              ...newCards[emptyIndex],
+              value: penaltyCards[i],
+              isFlipped: true,
+              id: `penalty-${Date.now()}-${i}`
+            };
+          } else {
+            newCards.push({
+              id: `penalty-${Date.now()}-${i}`,
+              value: penaltyCards[i],
+              isFlipped: true
+            });
+          }
           return newCards;
         });
       }
@@ -609,7 +621,8 @@ const TrainingPage: React.FC = () => {
   // Gère le clic sur une carte
   const handleCardClick = async (player: 'top' | 'bottom', index: number) => {
     // Vérifie si l'index est valide
-    if (index < 0 || index >= 4 || isInPenalty) return; // 4 cartes par joueur
+    const handLength = (player === 'top' ? player1Cards.length : player2Cards.length);
+    if (index < 0 || index >= handLength || isInPenalty) return;
     
     const playerKey = player === 'top' ? 'player1' : 'player2';
     const playerCards = player === 'top' ? player1Cards : player2Cards;
