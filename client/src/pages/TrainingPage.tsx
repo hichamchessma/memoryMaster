@@ -614,8 +614,46 @@ const TrainingPage: React.FC = () => {
     const playerKey = player === 'top' ? 'player1' : 'player2';
     const playerCards = player === 'top' ? player1Cards : player2Cards;
     
+    // Si on est en train de sélectionner une carte à remplacer, ce mode a la priorité
+    if (selectingCardToReplace) {
+      // Vérifier si le joueur actuel est bien celui qui doit jouer
+      const isCurrentPlayer = (player === 'top' && currentPlayer === 'player1') || 
+                             (player === 'bottom' && currentPlayer === 'player2');
+      
+      if (isCurrentPlayer && drawnCard) {
+        // Mettre l'ancienne carte dans la défausse
+        const oldCardValue = playerCards[index].value;
+        if (oldCardValue !== -1) {  // Ne pas défausser les cartes vides
+          setDiscardPile(oldCardValue);
+        }
+        
+        // Remplacer la carte sélectionnée par la carte piochée
+        const newCards = [...playerCards];
+        newCards[index] = {
+          ...newCards[index],
+          value: drawnCard.value,
+          isFlipped: false
+        };
+        
+        if (player === 'top') {
+          setPlayer1Cards(newCards);
+        } else {
+          setPlayer2Cards(newCards);
+        }
+        
+        // Réinitialiser les états
+        setDrawnCard(null);
+        setShowCardActions(false);
+        setSelectingCardToReplace(false);
+        
+        // Passer au tour suivant
+        handleTurnEnd(currentPlayer);
+      }
+      return;
+    }
+
     // Vérifier si on est en mode défausse rapide (après la phase de mémorisation)
-    if (gamePhase !== 'preparation' && gamePhase !== 'before_round' && discardPile !== null) {
+    if (gamePhase !== 'preparation' && gamePhase !== 'before_round' && discardPile !== null && !drawnCard && !selectingCardToReplace && quickDiscardActive) {
       // Retourner la carte cliquée face visible
       if (player === 'top') {
         setPlayer1Cards(prev => {
@@ -683,44 +721,6 @@ const TrainingPage: React.FC = () => {
         await handleQuickDiscardPenalty(playerKey, index);
         return;
       }
-    }
-    
-    // Si on est en train de sélectionner une carte à remplacer
-    if (selectingCardToReplace) {
-      // Vérifier si le joueur actuel est bien celui qui doit jouer
-      const isCurrentPlayer = (player === 'top' && currentPlayer === 'player1') || 
-                             (player === 'bottom' && currentPlayer === 'player2');
-      
-      if (isCurrentPlayer && drawnCard) {
-        // Mettre l'ancienne carte dans la défausse
-        const oldCardValue = playerCards[index].value;
-        if (oldCardValue !== -1) {  // Ne pas défausser les cartes vides
-          setDiscardPile(oldCardValue);
-        }
-        
-        // Remplacer la carte sélectionnée par la carte piochée
-        const newCards = [...playerCards];
-        newCards[index] = {
-          ...newCards[index],
-          value: drawnCard.value,
-          isFlipped: false
-        };
-        
-        if (player === 'top') {
-          setPlayer1Cards(newCards);
-        } else {
-          setPlayer2Cards(newCards);
-        }
-        
-        // Réinitialiser les états
-        setDrawnCard(null);
-        setShowCardActions(false);
-        setSelectingCardToReplace(false);
-        
-        // Passer au tour suivant
-        handleTurnEnd(currentPlayer);
-      }
-      return;
     }
     
     // En phase d'avant tour, on laisse chaque joueur retourner 2 cartes
