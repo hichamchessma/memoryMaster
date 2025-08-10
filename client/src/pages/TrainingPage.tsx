@@ -1280,7 +1280,7 @@ const TrainingPage: React.FC = () => {
           <div className="text-sm text-gray-300 mt-1">Cliquez pour piocher</div>
         </div>
         {/* Zone centrale avec les informations de jeu */}
-        <div className="flex flex-col items-center justify-center">
+        <div className="flex flex-col items-center justify-center relative">
           <div className="text-center mb-4">
             <div className="text-2xl font-bold mb-2">Memory Master</div>
             <div className="text-lg mb-2">Mode Entraînement</div>
@@ -1299,9 +1299,9 @@ const TrainingPage: React.FC = () => {
             )}
           </div>
           
-          {/* Carte piochée */}
+          {/* Carte piochée (overlay absolu pour ne pas pousser la mise en page) */}
           {drawnCard && (
-            <div className="relative mb-4 z-50">
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 z-50">
               <div className="w-24 h-36 mx-auto mb-2">
                 <img
                   src={getCardImage(drawnCard.value)}
