@@ -278,6 +278,9 @@ const TrainingPage: React.FC = () => {
     position: {x: number, y: number};
     isRevealed: boolean;
   } | null>(null);
+  // Overlay de préparation (style "fighting")
+  const [showPrepOverlay, setShowPrepOverlay] = React.useState(false);
+  const [memorizationTimerStarted, setMemorizationTimerStarted] = React.useState(false);
 
   // Initialiser et mélanger le deck au chargement
   React.useEffect(() => {
@@ -464,6 +467,7 @@ const TrainingPage: React.FC = () => {
     
     // Démarrer le compte à rebours de 5 secondes
     setTimeLeft(5);
+    setMemorizationTimerStarted(true);
     
     // Mettre à jour le temps toutes les secondes
     beforeRoundTimerRef.current = setInterval(() => {
@@ -484,6 +488,7 @@ const TrainingPage: React.FC = () => {
           setGamePhase('player1_turn');
           setCurrentPlayer('player1');
           setIsPlayerTurn(true);
+          setMemorizationTimerStarted(false);
           
           // Démarrer le timer du premier tour en utilisant la référence
           if (startTurnTimerRef.current) {
@@ -523,8 +528,18 @@ const TrainingPage: React.FC = () => {
       // Passer à la phase avant tour
       setGamePhase('before_round');
       setCurrentPlayer('player1');
-      setIsPlayerTurn(true);
+      // Pendant la phase de mémorisation, on fige les actions du jeu (deck non cliquable)
+      setIsPlayerTurn(false);
       setTimeLeft(5);
+
+      // Afficher l'overlay de préparation (1s), puis démarrer le minuteur de mémorisation
+      setShowPrepOverlay(true);
+      setTimeout(() => {
+        setShowPrepOverlay(false);
+        if (!memorizationTimerStarted) {
+          startBeforeRoundTimer();
+        }
+      }, 1000);
     }
   }, [cardsDealt, gamePhase]);
 
@@ -767,15 +782,6 @@ const TrainingPage: React.FC = () => {
           }
         };
         
-        // Vérifier si les deux joueurs ont retourné 2 cartes
-        if (updated.player1.count === 2 && updated.player2.count === 2) {
-          console.log('Les deux joueurs ont retourné leurs cartes, démarrage du minuteur de 5 secondes');
-          // Utiliser un setTimeout pour s'assurer que l'état est mis à jour avant de démarrer le minuteur
-          setTimeout(() => {
-            startBeforeRoundTimer();
-          }, 0);
-        }
-        
         return updated;
       });
       
@@ -953,14 +959,10 @@ const TrainingPage: React.FC = () => {
     setDealingCard(null);
     setIsDealing(false);
     
-    // Démarrer la phase d'avant tour
-    console.log('Démarrage de la phase avant tour');
-    setGamePhase('before_round');
-    setCurrentPlayer('player1');
-    setIsPlayerTurn(true);
-    setTimeLeft(5); // 5 secondes pour la phase de mémorisation
-    
-    // Réinitialiser l'état des cartes retournées
+    // La transition vers la phase avant tour est gérée par l'effet sur cardsDealt === 4.
+    // On évite de forcer ici pour ne pas écraser l'overlay et le gel des actions.
+    console.log('Distribution terminée');
+    // Réinitialiser l'état des cartes retournées (sécurité)
     setCardsFlipped({
       player1: { count: 0, indexes: [] },
       player2: { count: 0, indexes: [] }
@@ -1173,6 +1175,31 @@ const TrainingPage: React.FC = () => {
     >
       {flyingCard}
       {drawnCardAnimation}
+      {/* Overlay de préparation avec animation de zoom/fade (1s) */}
+      {showPrepOverlay && (
+        <div className="absolute inset-0 z-[1200] flex items-center justify-center bg-black/60">
+          <style>{`
+            @keyframes prepZoom {
+              0% { transform: scale(0.7); opacity: 0; }
+              50% { transform: scale(1.05); opacity: 1; }
+              100% { transform: scale(1.25); opacity: 0; }
+            }
+          `}</style>
+          <div
+            className="border-4 border-yellow-400 rounded-2xl px-8 py-6 text-center shadow-2xl bg-gradient-to-br from-gray-900/80 to-black/70"
+            style={{
+              animation: 'prepZoom 1s ease-out forwards',
+            }}
+          >
+            <div className="text-yellow-300 text-3xl font-extrabold tracking-wide drop-shadow-md uppercase">
+              Préparez-vous !
+            </div>
+            <div className="mt-2 text-white text-lg font-semibold">
+              Mémorisez 2 cartes
+            </div>
+          </div>
+        </div>
+      )}
       {/* Bouton Start a new game en haut à gauche */}
       <button
         className="absolute top-3 left-3 z-30 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow-lg px-4 py-2 flex items-center justify-center text-base font-bold border-2 border-white focus:outline-none focus:ring-2 focus:ring-green-400 disabled:opacity-60 disabled:cursor-not-allowed"
@@ -1263,7 +1290,8 @@ const TrainingPage: React.FC = () => {
             }}
             onClick={async () => {
               // Ne rien faire si ce n'est pas le tour du joueur ou si une action est en cours
-              if (!isPlayerTurn || showCardActions || selectingCardToReplace || drawnCard) return;
+              // Bloquer également pendant la phase de mémorisation
+              if (!isPlayerTurn || showCardActions || selectingCardToReplace || drawnCard || gamePhase === 'before_round' || memorizationTimerStarted) return;
               
               // Piocher une carte du deck
               if (deck.length > 0) {
