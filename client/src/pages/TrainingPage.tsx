@@ -1,11 +1,11 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import PlayerZone from '../components/PlayerZone';
-import PrepOverlay from '../components/PrepOverlay';
-import DrawnCardAnimation from '../components/DrawnCardAnimation';
-import FlyingCard from '../components/FlyingCard';
-import TopBanner from '../components/TopBanner';
+import PlayerZone from '../components/training/PlayerZone';
+import PrepOverlay from '../components/training/PrepOverlay';
+import DrawnCardAnimation from '../components/training/DrawnCardAnimation';
+import FlyingCard from '../components/training/FlyingCard';
+import TopBanner from '../components/training/TopBanner';
 import { getCardImage, getCardValue, getRankLabel } from '../utils/cards';
 
 // Style pour mettre en évidence le joueur actif
