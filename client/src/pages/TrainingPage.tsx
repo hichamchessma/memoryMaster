@@ -355,71 +355,31 @@ const TrainingPage: React.FC = () => {
 
     // Animer la distribution des cartes pénalité
     for (let i = 0; i < 2; i++) {
-      // Ajouter la carte avec animation
+      // Ajouter la carte avec animation — toujours à droite (append) et face cachée
+      const newCard = {
+        id: `penalty-${Date.now()}-${i}`,
+        value: penaltyCards[i],
+        isFlipped: false
+      } as CardState;
+
       if (player === 'player1') {
         setPlayer1Cards(prev => {
           const newCards = [...prev];
-          // Trouver un emplacement vide, sinon ajouter une nouvelle carte à la fin
-          const emptyIndex = newCards.findIndex(card => card.value === -1);
-          if (emptyIndex !== -1) {
-            newCards[emptyIndex] = {
-              ...newCards[emptyIndex],
-              value: penaltyCards[i],
-              isFlipped: true,
-              id: `penalty-${Date.now()}-${i}`
-            };
-          } else {
-            newCards.push({
-              id: `penalty-${Date.now()}-${i}`,
-              value: penaltyCards[i],
-              isFlipped: true
-            });
-          }
+          // Toujours ajouter à la fin pour être à droite, sans remplir les trous
+          newCards.push(newCard);
           return newCards;
         });
       } else {
         setPlayer2Cards(prev => {
           const newCards = [...prev];
-          const emptyIndex = newCards.findIndex(card => card.value === -1);
-          if (emptyIndex !== -1) {
-            newCards[emptyIndex] = {
-              ...newCards[emptyIndex],
-              value: penaltyCards[i],
-              isFlipped: true,
-              id: `penalty-${Date.now()}-${i}`
-            };
-          } else {
-            newCards.push({
-              id: `penalty-${Date.now()}-${i}`,
-              value: penaltyCards[i],
-              isFlipped: true
-            });
-          }
+          newCards.push(newCard);
           return newCards;
         });
       }
 
-      // Attendre 4 secondes avant de retourner la carte
-      await new Promise(resolve => setTimeout(resolve, 4000));
-      
-      // Retourner la carte face cachée
-      if (player === 'player1') {
-        setPlayer1Cards(prev => prev.map(card => ({
-          ...card,
-          isFlipped: false,
-          // Ne pas réinitialiser l'ID pour éviter les clignotements
-        })));
-      } else {
-        setPlayer2Cards(prev => prev.map(card => ({
-          ...card,
-          isFlipped: false,
-          // Ne pas réinitialiser l'ID pour éviter les clignotements
-        })));
-      }
-      
-      // Petite pause entre les cartes
+      // Petite pause entre les 2 cartes: 1 seconde
       if (i === 0) {
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
     
