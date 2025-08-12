@@ -65,6 +65,8 @@ const TrainingPage: React.FC = () => {
   const [memorizationTimerStarted, setMemorizationTimerStarted] = React.useState(false);
   // Garde contre démarrage multiple (StrictMode)
   const memorizationStartedRef = React.useRef(false);
+  // Zone à laisser visible pendant la pénalité
+  const [penaltyPlayer, setPenaltyPlayer] = React.useState<'player1' | 'player2' | null>(null);
 
   // Ref pour connaître en temps réel si une pénalité est en cours (utilisé dans les callbacks setInterval)
   const isInPenaltyRef = React.useRef(false);
@@ -349,6 +351,7 @@ const TrainingPage: React.FC = () => {
     }
 
     setIsInPenalty(true);
+    setPenaltyPlayer(player);
     const newDeck = [...deck];
     const penaltyCards = [newDeck.pop()!, newDeck.pop()!];
     setDeck(newDeck);
@@ -391,6 +394,7 @@ const TrainingPage: React.FC = () => {
     }
 
     setIsInPenalty(false);
+    setPenaltyPlayer(null);
   };
 
   // Gère le clic sur une carte
@@ -800,6 +804,24 @@ const TrainingPage: React.FC = () => {
     >
       {flyingCard}
       {drawnCardAnimation}
+      {/* Overlay de pénalité: assombrit tout sauf la zone du joueur pénalisé (même style que PrepOverlay) */}
+      {isInPenalty && (
+        <div
+          className="absolute inset-0 z-40 flex items-center justify-center pointer-events-auto"
+          style={{
+            background:
+              'radial-gradient(ellipse at center, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.85) 60%, rgba(0,0,0,0.95) 100%)',
+          }}
+        >
+          <div
+            className="absolute inset-0 pointer-events-none opacity-15"
+            style={{
+              backgroundImage:
+                'repeating-linear-gradient(0deg, rgba(255,255,255,0.06) 0px, rgba(255,255,255,0.06) 2px, transparent 3px, transparent 6px)'
+            }}
+          />
+        </div>
+      )}
       {/* Bannière flash pour la défausse rapide */}
       {quickDiscardFlash && (
         <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
@@ -850,7 +872,7 @@ const TrainingPage: React.FC = () => {
       <TopBanner gamePhase={gamePhase} currentPlayer={currentPlayer} timeLeft={timeLeft} />
 
       {/* Joueur 1 (haut) */}
-      <div className="row-start-2 row-end-3 flex items-end justify-center min-h-[40px]">
+      <div className={`row-start-2 row-end-3 flex items-end justify-center min-h-[40px] ${isInPenalty && penaltyPlayer === 'player1' ? 'relative z-50' : ''}` }>
         <div ref={player1HandRef} style={{minHeight: 0}}>
           <div style={isPlayerActive('player1') ? activePlayerStyle : inactivePlayerStyle}>
             <PlayerZone 
@@ -1004,7 +1026,7 @@ const TrainingPage: React.FC = () => {
       </div>
 
       {/* Joueur 2 (bas) */}
-      <div className="row-start-4 row-end-5 flex items-start justify-center min-h-[60px]">
+      <div className={`row-start-4 row-end-5 flex items-start justify-center min-h-[60px] ${isInPenalty && penaltyPlayer === 'player2' ? 'relative z-50' : ''}` }>
         <div ref={player2HandRef} style={{minHeight: 0}}>
           <div style={isPlayerActive('player2') ? activePlayerStyle : inactivePlayerStyle}>
             <PlayerZone 
