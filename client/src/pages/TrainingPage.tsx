@@ -342,7 +342,7 @@ const TrainingPage: React.FC = () => {
   // utilitaires déplacés dans ../utils/cards
 
   // Gère la pénalité de défausse rapide
-  const handleQuickDiscardPenalty = async (player: 'player1' | 'player2', _cardIndex: number) => {
+  const handleQuickDiscardPenalty = async (player: 'player1' | 'player2', cardIndex: number) => {
     if (deck.length < 2) {
       console.log('Pas assez de cartes dans le deck pour la pénalité');
       return;
@@ -382,7 +382,14 @@ const TrainingPage: React.FC = () => {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
-    
+
+    // Retourner face cachée la carte fautive (celle cliquée) après distribution
+    if (player === 'player1') {
+      setPlayer1Cards(prev => prev.map((card, idx) => idx === cardIndex ? { ...card, isFlipped: false } : card));
+    } else {
+      setPlayer2Cards(prev => prev.map((card, idx) => idx === cardIndex ? { ...card, isFlipped: false } : card));
+    }
+
     setIsInPenalty(false);
   };
 
