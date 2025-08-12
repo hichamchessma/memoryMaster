@@ -934,64 +934,70 @@ const TrainingPage: React.FC = () => {
                 console.log('Le deck est vide');
               }
             }}
-          >
-            <span className="absolute -top-3 left-2 bg-yellow-400 text-gray-900 font-bold px-2 py-1 rounded-full text-xs shadow">Cartes</span>
-            <span className="text-3xl">🂠</span>
-            <span className="mt-2 text-sm font-bold">Piocher</span>
-            <div className="absolute bottom-2 text-xs text-gray-200">{deck.length} cartes</div>
-          </div>
-          <div className="text-sm text-gray-300 mt-1">Cliquez pour piocher</div>
-          {/* Panneau de carte piochée sous le deck */}
-          {drawnCard && (
-            <div className="mt-3 w-44 bg-black/45 backdrop-blur-md rounded-2xl px-4 py-3 shadow-2xl border border-white/20">
-              <div className="w-28 h-40 mx-auto mb-3 drop-shadow-2xl">
-                <img
-                  src={getCardImage(drawnCard.value)}
-                  alt="Carte piochée"
-                  className="w-full h-full object-cover rounded-xl shadow-2xl ring-2 ring-white/70"
-                />
-              </div>
-              {showCardActions && (
-                <div className="flex flex-col space-y-2">
-                  <button
-                    onClick={() => {
-                      if (drawnCard) {
-                        setDiscardPile(drawnCard.value);
-                        // Si défausse rapide active, afficher une bannière 1s
-                        if (quickDiscardActive) {
-                          const rank = getRankLabel(drawnCard.value);
-                          const who = currentPlayer === 'player1' ? 'Joueur 1' : 'Joueur 2';
-                          setQuickDiscardFlash(`${who} a jeté ${rank}`);
-                          setTimeout(() => setQuickDiscardFlash(null), 1000);
+            >
+              <span className="absolute -top-3 left-2 bg-yellow-400 text-gray-900 font-bold px-2 py-1 rounded-full text-xs shadow">Cartes</span>
+              <span className="text-3xl">🂠</span>
+              <span className="mt-2 text-sm font-bold">Piocher</span>
+              <div className="absolute bottom-2 text-xs text-gray-200">{deck.length} cartes</div>
+              {/* Panneau de carte piochée (absolu sous le deck) */}
+              {drawnCard && showCardActions && (
+                <div
+                  className="z-40 w-44 bg-black/45 backdrop-blur-md rounded-2xl px-4 py-3 shadow-2xl border border-white/20"
+                  style={{
+                    position: 'absolute',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    top: 'calc(100% + 12px)'
+                  }}
+                >
+                  <div className="w-28 h-40 mx-auto mb-3 drop-shadow-2xl">
+                    <img
+                      src={getCardImage(drawnCard.value)}
+                      alt="Carte piochée"
+                      className="w-full h-full object-cover rounded-xl shadow-2xl ring-2 ring-white/70"
+                    />
+                  </div>
+                  <div className="flex flex-col space-y-2">
+                    <button
+                      onClick={() => {
+                        if (drawnCard) {
+                          setDiscardPile(drawnCard.value);
+                          // Si défausse rapide active, afficher une bannière 1s
+                          if (quickDiscardActive) {
+                            const rank = getRankLabel(drawnCard.value);
+                            const who = currentPlayer === 'player1' ? 'Joueur 1' : 'Joueur 2';
+                            setQuickDiscardFlash(`${who} a jeté ${rank}`);
+                            setTimeout(() => setQuickDiscardFlash(null), 1000);
+                          }
+                          setDrawnCard(null);
+                          setShowCardActions(false);
+                          handleTurnEnd(currentPlayer);
                         }
-                        setDrawnCard(null);
+                      }}
+                      className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg text-sm font-semibold shadow"
+                    >
+                      Défausser
+                    </button>
+                    <button
+                      onClick={() => {
                         setShowCardActions(false);
-                        handleTurnEnd(currentPlayer);
-                      }
-                    }}
-                    className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg text-sm font-semibold shadow"
-                  >
-                    Défausser
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowCardActions(false);
-                      setSelectingCardToReplace(true);
-                    }}
-                    className="bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-semibold shadow"
-                  >
-                    Ajouter à ma main
-                  </button>
-                </div>
-              )}
-              {selectingCardToReplace && (
-                <div className="text-yellow-300 text-xs mt-2 bg-black/30 px-3 py-1 rounded-full text-center">
-                  Cliquez sur la carte à remplacer
+                        setSelectingCardToReplace(true);
+                      }}
+                      className="bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-semibold shadow"
+                    >
+                      Ajouter à ma main
+                    </button>
+                  </div>
+                  {selectingCardToReplace && (
+                    <div className="text-yellow-300 text-xs mt-2 bg-black/30 px-3 py-1 rounded-full text-center">
+                      Cliquez sur la carte à remplacer
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-          )}
-        </div>
+            <div className="text-sm text-gray-300 mt-1">Cliquez pour piocher</div>
+          </div>
 
         {/* Zone centrale avec les informations de jeu (sans message d'invite ni timer) */}
         <div className="flex flex-col items-center justify-center relative flex-1">

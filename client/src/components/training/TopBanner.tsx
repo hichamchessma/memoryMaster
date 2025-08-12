@@ -16,15 +16,15 @@ const TopBanner: React.FC<Props> = ({ gamePhase, currentPlayer, timeLeft }) => {
   };
 
   return (
-    <div className="absolute top-0 left-0 w-full flex items-center justify-center z-40" style={{margin:0,padding:0}}>
+    <div className="absolute top-0 left-0 w-full flex items-center justify-center z-40 pointer-events-none" style={{margin:0,padding:0}}>
       <div className="flex items-center space-x-4">
         <span className="bg-yellow-400 bg-opacity-90 text-gray-900 px-4 py-1 rounded-xl shadow-xl text-xl font-extrabold tracking-widest border-2 border-white drop-shadow-lg uppercase">
           Mode Entraînement
         </span>
         {gamePhase !== 'preparation' && (
-          <div className="relative">
+          <div className="relative pointer-events-auto">
             <span
-              className={`px-4 py-1 rounded-full text-white font-bold text-lg shadow-lg pr-16 ${
+              className={`px-4 py-1 rounded-full text-white font-bold text-lg shadow-lg pr-20 ${
                 gamePhase === 'before_round'
                   ? 'bg-blue-500 animate-pulse'
                   : gamePhase === 'player1_turn'
@@ -40,7 +40,7 @@ const TopBanner: React.FC<Props> = ({ gamePhase, currentPlayer, timeLeft }) => {
             </span>
 
             {/* Timer en haut à droite du badge */}
-            <div className="absolute -top-3 -right-3">
+            <div className="absolute" style={{ top: -12, right: -16 }}>
               <div className="flex items-center gap-1 bg-black/80 text-yellow-300 px-2 py-1 rounded-full shadow-2xl border border-yellow-400 backdrop-blur-sm">
                 <span className="text-lg leading-none">⏱️</span>
                 <span className="font-extrabold tabular-nums tracking-wider drop-shadow-md">
