@@ -115,7 +115,7 @@ const PlayerZone: React.FC<PlayerZoneProps> = ({ position, playerName, cardsDeal
         </div>
       )}
 
-      <div className={`flex flex-col items-center ${position === 'bottom' ? 'mt-2' : 'mb-2'}`}>
+      <div className="flex flex-col items-center mb-2">
         <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center text-2xl">👤</div>
         <span className="text-sm font-medium mt-1">{playerName}</span>
       </div>

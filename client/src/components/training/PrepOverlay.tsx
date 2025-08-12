@@ -6,7 +6,7 @@ const PrepOverlay: React.FC<Props> = ({ show }) => {
   if (!show) return null;
   return (
     <div
-      className="absolute inset-0 z-[1200] flex items-center justify-center"
+      className="absolute inset-0 z-40 flex items-center justify-center"
       style={{
         background:
           'radial-gradient(ellipse at center, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.85) 60%, rgba(0,0,0,0.95) 100%)',

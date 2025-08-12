@@ -157,13 +157,8 @@ const TrainingPage: React.FC = () => {
   const timerRef = React.useRef<NodeJS.Timeout | null>(null);
   const beforeRoundTimerRef = React.useRef<NodeJS.Timeout | null>(null);
   
-  // Formatage du temps restant en MM:SS
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-  
+  // Formatage du temps n'est plus utilisé ici (timer affiché dans TopBanner)
+
   // Référence pour stocker la fonction de démarrage du tour
   const startTurnTimerRef = React.useRef<() => void>(() => {});
   
@@ -341,7 +336,7 @@ const TrainingPage: React.FC = () => {
   // utilitaires déplacés dans ../utils/cards
 
   // Gère la pénalité de défausse rapide
-  const handleQuickDiscardPenalty = async (player: 'player1' | 'player2', cardIndex: number) => {
+  const handleQuickDiscardPenalty = async (player: 'player1' | 'player2', _cardIndex: number) => {
     if (deck.length < 2) {
       console.log('Pas assez de cartes dans le deck pour la pénalité');
       return;
@@ -809,6 +804,10 @@ const TrainingPage: React.FC = () => {
         setTimeout(() => {
           setDrawnCardAnim(null);
           setIsDeckGlowing(false);
+          // Show card actions after animation completes
+          setTimeout(() => {
+            setShowCardActions(true);
+          }, 300);
         }, 2000);
       }, 300);
       
@@ -824,13 +823,13 @@ const TrainingPage: React.FC = () => {
 
   return (
     <div
-      className="h-screen w-full bg-cover bg-center homepage-bg grid grid-rows-[min-content_minmax(40px,0.9fr)_1.7fr_minmax(40px,0.9fr)] text-gray-200 overflow-hidden relative"
+      className="h-screen w-full bg-cover bg-center homepage-bg grid grid-rows-[min-content_minmax(40px,1fr)_1.7fr_minmax(40px,1fr)] text-gray-200 overflow-hidden relative"
     >
       {flyingCard}
       {drawnCardAnimation}
       {/* Bannière flash pour la défausse rapide */}
       {quickDiscardFlash && (
-        <div className="absolute inset-0 z-[1300] flex items-center justify-center pointer-events-none">
+        <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
           <div className="px-6 py-3 rounded-2xl bg-red-600/90 text-white text-2xl font-extrabold uppercase shadow-2xl border-4 border-white animate-pulse">
             {quickDiscardFlash}
           </div>
@@ -875,7 +874,7 @@ const TrainingPage: React.FC = () => {
         </button>
       </div>
       {/* Titre */}
-      <TopBanner gamePhase={gamePhase} />
+      <TopBanner gamePhase={gamePhase} currentPlayer={currentPlayer} timeLeft={timeLeft} />
 
       {/* Joueur 1 (haut) */}
       <div className="row-start-2 row-end-3 flex items-end justify-center min-h-[40px]">
@@ -925,11 +924,6 @@ const TrainingPage: React.FC = () => {
                       isFlipped: false 
                     });
                   }
-                  
-                  // Afficher les actions après l'animation
-                  setTimeout(() => {
-                    setShowCardActions(true);
-                  }, 2000);
                   
                   // Mettre en pause le minuteur pendant que le joueur prend sa décision
                   if (timerRef.current) {
@@ -998,25 +992,16 @@ const TrainingPage: React.FC = () => {
             </div>
           )}
         </div>
-        {/* Zone centrale avec les informations de jeu */}
+
+        {/* Zone centrale avec les informations de jeu (sans message d'invite ni timer) */}
         <div className="flex flex-col items-center justify-center relative flex-1">
-          {isPlayerTurn && (
-            <div className="text-yellow-300 font-medium animate-pulse">
-              {currentPlayer === 'player1' ? 'Joueur 1' : 'Joueur 2'}, à vous de jouer !
-            </div>
-          )}
-          {!showPrepOverlay && gamePhase !== 'preparation' && (
-            <div className="mt-2 text-sm bg-black bg-opacity-30 px-3 py-1 rounded-full">
-              Temps restant: {formatTime(timeLeft)}
-            </div>
-          )}
           {isInPenalty && (
             <div className="mt-2 text-sm bg-red-600 bg-opacity-70 px-3 py-1 rounded-full animate-pulse">
               Mauvaise carte ! Pénalité en cours...
             </div>
           )}
         </div>
-        
+
         {/* La défausse est dans la colonne de droite */}
         <div className="flex flex-col items-center mr-6">
           <div className="w-28 h-40 bg-gray-900/70 border-4 border-yellow-400 rounded-2xl shadow-2xl flex flex-col items-center justify-center mb-2 relative overflow-hidden backdrop-blur-sm">

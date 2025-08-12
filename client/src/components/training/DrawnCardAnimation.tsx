@@ -14,7 +14,7 @@ const DrawnCardAnimation: React.FC<Props> = ({ state }) => {
   if (!state) return null;
   return (
     <div 
-      className="fixed z-[1000] w-24 h-36 transition-all duration-500 ease-out"
+      className="fixed z-30 w-24 h-36 transition-all duration-500 ease-out"
       style={{
         left: `${state.position.x}px`,
         top: `${state.position.y}px`,

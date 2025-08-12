@@ -21,7 +21,6 @@ const FlyingCard: React.FC<Props> = ({ state }) => {
         left: `${from.x}px`,
         top: `${from.y}px`,
         transform: 'translate(-50%, -50%)',
-        zIndex: 1000,
         transformStyle: 'preserve-3d',
         pointerEvents: 'none',
         willChange: 'transform, left, top',
