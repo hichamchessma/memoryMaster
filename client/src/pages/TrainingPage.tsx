@@ -1,6 +1,12 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import cardBack from '../assets/cards/card_back.png';
+
+import PlayerZone from '../components/PlayerZone';
+import PrepOverlay from '../components/PrepOverlay';
+import DrawnCardAnimation from '../components/DrawnCardAnimation';
+import FlyingCard from '../components/FlyingCard';
+import TopBanner from '../components/TopBanner';
+import { getCardImage, getCardValue, getRankLabel } from '../utils/cards';
 
 // Style pour mettre en évidence le joueur actif
 const activePlayerStyle = {
@@ -26,232 +32,6 @@ interface CardState {
   isFlipped: boolean;
   updated?: number; // Timestamp pour forcer les mises à jour
 }
-
-interface PlayerZoneProps {
-  position: 'top' | 'bottom';
-  playerName: string;
-  cardsDealt: number;
-  cards: CardState[];
-  onCardClick?: (index: number) => void;
-  highlight?: boolean;
-}
-
-// Fonction utilitaire pour obtenir le chemin de l'image d'une carte
-const getCardImage = (value: number): string => {
-  if (value === -1) return ''; // Retourne une chaîne vide pour les cartes non distribuées
-  
-  const suits = ['c', 'd', 'h', 's'];
-  const ranks = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'j', 'q', 'k'];
-  
-  const suitIndex = Math.floor((value % 52) / 13); // S'assure que l'index est entre 0 et 3
-  const rankIndex = (value % 52) % 13; // S'assure que l'index est entre 0 et 12
-  
-  // Format: card_1c.png, card_2d.png, etc.
-  const imageName = `card_${ranks[rankIndex]}${suits[suitIndex]}.png`;
-  
-  // Utilisation d'une importation dynamique pour les assets
-  try {
-    return new URL(`../assets/cards/${imageName}`, import.meta.url).href;
-  } catch (e) {
-    console.error(`Impossible de charger l'image de la carte: ${imageName} (valeur: ${value})`, e);
-    return '';
-  }
-};
-
-const PlayerZone: React.FC<PlayerZoneProps> = ({ position, playerName, cardsDealt, cards = [], onCardClick = () => {}, highlight = false }) => {
-  // Filtrer les cartes pour ne garder que celles qui ont une valeur (value !== -1)
-  const validCards = cards.filter(card => card.value !== -1);
-  
-  // Fonction pour gérer le clic sur une carte
-  const handleCardClick = (card: CardState) => {
-    const originalIndex = cards.findIndex(c => c.id === card.id);
-    if (originalIndex !== -1) {
-      onCardClick(originalIndex);
-    }
-  };
-  
-  return (
-    <div className="flex flex-col items-center justify-center h-full">
-      {/* CSS local pour un halo bleu sans réduire l'opacité de la carte */}
-      <style>{`
-        @keyframes blueGlow {
-          0% { box-shadow: 0 0 0 0 rgba(56,189,248,0.0), 0 0 6px 2px rgba(56,189,248,0.55); }
-          50% { box-shadow: 0 0 10px 2px rgba(56,189,248,0.9), 0 0 20px 6px rgba(56,189,248,0.6); }
-          100% { box-shadow: 0 0 0 0 rgba(56,189,248,0.0), 0 0 6px 2px rgba(56,189,248,0.55); }
-        }
-        .card-blue-glow { animation: blueGlow 1.2s ease-in-out infinite; }
-      `}</style>
-      {/* Board de cartes face cachée */}
-      {position === 'bottom' && validCards.length > 0 && (
-        <div className="flex flex-row flex-wrap items-center justify-center mb-2">
-          {validCards.map((card, idx) => (
-            <div
-              key={`${card.id || idx}-${card.value}`}
-              className={`card-shine w-16 h-24 mx-2 rounded shadow-md border-2 border-gray-300 bg-white relative overflow-hidden ${highlight ? 'ring-2 ring-sky-400 card-blue-glow' : ''}`}
-              style={{
-                cursor: 'pointer',
-                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                transform: 'scale(1)',
-                zIndex: 1,
-                transformStyle: 'preserve-3d',
-              }}
-              onClick={() => handleCardClick(card)}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'scale(1.15) translateY(-10px)';
-                e.currentTarget.style.zIndex = '20';
-                e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.2)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.zIndex = '1';
-                e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
-              }}
-            >
-              <div 
-                className="relative w-full h-full" 
-                style={{
-                  transformStyle: 'preserve-3d',
-                  transition: 'transform 0.6s',
-                  transform: card.isFlipped ? 'rotateY(180deg)' : 'rotateY(0)',
-                  pointerEvents: 'none' // Empêche les interactions avec les éléments enfants
-                }}
-              >
-                {/* Face arrière */}
-                <div 
-                  className="absolute w-full h-full" 
-                  style={{
-                    WebkitBackfaceVisibility: 'hidden',
-                    backfaceVisibility: 'hidden',
-                    transform: 'rotateY(0deg)'
-                  }}
-                >
-                  <img
-                    src={cardBack}
-                    alt="Dos de carte"
-                    className="w-full h-full object-cover rounded select-none"
-                    draggable="false"
-                  />
-                </div>
-                
-                {/* Face avant */}
-                <div 
-                  className="absolute w-full h-full" 
-                  style={{
-                    WebkitBackfaceVisibility: 'hidden',
-                    backfaceVisibility: 'hidden',
-                    transform: 'rotateY(180deg)'
-                  }}
-                >
-                  <img
-                    src={getCardImage(card.value)}
-                    alt={`Carte ${card.value}`}
-                    className="w-full h-full object-cover rounded select-none"
-                    draggable="false"
-                    onError={(e) => {
-                      // En cas d'erreur de chargement de l'image
-                      const target = e.target as HTMLImageElement;
-                      target.src = cardBack;
-                      target.alt = 'Dos de carte';
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Avatar et nom du joueur */}
-      <div className={`flex flex-col items-center ${position === 'bottom' ? 'mt-2' : 'mb-2'}`}>
-        <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center text-2xl">
-          {position === 'top' ? '👤' : '👤'}
-        </div>
-        <span className="text-sm font-medium mt-1">{playerName}</span>
-      </div>
-
-      {/* Cartes du joueur (pour le joueur du haut) */}
-      {position === 'top' && validCards.length > 0 && (
-        <div className="flex flex-row flex-wrap items-center justify-center mt-2">
-          {validCards.map((card, idx) => (
-            <div
-              key={`${card.id || idx}-${card.value}`}
-              className={`card-shine w-16 h-24 mx-2 rounded shadow-md border-2 border-gray-300 bg-white relative overflow-hidden ${highlight ? 'ring-2 ring-sky-400 card-blue-glow' : ''}`}
-              style={{
-                cursor: 'pointer',
-                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                transform: 'scale(1)',
-                zIndex: 1,
-                transformStyle: 'preserve-3d',
-              }}
-              onClick={() => handleCardClick(card)}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'scale(1.15) translateY(-10px)';
-                e.currentTarget.style.zIndex = '20';
-                e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.2)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.zIndex = '1';
-                e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
-              }}
-            >
-              <div 
-                className="relative w-full h-full" 
-                style={{
-                  transformStyle: 'preserve-3d',
-                  transition: 'transform 0.6s',
-                  transform: card.isFlipped ? 'rotateY(180deg)' : 'rotateY(0)',
-                  pointerEvents: 'none' // Empêche les interactions avec les éléments enfants
-                }}
-              >
-                {/* Face arrière */}
-                <div 
-                  className="absolute w-full h-full" 
-                  style={{
-                    WebkitBackfaceVisibility: 'hidden',
-                    backfaceVisibility: 'hidden',
-                    transform: 'rotateY(0deg)'
-                  }}
-                >
-                  <img
-                    src={cardBack}
-                    alt="Dos de carte"
-                    className="w-full h-full object-cover rounded select-none"
-                    draggable="false"
-                  />
-                </div>
-                
-                {/* Face avant */}
-                <div 
-                  className="absolute w-full h-full" 
-                  style={{
-                    WebkitBackfaceVisibility: 'hidden',
-                    backfaceVisibility: 'hidden',
-                    transform: 'rotateY(180deg)'
-                  }}
-                >
-                  <img
-                    src={getCardImage(card.value)}
-                    alt={`Carte ${card.value}`}
-                    className="w-full h-full object-cover rounded select-none"
-                    draggable="false"
-                    onError={(e) => {
-                      // En cas d'erreur de chargement de l'image
-                      const target = e.target as HTMLImageElement;
-                      target.src = cardBack;
-                      target.alt = 'Dos de carte';
-                    }}
-                  />
-                </div>
-              </div>
-
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
 
 const TrainingPage: React.FC = () => {
   const navigate = useNavigate();
@@ -544,17 +324,7 @@ const TrainingPage: React.FC = () => {
     }
   }, [cardsDealt, gamePhase]);
 
-  // Fonction utilitaire pour obtenir la valeur d'une carte (0-12 pour les valeurs, 13-25 pour les couleurs suivantes, etc.)
-  const getCardValue = (card: number): number => {
-    return card % 13; // Retourne une valeur de 0 à 12 (As à Roi)
-  };
-  
-  // Libellé du rang (fr) pour l'affichage des messages
-  const getRankLabel = (value: number): string => {
-    const rankIndex = (value % 52) % 13;
-    const labels = ['As', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'Valet', 'Dame', 'Roi'];
-    return labels[rankIndex] || '';
-  };
+  // utilitaires déplacés dans ../utils/cards
 
   // Gère la pénalité de défausse rapide
   const handleQuickDiscardPenalty = async (player: 'player1' | 'player2', cardIndex: number) => {
@@ -1032,157 +802,11 @@ const TrainingPage: React.FC = () => {
     }
   }, [drawnCard]);
 
-  // Carte piochée en animation
-  const drawnCardAnimation = drawnCardAnim ? (
-    <div 
-      className="fixed z-[1000] w-24 h-36 transition-all duration-500 ease-out"
-      style={{
-        left: `${drawnCardAnim.position.x}px`,
-        top: `${drawnCardAnim.position.y}px`,
-        transform: 'translate(-50%, -50%)',
-        transformStyle: 'preserve-3d',
-        transition: 'all 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
-      }}
-    >
-      <div 
-        className="relative w-full h-full"
-        style={{
-          transform: drawnCardAnim.isRevealed ? 'rotateY(180deg)' : 'rotateY(0deg)',
-          transformStyle: 'preserve-3d',
-          transition: 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
-        }}
-      >
-        {/* Face arrière */}
-        <div 
-          className="absolute w-full h-full rounded-lg shadow-2xl overflow-hidden border-2 border-white"
-          style={{
-            backfaceVisibility: 'hidden',
-            transform: 'rotateY(0deg)',
-            boxShadow: '0 0 30px rgba(255, 255, 0, 0.7)',
-          }}
-        >
-          <img
-            src={cardBack}
-            alt="Dos de carte"
-            className="w-full h-full object-cover"
-          />
-        </div>
-        {/* Face avant */}
-        <div 
-          className="absolute w-full h-full rounded-lg shadow-2xl overflow-hidden border-2 border-white"
-          style={{
-            backfaceVisibility: 'hidden',
-            transform: 'rotateY(180deg)',
-            boxShadow: '0 0 30px rgba(0, 255, 255, 0.7)',
-          }}
-        >
-          <img
-            src={getCardImage(drawnCardAnim.value)}
-            alt="Carte piochée"
-            className="w-full h-full object-cover"
-            onError={(e) => {
-              const target = e.target as HTMLImageElement;
-              target.src = cardBack;
-              target.alt = 'Dos de carte';
-            }}
-          />
-        </div>
-      </div>
-    </div>
-  ) : null;
+  // Carte piochée en animation (composant)
+  const drawnCardAnimation = <DrawnCardAnimation state={drawnCardAnim} />;
 
-  // Carte animée en vol (flyingCard) avec animation fluide et réaliste
-  const flyingCard = dealAnim ? (
-    <div 
-      className="absolute w-16 h-24 z-50"
-      style={{
-        left: `${dealAnim.from.x}px`,
-        top: `${dealAnim.from.y}px`,
-        transform: 'translate(-50%, -50%)',
-        zIndex: 1000,
-        transformStyle: 'preserve-3d',
-        pointerEvents: 'none',
-        willChange: 'transform, left, top',
-        transition: 'none',
-      }}
-    >
-      <div 
-        className="relative w-full h-full"
-        style={{
-          animation: `cardDeal 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards`,
-          transformOrigin: 'center',
-          willChange: 'transform',
-        }}
-      >
-        <style>
-          {`
-            @keyframes cardDeal {
-              0% {
-                transform: 
-                  translate(0, 0) 
-                  rotateY(0deg) 
-                  rotateZ(0deg) 
-                  scale(1);
-                opacity: 1;
-              }
-              20% {
-                transform: 
-                  translate(
-                    ${(dealAnim.to.x - dealAnim.from.x) * 0.2}px, 
-                    ${(dealAnim.to.y - dealAnim.from.y) * 0.2}px
-                  )
-                  rotateY(180deg)
-                  rotateZ(5deg)
-                  scale(1.1);
-                opacity: 1;
-              }
-              80% {
-                transform: 
-                  translate(
-                    ${(dealAnim.to.x - dealAnim.from.x) * 1.1}px, 
-                    ${(dealAnim.to.y - dealAnim.from.y) * 1.1}px
-                  )
-                  rotateY(540deg)
-                  rotateZ(-2deg)
-                  scale(0.95);
-                opacity: 1;
-              }
-              100% {
-                transform: 
-                  translate(
-                    ${dealAnim.to.x - dealAnim.from.x}px, 
-                    ${dealAnim.to.y - dealAnim.from.y}px
-                  )
-                  rotateY(720deg)
-                  rotateZ(0deg)
-                  scale(1);
-                opacity: 0;
-              }
-            }
-          `}
-        </style>
-        <div 
-          className="absolute w-full h-full rounded-lg shadow-xl overflow-hidden border-2 border-white"
-          style={{
-            transformStyle: 'preserve-3d',
-            backfaceVisibility: 'hidden',
-            transition: 'transform 0.3s ease-out',
-          }}
-        >
-          <img
-            src={cardBack}
-            alt="Carte en vol"
-            className="w-full h-full object-cover"
-            style={{
-              borderRadius: '6px',
-              backfaceVisibility: 'hidden',
-              transformStyle: 'preserve-3d',
-            }}
-          />
-        </div>
-      </div>
-    </div>
-  ) : null;
+  // Carte animée en vol (composant)
+  const flyingCard = <FlyingCard state={dealAnim} />;
 
   return (
     <div
@@ -1198,75 +822,8 @@ const TrainingPage: React.FC = () => {
           </div>
         </div>
       )}
-      {/* Overlay de préparation avec animation de zoom/fade (2s) */}
-      {showPrepOverlay && (
-        <div
-          className="absolute inset-0 z-[1200] flex items-center justify-center"
-          style={{
-            background:
-              'radial-gradient(ellipse at center, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.85) 60%, rgba(0,0,0,0.95) 100%)',
-          }}
-        >
-          <style>{`
-            @keyframes prepZoom {
-              0% { transform: scale(0.7); opacity: 0; filter: brightness(0.8) saturate(1.2); }
-              35% { transform: scale(1.08); opacity: 1; filter: brightness(1.1) saturate(1.4); }
-              65% { transform: scale(1.14); opacity: 1; filter: brightness(1.15) saturate(1.5); }
-              100% { transform: scale(1.28); opacity: 0; filter: brightness(0.9) saturate(1.2); }
-            }
-            @keyframes ringPulse {
-              0% { box-shadow: 0 0 0 rgba(255,215,0,0); }
-              30% { box-shadow: 0 0 30px rgba(255,215,0,0.45), inset 0 0 18px rgba(255,215,0,0.3); }
-              70% { box-shadow: 0 0 38px rgba(255,215,0,0.5), inset 0 0 22px rgba(255,215,0,0.35); }
-              100% { box-shadow: 0 0 0 rgba(255,215,0,0); }
-            }
-            @keyframes cornerBlink {
-              0%, 100% { opacity: 0.35; filter: drop-shadow(0 0 4px rgba(255,255,255,0.25)); }
-              50% { opacity: 1; filter: drop-shadow(0 0 8px rgba(255,255,255,0.6)); }
-            }
-            @keyframes textImpact {
-              0% { letter-spacing: 0.05em; text-shadow: 0 0 0 rgba(0,0,0,0.0); }
-              40% { letter-spacing: 0.25em; text-shadow: 0 8px 20px rgba(0,0,0,0.6); }
-              100% { letter-spacing: 0.15em; text-shadow: 0 6px 16px rgba(0,0,0,0.5); }
-            }
-          `}</style>
-
-          {/* Scanlines subtiles pour l'ambiance "fight" */}
-          <div
-            className="absolute inset-0 pointer-events-none opacity-15"
-            style={{
-              backgroundImage:
-                'repeating-linear-gradient(0deg, rgba(255,255,255,0.06) 0px, rgba(255,255,255,0.06) 2px, transparent 3px, transparent 6px)'
-            }}
-          />
-
-          <div
-            className="relative border-4 border-yellow-400 rounded-2xl px-10 py-8 text-center shadow-2xl bg-gradient-to-br from-gray-900/80 to-black/80"
-            style={{
-              animation: 'prepZoom 2s ease-out forwards, ringPulse 2s ease-out',
-            }}
-          >
-            {/* Coins lumineux style ring de boxe */}
-            <div className="pointer-events-none absolute -inset-3">
-              <div className="absolute -top-3 -left-3 w-10 h-10 border-t-4 border-l-4 border-red-500" style={{animation: 'cornerBlink 1s ease-in-out infinite'}} />
-              <div className="absolute -top-3 -right-3 w-10 h-10 border-t-4 border-r-4 border-blue-500" style={{animation: 'cornerBlink 1s ease-in-out infinite 0.2s'}} />
-              <div className="absolute -bottom-3 -left-3 w-10 h-10 border-b-4 border-l-4 border-red-500" style={{animation: 'cornerBlink 1s ease-in-out infinite 0.4s'}} />
-              <div className="absolute -bottom-3 -right-3 w-10 h-10 border-b-4 border-r-4 border-blue-500" style={{animation: 'cornerBlink 1s ease-in-out infinite 0.6s'}} />
-            </div>
-
-            {/* Headline clash */}
-            <div
-              className="text-4xl md:text-5xl font-extrabold uppercase text-transparent bg-clip-text bg-gradient-to-r from-red-500 via-yellow-300 to-blue-500 drop-shadow-[0_6px_16px_rgba(0,0,0,0.5)]"
-              style={{ animation: 'textImpact 1.2s ease-out' }}
-            >
-              Préparez‑vous !
-            </div>
-            <div className="mt-3 text-lg md:text-2xl text-yellow-200 font-bold tracking-wide">
-              Mémorisez 2 cartes
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Overlay de préparation */}
+      <PrepOverlay show={showPrepOverlay} />
       {/* Bouton Start a new game en haut à gauche */}
       <button
         className="absolute top-3 left-3 z-30 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow-lg px-4 py-2 flex items-center justify-center text-base font-bold border-2 border-white focus:outline-none focus:ring-2 focus:ring-green-400 disabled:opacity-60 disabled:cursor-not-allowed"
@@ -1304,28 +861,7 @@ const TrainingPage: React.FC = () => {
         </button>
       </div>
       {/* Titre */}
-      <div className="absolute top-0 left-0 w-full flex items-center justify-center z-20" style={{margin:0,padding:0}}>
-        <div className="flex items-center space-x-4">
-          <span className="bg-yellow-400 bg-opacity-90 text-gray-900 px-4 py-1 rounded-xl shadow-xl text-xl font-extrabold tracking-widest border-2 border-white drop-shadow-lg uppercase">
-            Mode Entraînement
-          </span>
-          {gamePhase !== 'preparation' && (
-            <span className={`px-4 py-1 rounded-full text-white font-bold text-lg shadow-lg ${
-              gamePhase === 'before_round' 
-                ? 'bg-blue-500 animate-pulse' 
-                : gamePhase === 'player1_turn' 
-                  ? 'bg-green-500' 
-                : 'bg-red-500'
-            }`}>
-              {gamePhase === 'before_round' 
-                ? 'Phase de mémorisation' 
-                : gamePhase === 'player1_turn' 
-                  ? 'Tour du Joueur 1' 
-                : 'Tour du Joueur 2'}
-            </span>
-          )}
-        </div>
-      </div>
+      <TopBanner gamePhase={gamePhase} />
 
       {/* Joueur 1 (haut) */}
       <div className="row-start-2 row-end-3 flex items-end justify-center min-h-[40px]">
