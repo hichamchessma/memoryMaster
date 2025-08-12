@@ -358,13 +358,11 @@ const TrainingPage: React.FC = () => {
     setIsInPenalty(true);
     setPenaltyPlayer(player);
 
-    // Lancer la courte animation d'annonce (arbitre qui siffle)
+    // Lancer l'animation d'annonce et l'assombrissement en même temps
     setPenaltyCue(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setPenaltyCue(false);
-
-    // Puis afficher l'assombrissement
     setShowPenaltyDim(true);
+    const penaltyVisualMs = 3000; // durée demandée
+    const visualWait = new Promise<void>(resolve => setTimeout(resolve, penaltyVisualMs));
     const newDeck = [...deck];
     const penaltyCards = [newDeck.pop()!, newDeck.pop()!];
     setDeck(newDeck);
@@ -406,7 +404,9 @@ const TrainingPage: React.FC = () => {
       setPlayer2Cards(prev => prev.map((card, idx) => idx === cardIndex ? { ...card, isFlipped: false } : card));
     }
 
-    // Fin de pénalité: retirer l'assombrissement puis débloquer
+    // Fin de pénalité: attendre la fin des 3s d'assombrissement, puis retirer overlays et débloquer
+    await visualWait;
+    setPenaltyCue(false);
     setShowPenaltyDim(false);
     setIsInPenalty(false);
     setPenaltyPlayer(null);
