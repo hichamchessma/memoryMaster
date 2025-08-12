@@ -67,6 +67,10 @@ const TrainingPage: React.FC = () => {
   const memorizationStartedRef = React.useRef(false);
   // Zone à laisser visible pendant la pénalité
   const [penaltyPlayer, setPenaltyPlayer] = React.useState<'player1' | 'player2' | null>(null);
+  // Animation sifflet arbitre juste avant l'assombrissement
+  const [penaltyCue, setPenaltyCue] = React.useState(false);
+  // Contrôle spécifique de l'overlay sombre (décorrélé du blocage logique isInPenalty)
+  const [showPenaltyDim, setShowPenaltyDim] = React.useState(false);
 
   // Ref pour connaître en temps réel si une pénalité est en cours (utilisé dans les callbacks setInterval)
   const isInPenaltyRef = React.useRef(false);
@@ -350,8 +354,17 @@ const TrainingPage: React.FC = () => {
       return;
     }
 
+    // Bloquer immédiatement, mémoriser le joueur fautif
     setIsInPenalty(true);
     setPenaltyPlayer(player);
+
+    // Lancer la courte animation d'annonce (arbitre qui siffle)
+    setPenaltyCue(true);
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    setPenaltyCue(false);
+
+    // Puis afficher l'assombrissement
+    setShowPenaltyDim(true);
     const newDeck = [...deck];
     const penaltyCards = [newDeck.pop()!, newDeck.pop()!];
     setDeck(newDeck);
@@ -393,6 +406,8 @@ const TrainingPage: React.FC = () => {
       setPlayer2Cards(prev => prev.map((card, idx) => idx === cardIndex ? { ...card, isFlipped: false } : card));
     }
 
+    // Fin de pénalité: retirer l'assombrissement puis débloquer
+    setShowPenaltyDim(false);
     setIsInPenalty(false);
     setPenaltyPlayer(null);
   };
@@ -804,8 +819,26 @@ const TrainingPage: React.FC = () => {
     >
       {flyingCard}
       {drawnCardAnimation}
+      {/* Cue d'annonce de pénalité (arbitre qui siffle) */}
+      {penaltyCue && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
+          <style>{`
+            @keyframes refShake { 0%,100%{ transform: translateX(0) } 20%{ transform: translateX(-6px) } 40%{ transform: translateX(6px) } 60%{ transform: translateX(-4px) } 80%{ transform: translateX(4px) } }
+            @keyframes refFlash { 0%,100%{ opacity: 0.9 } 50%{ opacity: 1 } }
+            @keyframes rays { 0%{ transform: scale(0.8); opacity: .2 } 100%{ transform: scale(1.2); opacity: 0 } }
+          `}</style>
+          <div className="relative">
+            <div className="absolute -inset-6 rounded-full bg-yellow-400/30 blur-xl" style={{animation: 'refFlash 1s ease-in-out 2'}} />
+            <div className="absolute -inset-10 rounded-full border-2 border-yellow-300/60" style={{animation: 'rays 1.2s ease-out 2'}} />
+            <div className="relative px-6 py-4 rounded-2xl bg-black/80 border-4 border-yellow-400 shadow-2xl text-center" style={{animation: 'refShake 0.6s ease-in-out 2'}}>
+              <div className="text-4xl">🚨🟨</div>
+              <div className="mt-1 text-xl font-extrabold text-yellow-200 tracking-wide uppercase">Pénalité !</div>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Overlay de pénalité: assombrit tout sauf la zone du joueur pénalisé (même style que PrepOverlay) */}
-      {isInPenalty && (
+      {showPenaltyDim && (
         <div
           className="absolute inset-0 z-40 flex items-center justify-center pointer-events-auto"
           style={{
