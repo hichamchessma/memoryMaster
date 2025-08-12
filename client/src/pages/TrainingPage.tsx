@@ -64,6 +64,12 @@ const TrainingPage: React.FC = () => {
   const [showPrepOverlay, setShowPrepOverlay] = React.useState(false);
   const [memorizationTimerStarted, setMemorizationTimerStarted] = React.useState(false);
 
+  // Ref pour connaître en temps réel si une pénalité est en cours (utilisé dans les callbacks setInterval)
+  const isInPenaltyRef = React.useRef(false);
+  React.useEffect(() => {
+    isInPenaltyRef.current = isInPenalty;
+  }, [isInPenalty]);
+
   // Initialiser et mélanger le deck au chargement
   React.useEffect(() => {
     initializeDeck();
@@ -209,6 +215,10 @@ const TrainingPage: React.FC = () => {
     // Démarrer le nouveau timer
     timerRef.current = setInterval(() => {
       setTimeLeft(prev => {
+        // Si une pénalité est en cours, on fige le timer
+        if (isInPenaltyRef.current) {
+          return prev;
+        }
         if (prev <= 1) {
           // Fin du tour, passer au joueur suivant
           console.log('Fin du temps pour', currentPlayerLocal);
@@ -254,6 +264,10 @@ const TrainingPage: React.FC = () => {
     // Mettre à jour le temps toutes les secondes
     beforeRoundTimerRef.current = setInterval(() => {
       setTimeLeft(prev => {
+        // Pendant une pénalité, on fige aussi ce timer par sécurité
+        if (isInPenaltyRef.current) {
+          return prev;
+        }
         if (prev <= 1) {
           // Fin du temps, passer au jeu normal
           clearInterval(beforeRoundTimerRef.current!);

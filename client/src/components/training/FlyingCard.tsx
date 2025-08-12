@@ -1,5 +1,5 @@
 import React from 'react';
-import cardBack from '../assets/cards/card_back.png';
+import cardBack from '../../assets/cards/card_back.png';
 
 export interface DealAnimState {
   from: { x: number; y: number };

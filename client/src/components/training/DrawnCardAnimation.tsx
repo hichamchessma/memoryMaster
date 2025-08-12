@@ -1,6 +1,6 @@
 import React from 'react';
-import cardBack from '../assets/cards/card_back.png';
-import { getCardImage } from '../utils/cards';
+import cardBack from '../../assets/cards/card_back.png';
+import { getCardImage } from '../../utils/cards';
 
 export interface DrawnCardAnimState {
   value: number;
