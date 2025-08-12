@@ -530,16 +530,15 @@ const TrainingPage: React.FC = () => {
       setCurrentPlayer('player1');
       // Pendant la phase de mémorisation, on fige les actions du jeu (deck non cliquable)
       setIsPlayerTurn(false);
-      setTimeLeft(5);
-
-      // Afficher l'overlay de préparation (1s), puis démarrer le minuteur de mémorisation
+      
+      // Afficher l'overlay de préparation (2s), puis démarrer le minuteur de mémorisation
       setShowPrepOverlay(true);
       setTimeout(() => {
         setShowPrepOverlay(false);
         if (!memorizationTimerStarted) {
           startBeforeRoundTimer();
         }
-      }, 1000);
+      }, 2000);
     }
   }, [cardsDealt, gamePhase]);
 
@@ -1175,7 +1174,7 @@ const TrainingPage: React.FC = () => {
     >
       {flyingCard}
       {drawnCardAnimation}
-      {/* Overlay de préparation avec animation de zoom/fade (1s) */}
+      {/* Overlay de préparation avec animation de zoom/fade (2s) */}
       {showPrepOverlay && (
         <div className="absolute inset-0 z-[1200] flex items-center justify-center bg-black/60">
           <style>{`
@@ -1188,7 +1187,7 @@ const TrainingPage: React.FC = () => {
           <div
             className="border-4 border-yellow-400 rounded-2xl px-8 py-6 text-center shadow-2xl bg-gradient-to-br from-gray-900/80 to-black/70"
             style={{
-              animation: 'prepZoom 1s ease-out forwards',
+              animation: 'prepZoom 2s ease-out forwards',
             }}
           >
             <div className="text-yellow-300 text-3xl font-extrabold tracking-wide drop-shadow-md uppercase">
@@ -1248,13 +1247,13 @@ const TrainingPage: React.FC = () => {
                 ? 'bg-blue-500 animate-pulse' 
                 : gamePhase === 'player1_turn' 
                   ? 'bg-green-500' 
-                  : 'bg-red-500'
+                : 'bg-red-500'
             }`}>
               {gamePhase === 'before_round' 
                 ? 'Phase de mémorisation' 
                 : gamePhase === 'player1_turn' 
                   ? 'Tour du Joueur 1' 
-                  : 'Tour du Joueur 2'}
+                : 'Tour du Joueur 2'}
             </span>
           )}
         </div>
@@ -1376,27 +1375,24 @@ const TrainingPage: React.FC = () => {
         </div>
         {/* Zone centrale avec les informations de jeu */}
         <div className="flex flex-col items-center justify-center relative flex-1">
-          <div className="text-center mb-4">
-            <div className="text-2xl font-bold mb-2">Memory Master</div>
-            <div className="text-lg mb-2">Mode Entraînement</div>
-            {isPlayerTurn && (
-              <div className="text-yellow-300 font-medium animate-pulse">
-                {currentPlayer === 'player1' ? 'Joueur 1' : 'Joueur 2'}, à vous de jouer !
-              </div>
-            )}
+          {isPlayerTurn && (
+            <div className="text-yellow-300 font-medium animate-pulse">
+              {currentPlayer === 'player1' ? 'Joueur 1' : 'Joueur 2'}, à vous de jouer !
+            </div>
+          )}
+          {!showPrepOverlay && gamePhase !== 'preparation' && (
             <div className="mt-2 text-sm bg-black bg-opacity-30 px-3 py-1 rounded-full">
               Temps restant: {formatTime(timeLeft)}
             </div>
-            {isInPenalty && (
-              <div className="mt-2 text-sm bg-red-600 bg-opacity-70 px-3 py-1 rounded-full animate-pulse">
-                Mauvaise carte ! Pénalité en cours...
-              </div>
-            )}
-          </div>
-          
-          {/* La défausse est dans la colonne de droite */}
+          )}
+          {isInPenalty && (
+            <div className="mt-2 text-sm bg-red-600 bg-opacity-70 px-3 py-1 rounded-full animate-pulse">
+              Mauvaise carte ! Pénalité en cours...
+            </div>
+          )}
         </div>
-        {/* Défausse (colonne droite) */}
+        
+        {/* La défausse est dans la colonne de droite */}
         <div className="flex flex-col items-center mr-6">
           <div className="w-28 h-40 bg-gray-900/70 border-4 border-yellow-400 rounded-2xl shadow-2xl flex flex-col items-center justify-center mb-2 relative overflow-hidden backdrop-blur-sm">
             <span className="absolute -top-3 left-2 bg-yellow-400 text-gray-900 font-extrabold px-2 py-1 rounded-full text-xs shadow z-10">Défausse</span>
