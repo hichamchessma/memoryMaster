@@ -63,6 +63,8 @@ const TrainingPage: React.FC = () => {
   // Overlay de préparation (style "fighting")
   const [showPrepOverlay, setShowPrepOverlay] = React.useState(false);
   const [memorizationTimerStarted, setMemorizationTimerStarted] = React.useState(false);
+  // Garde contre démarrage multiple (StrictMode)
+  const memorizationStartedRef = React.useRef(false);
 
   // Ref pour connaître en temps réel si une pénalité est en cours (utilisé dans les callbacks setInterval)
   const isInPenaltyRef = React.useRef(false);
@@ -113,7 +115,8 @@ const TrainingPage: React.FC = () => {
     setCardsDealt(0);
     setCurrentPlayer('player1');
     setIsPlayerTurn(false);
-    setTimeLeft(15);
+    // Ne pas initialiser à 15s, on affichera uniquement
+    // les 5s de mémorisation puis 7s par joueur
     setGamePhase('preparation');
     setCardsFlipped({
       player1: { count: 0, indexes: [] },
@@ -245,6 +248,9 @@ const TrainingPage: React.FC = () => {
   
   // Gestion du minuteur de 5 secondes pour la phase 'avant tour'
   const startBeforeRoundTimer = React.useCallback(() => {
+    // Eviter démarrages multiples (ex: StrictMode double effet)
+    if (memorizationStartedRef.current) return;
+    memorizationStartedRef.current = true;
     console.log('Démarrage du minuteur de 5 secondes pour la phase de mémorisation');
     
     // Nettoyer l'ancien timer s'il existe
@@ -280,6 +286,7 @@ const TrainingPage: React.FC = () => {
           setCurrentPlayer('player1');
           setIsPlayerTurn(true);
           setMemorizationTimerStarted(false);
+          memorizationStartedRef.current = false;
           
           // Démarrer le timer du premier tour en utilisant la référence
           if (startTurnTimerRef.current) {
@@ -326,9 +333,8 @@ const TrainingPage: React.FC = () => {
       setShowPrepOverlay(true);
       setTimeout(() => {
         setShowPrepOverlay(false);
-        if (!memorizationTimerStarted) {
-          startBeforeRoundTimer();
-        }
+        // Démarrer de manière idempotente (protégée par ref)
+        startBeforeRoundTimer();
       }, 2000);
     }
   }, [cardsDealt, gamePhase]);
