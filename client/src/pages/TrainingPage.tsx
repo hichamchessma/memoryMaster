@@ -273,6 +273,8 @@ const TrainingPage: React.FC = () => {
   const [isDeckGlowing, setIsDeckGlowing] = React.useState(false);
   const [isInPenalty, setIsInPenalty] = React.useState(false);
   const [quickDiscardActive, setQuickDiscardActive] = React.useState(false);
+  // Message flash (1s) lorsqu'un joueur défausse en mode défausse rapide
+  const [quickDiscardFlash, setQuickDiscardFlash] = React.useState<string | null>(null);
   const [drawnCardAnim, setDrawnCardAnim] = React.useState<{
     value: number;
     position: {x: number, y: number};
@@ -546,6 +548,13 @@ const TrainingPage: React.FC = () => {
   const getCardValue = (card: number): number => {
     return card % 13; // Retourne une valeur de 0 à 12 (As à Roi)
   };
+  
+  // Libellé du rang (fr) pour l'affichage des messages
+  const getRankLabel = (value: number): string => {
+    const rankIndex = (value % 52) % 13;
+    const labels = ['As', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'Valet', 'Dame', 'Roi'];
+    return labels[rankIndex] || '';
+  };
 
   // Gère la pénalité de défausse rapide
   const handleQuickDiscardPenalty = async (player: 'player1' | 'player2', cardIndex: number) => {
@@ -710,6 +719,13 @@ const TrainingPage: React.FC = () => {
         
         // Mettre à jour la défausse
         setDiscardPile(discardedCard);
+        // Afficher une bannière 1s pour la défausse rapide (même hors tour)
+        if (quickDiscardActive) {
+          const rank = getRankLabel(discardedCard);
+          const who = (player === 'top') ? 'Joueur 1' : 'Joueur 2';
+          setQuickDiscardFlash(`${who} a jeté ${rank}`);
+          setTimeout(() => setQuickDiscardFlash(null), 1000);
+        }
         
         // Retirer complètement la carte du jeu
         if (player === 'top') {
@@ -1174,6 +1190,14 @@ const TrainingPage: React.FC = () => {
     >
       {flyingCard}
       {drawnCardAnimation}
+      {/* Bannière flash pour la défausse rapide */}
+      {quickDiscardFlash && (
+        <div className="absolute inset-0 z-[1300] flex items-center justify-center pointer-events-none">
+          <div className="px-6 py-3 rounded-2xl bg-red-600/90 text-white text-2xl font-extrabold uppercase shadow-2xl border-4 border-white animate-pulse">
+            {quickDiscardFlash}
+          </div>
+        </div>
+      )}
       {/* Overlay de préparation avec animation de zoom/fade (2s) */}
       {showPrepOverlay && (
         <div
@@ -1389,6 +1413,13 @@ const TrainingPage: React.FC = () => {
                     onClick={() => {
                       if (drawnCard) {
                         setDiscardPile(drawnCard.value);
+                        // Si défausse rapide active, afficher une bannière 1s
+                        if (quickDiscardActive) {
+                          const rank = getRankLabel(drawnCard.value);
+                          const who = currentPlayer === 'player1' ? 'Joueur 1' : 'Joueur 2';
+                          setQuickDiscardFlash(`${who} a jeté ${rank}`);
+                          setTimeout(() => setQuickDiscardFlash(null), 1000);
+                        }
                         setDrawnCard(null);
                         setShowCardActions(false);
                         handleTurnEnd(currentPlayer);
