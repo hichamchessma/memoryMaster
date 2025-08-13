@@ -1414,39 +1414,41 @@ const TrainingPage: React.FC = () => {
                         Activer et défausser
                       </button>
                     )}
-                    <button
-                      onClick={async () => {
-                        if (drawnCard) {
-                          // Animation: deck -> défausse (1s)
-                          const deckRect = deckRef.current?.getBoundingClientRect();
-                          const discardRect = discardRef.current?.getBoundingClientRect();
-                          if (deckRect && discardRect) {
-                            const deckCenter = { x: deckRect.left + deckRect.width / 2, y: deckRect.top + deckRect.height / 2 };
-                            const discardCenter = { x: discardRect.left + discardRect.width / 2, y: discardRect.top + discardRect.height / 2 };
-                            setReplaceOutImage(getCardImage(drawnCard.value));
-                            setReplaceOutAnim({ from: deckCenter, to: discardCenter, toPlayer: currentPlayer === 'player1' ? 'top' : 'bottom', index: -1, cardValue: drawnCard.value });
-                            await new Promise(resolve => setTimeout(resolve, 1000));
-                            setReplaceOutAnim(null);
-                            setReplaceOutImage(null);
-                          }
+                    {drawnCard && ![10,11,12].includes(getCardValue(drawnCard.value)) && (
+                      <button
+                        onClick={async () => {
+                          if (drawnCard) {
+                            // Animation: deck -> défausse (1s)
+                            const deckRect = deckRef.current?.getBoundingClientRect();
+                            const discardRect = discardRef.current?.getBoundingClientRect();
+                            if (deckRect && discardRect) {
+                              const deckCenter = { x: deckRect.left + deckRect.width / 2, y: deckRect.top + deckRect.height / 2 };
+                              const discardCenter = { x: discardRect.left + discardRect.width / 2, y: discardRect.top + discardRect.height / 2 };
+                              setReplaceOutImage(getCardImage(drawnCard.value));
+                              setReplaceOutAnim({ from: deckCenter, to: discardCenter, toPlayer: currentPlayer === 'player1' ? 'top' : 'bottom', index: -1, cardValue: drawnCard.value });
+                              await new Promise(resolve => setTimeout(resolve, 1000));
+                              setReplaceOutAnim(null);
+                              setReplaceOutImage(null);
+                            }
 
-                          setDiscardPile(drawnCard.value);
-                          // Si défausse rapide active, afficher une bannière 1s
-                          if (quickDiscardActive) {
-                            const rank = getRankLabel(drawnCard.value);
-                            const who = currentPlayer === 'player1' ? 'Joueur 1' : 'Joueur 2';
-                            setQuickDiscardFlash(`${who} a jeté ${rank}`);
-                            setTimeout(() => setQuickDiscardFlash(null), 1000);
+                            setDiscardPile(drawnCard.value);
+                            // Si défausse rapide active, afficher une bannière 1s
+                            if (quickDiscardActive) {
+                              const rank = getRankLabel(drawnCard.value);
+                              const who = currentPlayer === 'player1' ? 'Joueur 1' : 'Joueur 2';
+                              setQuickDiscardFlash(`${who} a jeté ${rank}`);
+                              setTimeout(() => setQuickDiscardFlash(null), 1000);
+                            }
+                            setDrawnCard(null);
+                            setShowCardActions(false);
+                            handleTurnEnd(currentPlayer);
                           }
-                          setDrawnCard(null);
-                          setShowCardActions(false);
-                          handleTurnEnd(currentPlayer);
-                        }
-                      }}
-                      className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg text-sm font-semibold shadow"
-                    >
-                      Défausser
-                    </button>
+                        }}
+                        className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg text-sm font-semibold shadow"
+                      >
+                        Défausser
+                      </button>
+                    )}
                     <button
                       onClick={() => {
                         setShowCardActions(false);
