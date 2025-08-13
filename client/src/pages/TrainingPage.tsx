@@ -526,8 +526,31 @@ const TrainingPage: React.FC = () => {
         // Défausse réussie
         const newCards = [...playerCards];
         const discardedCard = newCards[index].value;
-        
-        // Mettre à jour la défausse
+
+        // Animation: carte depuis la main vers la défausse (1s)
+        try {
+          const oldCard = playerCards[index];
+          const oldCardId = oldCard.id;
+          let selEl = document.querySelector(`[data-player="${player}"][data-card-id="${oldCardId}"]`) as HTMLElement | null;
+          if (!selEl) {
+            selEl = document.querySelector(`[data-player="${player}"][data-card-index="${index}"]`) as HTMLElement | null;
+          }
+          const discardRect = discardRef.current?.getBoundingClientRect();
+          if (selEl && discardRect) {
+            selEl.style.visibility = 'hidden';
+            const selRect = selEl.getBoundingClientRect();
+            const selCenter = { x: selRect.left + selRect.width / 2, y: selRect.top + selRect.height / 2 };
+            const discardCenter = { x: discardRect.left + discardRect.width / 2, y: discardRect.top + discardRect.height / 2 };
+
+            setReplaceOutImage(getCardImage(discardedCard));
+            setReplaceOutAnim({ from: selCenter, to: discardCenter, toPlayer: player, index, cardValue: discardedCard });
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            setReplaceOutAnim(null);
+            setReplaceOutImage(null);
+          }
+        } catch {}
+
+        // Mettre à jour la défausse (après l'animation)
         setDiscardPile(discardedCard);
         // Afficher une bannière 1s pour la défausse rapide (même hors tour)
         if (quickDiscardActive) {
