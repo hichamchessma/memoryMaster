@@ -55,6 +55,9 @@ const TrainingPage: React.FC = () => {
   // Pouvoir de la Dame: voir une carte adverse 3s
   const [isQueenPowerActive, setIsQueenPowerActive] = React.useState(false);
   const [queenCue, setQueenCue] = React.useState(false);
+  // Pouvoir du Valet: voir une de SES cartes 3s
+  const [isJackPowerActive, setIsJackPowerActive] = React.useState(false);
+  const [jackCue, setJackCue] = React.useState(false);
   const [deck, setDeck] = React.useState<number[]>([]);
   const [discardPile, setDiscardPile] = React.useState<number | null>(null);
   const [isDeckGlowing, setIsDeckGlowing] = React.useState(false);
@@ -603,6 +606,69 @@ const TrainingPage: React.FC = () => {
 
       // Reset états et fin de tour
       setIsQueenPowerActive(false);
+      setDrawnCard(null);
+      setShowCardActions(false);
+      handleTurnEnd(currentPlayer);
+      return;
+    }
+
+    // Mode pouvoir du Valet: cliquer une carte PERSONNELLE pour la voir 3s
+    if (isJackPowerActive) {
+      const isPlayer1Turn = currentPlayer === 'player1';
+      const allowedSide: 'top'|'bottom' = isPlayer1Turn ? 'top' : 'bottom';
+      if (player !== allowedSide) return;
+      const targetCards = player === 'top' ? player1Cards : player2Cards;
+      if (targetCards[index].value === -1) return;
+
+      // Retourner face visible 3 secondes
+      if (player === 'top') {
+        setPlayer1Cards(prev => {
+          const next = [...prev];
+          next[index] = { ...next[index], isFlipped: true };
+          return next;
+        });
+      } else {
+        setPlayer2Cards(prev => {
+          const next = [...prev];
+          next[index] = { ...next[index], isFlipped: true };
+          return next;
+        });
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      if (player === 'top') {
+        setPlayer1Cards(prev => {
+          const next = [...prev];
+          next[index] = { ...next[index], isFlipped: false };
+          return next;
+        });
+      } else {
+        setPlayer2Cards(prev => {
+          const next = [...prev];
+          next[index] = { ...next[index], isFlipped: false };
+          return next;
+        });
+      }
+
+      // Défausser le Valet pioché avec animation deck -> défausse
+      if (drawnCard) {
+        const deckRect = deckRef.current?.getBoundingClientRect();
+        const discardRect = discardRef.current?.getBoundingClientRect();
+        if (deckRect && discardRect) {
+          const deckCenter = { x: deckRect.left + deckRect.width / 2, y: deckRect.top + deckRect.height / 2 };
+          const discardCenter = { x: discardRect.left + discardRect.width / 2, y: discardRect.top + discardRect.height / 2 };
+          setReplaceOutImage(getCardImage(drawnCard.value));
+          setReplaceOutAnim({ from: deckCenter, to: discardCenter, toPlayer: currentPlayer === 'player1' ? 'top' : 'bottom', index: -1, cardValue: drawnCard.value });
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          setReplaceOutAnim(null);
+          setReplaceOutImage(null);
+        }
+        setDiscardPile(drawnCard.value);
+      }
+
+      // Reset états et fin de tour
+      setIsJackPowerActive(false);
       setDrawnCard(null);
       setShowCardActions(false);
       handleTurnEnd(currentPlayer);
@@ -1163,6 +1229,14 @@ const TrainingPage: React.FC = () => {
           </div>
         </div>
       )}
+      {jackCue && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
+          <div className="relative px-6 py-4 rounded-2xl bg-blue-700/90 border-4 border-cyan-300 shadow-2xl text-center animate-pulse">
+            <div className="text-4xl">💡🤵</div>
+            <div className="mt-1 text-xl font-extrabold text-cyan-200 tracking-wide uppercase">Pouvoir du Valet activé</div>
+          </div>
+        </div>
+      )}
       {/* Bannière flash pour la défausse rapide */}
       {quickDiscardFlash && (
         <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
@@ -1222,7 +1296,7 @@ const TrainingPage: React.FC = () => {
               cardsDealt={cardsDealt} 
               cards={player1Cards}
               onCardClick={(index) => handleCardClick('top', index)}
-              highlight={(selectingCardToReplace && currentPlayer === 'player1') || isKingPowerActive || (isQueenPowerActive && currentPlayer === 'player2')}
+              highlight={(selectingCardToReplace && currentPlayer === 'player1') || isKingPowerActive || (isQueenPowerActive && currentPlayer === 'player2') || (isJackPowerActive && currentPlayer === 'player1')}
             />
           </div>
         </div>
@@ -1294,6 +1368,20 @@ const TrainingPage: React.FC = () => {
                     />
                   </div>
                   <div className="flex flex-col space-y-2">
+                    {drawnCard && getCardValue(drawnCard.value) === 10 && (
+                      <button
+                        onClick={() => {
+                          // Activer le mode pouvoir du Valet
+                          setShowCardActions(false);
+                          setIsJackPowerActive(true);
+                          setJackCue(true);
+                          setTimeout(() => setJackCue(false), 900);
+                        }}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-sm font-semibold shadow"
+                      >
+                        Activer et défausser
+                      </button>
+                    )}
                     {drawnCard && getCardValue(drawnCard.value) === 11 && (
                       <button
                         onClick={() => {
@@ -1423,7 +1511,7 @@ const TrainingPage: React.FC = () => {
               cardsDealt={cardsDealt} 
               cards={player2Cards}
               onCardClick={(index) => handleCardClick('bottom', index)}
-              highlight={(selectingCardToReplace && currentPlayer === 'player2') || isKingPowerActive || (isQueenPowerActive && currentPlayer === 'player1')}
+              highlight={(selectingCardToReplace && currentPlayer === 'player2') || isKingPowerActive || (isQueenPowerActive && currentPlayer === 'player1') || (isJackPowerActive && currentPlayer === 'player2')}
             />
           </div>
         </div>
