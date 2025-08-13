@@ -9,9 +9,13 @@ export interface DealAnimState {
   cardValue: number;
 }
 
-interface Props { state: DealAnimState | null }
+interface Props {
+  state: DealAnimState | null;
+  imageSrc?: string;
+  durationMs?: number;
+}
 
-const FlyingCard: React.FC<Props> = ({ state }) => {
+const FlyingCard: React.FC<Props> = ({ state, imageSrc, durationMs = 800 }) => {
   if (!state) return null;
   const { from, to } = state;
   return (
@@ -30,7 +34,7 @@ const FlyingCard: React.FC<Props> = ({ state }) => {
       <div 
         className="relative w-full h-full"
         style={{
-          animation: `cardDeal 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards`,
+          animation: `cardDeal ${durationMs}ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards`,
           transformOrigin: 'center',
           willChange: 'transform',
         }}
@@ -80,7 +84,7 @@ const FlyingCard: React.FC<Props> = ({ state }) => {
           }}
         >
           <img
-            src={cardBack}
+            src={imageSrc || cardBack}
             alt="Carte en vol"
             className="w-full h-full object-cover"
             style={{

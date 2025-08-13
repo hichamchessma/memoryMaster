@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import PlayerZone from '../components/training/PlayerZone';
 import PrepOverlay from '../components/training/PrepOverlay';
 import DrawnCardAnimation from '../components/training/DrawnCardAnimation';
-import FlyingCard from '../components/training/FlyingCard';
+import FlyingCard, { type DealAnimState } from '../components/training/FlyingCard';
 import TopBanner from '../components/training/TopBanner';
 import { getCardImage, getCardValue, getRankLabel } from '../utils/cards';
 
@@ -74,6 +74,8 @@ const TrainingPage: React.FC = () => {
 
   // Ref pour connaître en temps réel si une pénalité est en cours (utilisé dans les callbacks setInterval)
   const isInPenaltyRef = React.useRef(false);
+  // Références visuelles
+  const discardRef = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
     isInPenaltyRef.current = isInPenalty;
   }, [isInPenalty]);
@@ -428,31 +430,59 @@ const TrainingPage: React.FC = () => {
                              (player === 'bottom' && currentPlayer === 'player2');
       
       if (isCurrentPlayer && drawnCard) {
-        // Mettre l'ancienne carte dans la défausse
-        const oldCardValue = playerCards[index].value;
-        if (oldCardValue !== -1) {  // Ne pas défausser les cartes vides
-          setDiscardPile(oldCardValue);
+        // Récupérer les rectangles pour les animations
+        const oldCard = playerCards[index];
+        const oldCardId = oldCard.id;
+        // Chercher d'abord par id, sinon fallback par index
+        let selEl = document.querySelector(`[data-player="${player}"][data-card-id="${oldCardId}"]`) as HTMLElement | null;
+        if (!selEl) {
+          selEl = document.querySelector(`[data-player="${player}"][data-card-index="${index}"]`) as HTMLElement | null;
         }
-        
-        // Remplacer la carte sélectionnée par la carte piochée
+        const deckRect = deckRef.current?.getBoundingClientRect();
+        const discardRect = discardRef.current?.getBoundingClientRect();
+
+        if (selEl && deckRect && discardRect) {
+          const selRect = selEl.getBoundingClientRect();
+          const selCenter = { x: selRect.left + selRect.width / 2, y: selRect.top + selRect.height / 2 };
+          const deckCenter = { x: deckRect.left + deckRect.width / 2, y: deckRect.top + deckRect.height / 2 };
+          const discardCenter = { x: discardRect.left + discardRect.width / 2, y: discardRect.top + discardRect.height / 2 };
+
+          // Animation 1: la carte sélectionnée vers la défausse (1s)
+          const oldCardValue = oldCard.value;
+          setReplaceOutImage(getCardImage(oldCardValue));
+          setReplaceOutAnim({ from: selCenter, to: discardCenter, toPlayer: player, index, cardValue: oldCardValue });
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          setReplaceOutAnim(null);
+          setReplaceOutImage(null);
+          if (oldCardValue !== -1) setDiscardPile(oldCardValue);
+
+          // Animation 2: la carte piochée depuis le deck vers l'emplacement sélectionné (1s)
+          setReplaceInImage(getCardImage(drawnCard.value));
+          setReplaceInAnim({ from: deckCenter, to: selCenter, toPlayer: player, index, cardValue: drawnCard.value });
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          setReplaceInAnim(null);
+          setReplaceInImage(null);
+        }
+
+        // Remplacer la carte sélectionnée par la carte piochée dans l'état
         const newCards = [...playerCards];
         newCards[index] = {
           ...newCards[index],
           value: drawnCard.value,
           isFlipped: false
         };
-        
+
         if (player === 'top') {
           setPlayer1Cards(newCards);
         } else {
           setPlayer2Cards(newCards);
         }
-        
+
         // Réinitialiser les états
         setDrawnCard(null);
         setShowCardActions(false);
         setSelectingCardToReplace(false);
-        
+
         // Passer au tour suivant
         handleTurnEnd(currentPlayer);
       }
@@ -810,14 +840,36 @@ const TrainingPage: React.FC = () => {
   // Carte piochée en animation (composant)
   const drawnCardAnimation = <DrawnCardAnimation state={drawnCardAnim} />;
 
+  // Animations de remplacement (sortant vers défausse, entrant depuis deck)
+  const [replaceOutAnim, setReplaceOutAnim] = React.useState<DealAnimState | null>(null);
+  const [replaceInAnim, setReplaceInAnim] = React.useState<DealAnimState | null>(null);
+  const [replaceOutImage, setReplaceOutImage] = React.useState<string | null>(null);
+  const [replaceInImage, setReplaceInImage] = React.useState<string | null>(null);
   // Carte animée en vol (composant)
   const flyingCard = <FlyingCard state={dealAnim} />;
+  // Superposer les animations de remplacement (sortie/entrée)
+  const replaceOutOverlay = (
+    <FlyingCard
+      state={replaceOutAnim}
+      imageSrc={replaceOutImage || undefined}
+      durationMs={1000}
+    />
+  );
+  const replaceInOverlay = (
+    <FlyingCard
+      state={replaceInAnim}
+      imageSrc={replaceInImage || undefined}
+      durationMs={1000}
+    />
+  );
 
   return (
     <div
       className="h-screen w-full bg-cover bg-center homepage-bg grid grid-rows-[min-content_minmax(40px,1fr)_1.7fr_minmax(40px,1fr)] text-gray-200 overflow-hidden relative"
     >
       {flyingCard}
+      {replaceOutOverlay}
+      {replaceInOverlay}
       {drawnCardAnimation}
       {/* Cue d'annonce de pénalité (arbitre qui siffle) */}
       {penaltyCue && (
@@ -1038,7 +1090,7 @@ const TrainingPage: React.FC = () => {
 
         {/* La défausse est dans la colonne de droite */}
         <div className="flex flex-col items-center mr-6">
-          <div className="w-28 h-40 bg-gray-900/70 border-4 border-yellow-400 rounded-2xl shadow-2xl flex flex-col items-center justify-center mb-2 relative overflow-hidden backdrop-blur-sm">
+          <div ref={discardRef} className="w-28 h-40 bg-gray-900/70 border-4 border-yellow-400 rounded-2xl shadow-2xl flex flex-col items-center justify-center mb-2 relative overflow-hidden backdrop-blur-sm">
             <span className="absolute -top-3 left-2 bg-yellow-400 text-gray-900 font-extrabold px-2 py-1 rounded-full text-xs shadow z-10">Défausse</span>
             {discardPile !== null ? (
               <div className="w-full h-full">

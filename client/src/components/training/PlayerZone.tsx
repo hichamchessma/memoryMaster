@@ -45,6 +45,9 @@ const PlayerZone: React.FC<PlayerZoneProps> = ({ position, playerName, cardsDeal
             <div
               key={`${card.id || idx}-${card.value}`}
               className={`card-shine w-16 h-24 mx-2 rounded shadow-md border-2 border-gray-300 bg-white relative overflow-hidden ${highlight ? 'ring-2 ring-sky-400 card-blue-glow' : ''}`}
+              data-player={position}
+              data-card-index={idx}
+              data-orig-index={cards.findIndex(c => c.id === card.id)}
               style={{
                 cursor: 'pointer',
                 transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -126,6 +129,9 @@ const PlayerZone: React.FC<PlayerZoneProps> = ({ position, playerName, cardsDeal
             <div
               key={`${card.id || idx}-${card.value}`}
               className={`card-shine w-16 h-24 mx-2 rounded shadow-md border-2 border-gray-300 bg-white relative overflow-hidden ${highlight ? 'ring-2 ring-sky-400 card-blue-glow' : ''}`}
+              data-player={position}
+              data-card-index={idx}
+              data-card-id={card.id}
               style={{
                 cursor: 'pointer',
                 transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
