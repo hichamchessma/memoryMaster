@@ -6,7 +6,7 @@ import PrepOverlay from '../components/training/PrepOverlay';
 import DrawnCardAnimation from '../components/training/DrawnCardAnimation';
 import FlyingCard, { type DealAnimState } from '../components/training/FlyingCard';
 import TopBanner from '../components/training/TopBanner';
-import { getCardImage, getCardValue, getRankLabel } from '../utils/cards';
+import { getCardImage, getCardValue, getRankLabel, isJoker } from '../utils/cards';
 
 // Style pour mettre en évidence le joueur actif
 const activePlayerStyle = {
@@ -120,9 +120,10 @@ const TrainingPage: React.FC = () => {
       isFlipped: false
     }));
     
-    // Créer un nouveau deck mélangé (2 jeux de 52 cartes)
-    const newDeck = [...Array(52).keys(), ...Array(52).keys()]
-      .sort(() => Math.random() - 0.5);
+    // Créer un nouveau deck mélangé (2 jeux de 52 cartes) + 12 Jokers (6 joker + 6 joker2)
+    const base = [...Array(52).keys(), ...Array(52).keys()]; // 0..51 x2
+    const jokers = [104,105,106,107,108,109,110,111,112,113,114,115];
+    const newDeck = [...base, ...jokers].sort(() => Math.random() - 0.5);
     
     // Retirer 8 cartes du deck pour la distribution initiale (4 par joueur)
     const initialDeck = newDeck.slice(8);
@@ -938,8 +939,10 @@ const TrainingPage: React.FC = () => {
     // Attendre que le deck soit initialisé
     await new Promise(resolve => setTimeout(resolve, 100));
     
-    // Crée un nouveau deck mélangé (2 jeux de 52 cartes)
-    const newDeck = [...Array(52).keys(), ...Array(52).keys()]
+    // Crée un nouveau deck mélangé (2 jeux de 52 cartes) + 12 Jokers
+    const baseDeck = [...Array(52).keys(), ...Array(52).keys()];
+    const jokerCards = [104,105,106,107,108,109,110,111,112,113,114,115];
+    const newDeck = [...baseDeck, ...jokerCards]
       .sort(() => Math.random() - 0.5);
     
     // Réinitialiser les cartes des joueurs avec des IDs uniques
@@ -1368,7 +1371,7 @@ const TrainingPage: React.FC = () => {
                     />
                   </div>
                   <div className="flex flex-col space-y-2">
-                    {drawnCard && getCardValue(drawnCard.value) === 10 && (
+                    {drawnCard && !isJoker(drawnCard.value) && getCardValue(drawnCard.value) === 10 && (
                       <button
                         onClick={() => {
                           // Activer le mode pouvoir du Valet
@@ -1382,7 +1385,7 @@ const TrainingPage: React.FC = () => {
                         Activer et défausser
                       </button>
                     )}
-                    {drawnCard && getCardValue(drawnCard.value) === 11 && (
+                    {drawnCard && !isJoker(drawnCard.value) && getCardValue(drawnCard.value) === 11 && (
                       <button
                         onClick={() => {
                           // Activer le mode pouvoir de la Dame
@@ -1396,7 +1399,7 @@ const TrainingPage: React.FC = () => {
                         Activer et défausser
                       </button>
                     )}
-                    {drawnCard && getCardValue(drawnCard.value) === 12 && (
+                    {drawnCard && !isJoker(drawnCard.value) && getCardValue(drawnCard.value) === 12 && (
                       <button
                         onClick={async () => {
                           // Activer le mode pouvoir du Roi
