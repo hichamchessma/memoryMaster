@@ -48,6 +48,7 @@ const PlayerZone: React.FC<PlayerZoneProps> = ({ position, playerName, cardsDeal
               data-player={position}
               data-card-index={idx}
               data-orig-index={cards.findIndex(c => c.id === card.id)}
+              data-card-id={card.id}
               style={{
                 cursor: 'pointer',
                 transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',

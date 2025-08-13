@@ -48,6 +48,10 @@ const TrainingPage: React.FC = () => {
   const [drawnCard, setDrawnCard] = React.useState<{value: number, isFlipped: boolean} | null>(null);
   const [showCardActions, setShowCardActions] = React.useState(false);
   const [selectingCardToReplace, setSelectingCardToReplace] = React.useState(false);
+  // Pouvoir du Roi: activer pour échanger deux cartes
+  const [isKingPowerActive, setIsKingPowerActive] = React.useState(false);
+  const [kingSelections, setKingSelections] = React.useState<Array<{player: 'top'|'bottom', index: number}>>([]);
+  const [powerCue, setPowerCue] = React.useState(false);
   const [deck, setDeck] = React.useState<number[]>([]);
   const [discardPile, setDiscardPile] = React.useState<number | null>(null);
   const [isDeckGlowing, setIsDeckGlowing] = React.useState(false);
@@ -422,6 +426,122 @@ const TrainingPage: React.FC = () => {
     
     const playerKey = player === 'top' ? 'player1' : 'player2';
     const playerCards = player === 'top' ? player1Cards : player2Cards;
+    
+    // Mode pouvoir du Roi: sélectionner 2 cartes et les échanger
+    if (isKingPowerActive) {
+      const sourceCards = player === 'top' ? player1Cards : player2Cards;
+      // Ne pas permettre de sélectionner un slot vide
+      if (sourceCards[index].value === -1) return;
+      // Empêcher double sélection du même slot
+      if (kingSelections.length === 1 && kingSelections[0].player === player && kingSelections[0].index === index) return;
+
+      // Enregistrer la sélection
+      const newSel = [...kingSelections, { player, index }];
+      setKingSelections(newSel);
+
+      // Si c'est la 1ère sélection, attendre la seconde
+      if (newSel.length < 2) {
+        return;
+      }
+
+      // Nous avons 2 sélections, lancer l'animation d'échange puis défausser le Roi
+      const selA = newSel[0];
+      const selB = newSel[1];
+
+      try {
+        // Récupérer les éléments DOM et positions
+        const getEl = (p: 'top'|'bottom', idx: number, id: string | undefined) => {
+          let el: HTMLElement | null = null;
+          if (id) {
+            el = document.querySelector(`[data-player="${p}"][data-card-id="${id}"]`) as HTMLElement | null;
+          }
+          if (!el) {
+            el = document.querySelector(`[data-player="${p}"][data-card-index="${idx}"]`) as HTMLElement | null;
+          }
+          return el;
+        };
+
+        const aCards = selA.player === 'top' ? player1Cards : player2Cards;
+        const bCards = selB.player === 'top' ? player1Cards : player2Cards;
+        const aCard = aCards[selA.index];
+        const bCard = bCards[selB.index];
+        const aEl = getEl(selA.player, selA.index, aCard?.id);
+        const bEl = getEl(selB.player, selB.index, bCard?.id);
+        if (!aEl || !bEl) {
+          // Sécurité: si pas d'éléments, on fait un swap logique sans animation
+          await new Promise(r => setTimeout(r, 50));
+        } else {
+          // Masquer les sources
+          aEl.style.visibility = 'hidden';
+          bEl.style.visibility = 'hidden';
+          const ar = aEl.getBoundingClientRect();
+          const br = bEl.getBoundingClientRect();
+          const aCenter = { x: ar.left + ar.width/2, y: ar.top + ar.height/2 };
+          const bCenter = { x: br.left + br.width/2, y: br.top + br.height/2 };
+          // Lancer deux cartes en vol (face down)
+          setSwapAnimA({ from: aCenter, to: bCenter, toPlayer: selB.player, index: selB.index, cardValue: -1 });
+          setSwapAnimB({ from: bCenter, to: aCenter, toPlayer: selA.player, index: selA.index, cardValue: -1 });
+          await new Promise(r => setTimeout(r, 1000));
+          setSwapAnimA(null);
+          setSwapAnimB(null);
+          // Réafficher les slots après le swap
+          aEl.style.visibility = '';
+          bEl.style.visibility = '';
+        }
+
+        // Appliquer l'échange logique (valeurs et face cachée)
+        const applySwap = (p: 'top'|'bottom', idx: number, newVal: number) => {
+          if (p === 'top') {
+            setPlayer1Cards(prev => {
+              const next = [...prev];
+              next[idx] = { ...next[idx], value: newVal, isFlipped: false };
+              return next;
+            });
+          } else {
+            setPlayer2Cards(prev => {
+              const next = [...prev];
+              next[idx] = { ...next[idx], value: newVal, isFlipped: false };
+              return next;
+            });
+          }
+        };
+
+        applySwap(selA.player, selA.index, bCard.value);
+        applySwap(selB.player, selB.index, aCard.value);
+
+        // Attendre un tick pour que le DOM reflète le swap avant la défausse du Roi
+        await new Promise(requestAnimationFrame);
+
+        // Défausser le Roi pioché avec animation deck -> défausse
+        if (drawnCard) {
+          const deckRect = deckRef.current?.getBoundingClientRect();
+          const discardRect = discardRef.current?.getBoundingClientRect();
+          if (deckRect && discardRect) {
+            const deckCenter = { x: deckRect.left + deckRect.width / 2, y: deckRect.top + deckRect.height / 2 };
+            const discardCenter = { x: discardRect.left + discardRect.width / 2, y: discardRect.top + discardRect.height / 2 };
+            setReplaceOutImage(getCardImage(drawnCard.value));
+            setReplaceOutAnim({ from: deckCenter, to: discardCenter, toPlayer: currentPlayer === 'player1' ? 'top' : 'bottom', index: -1, cardValue: drawnCard.value });
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            setReplaceOutAnim(null);
+            setReplaceOutImage(null);
+          }
+          setDiscardPile(drawnCard.value);
+        }
+
+        // Reset des états et fin de tour
+        setDrawnCard(null);
+        setShowCardActions(false);
+        setIsKingPowerActive(false);
+        setKingSelections([]);
+
+        handleTurnEnd(currentPlayer);
+      } catch (e) {
+        // En cas d'erreur, reset du mode
+        setIsKingPowerActive(false);
+        setKingSelections([]);
+      }
+      return;
+    }
     
     // Si on est en train de sélectionner une carte à remplacer, ce mode a la priorité
     if (selectingCardToReplace) {
@@ -877,6 +997,9 @@ const TrainingPage: React.FC = () => {
   const [replaceInAnim, setReplaceInAnim] = React.useState<DealAnimState | null>(null);
   const [replaceOutImage, setReplaceOutImage] = React.useState<string | null>(null);
   const [replaceInImage, setReplaceInImage] = React.useState<string | null>(null);
+  // Animations d'échange (carte A -> B et carte B -> A), face cachée
+  const [swapAnimA, setSwapAnimA] = React.useState<DealAnimState | null>(null);
+  const [swapAnimB, setSwapAnimB] = React.useState<DealAnimState | null>(null);
   // Carte animée en vol (composant)
   const flyingCard = <FlyingCard state={dealAnim} />;
   // Superposer les animations de remplacement (sortie/entrée)
@@ -896,6 +1019,20 @@ const TrainingPage: React.FC = () => {
       noFlip
     />
   );
+  const swapOverlayA = (
+    <FlyingCard
+      state={swapAnimA}
+      durationMs={1000}
+      noFlip
+    />
+  );
+  const swapOverlayB = (
+    <FlyingCard
+      state={swapAnimB}
+      durationMs={1000}
+      noFlip
+    />
+  );
 
   return (
     <div
@@ -904,6 +1041,8 @@ const TrainingPage: React.FC = () => {
       {flyingCard}
       {replaceOutOverlay}
       {replaceInOverlay}
+      {swapOverlayA}
+      {swapOverlayB}
       {drawnCardAnimation}
       {/* Cue d'annonce de pénalité (arbitre qui siffle) */}
       {penaltyCue && (
@@ -939,6 +1078,15 @@ const TrainingPage: React.FC = () => {
                 'repeating-linear-gradient(0deg, rgba(255,255,255,0.06) 0px, rgba(255,255,255,0.06) 2px, transparent 3px, transparent 6px)'
             }}
           />
+        </div>
+      )}
+      {/* Cue d'activation de pouvoir */}
+      {powerCue && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
+          <div className="relative px-6 py-4 rounded-2xl bg-indigo-700/90 border-4 border-yellow-300 shadow-2xl text-center animate-pulse">
+            <div className="text-4xl">⚡️👑</div>
+            <div className="mt-1 text-xl font-extrabold text-yellow-200 tracking-wide uppercase">Pouvoir du Roi activé</div>
+          </div>
         </div>
       )}
       {/* Bannière flash pour la défausse rapide */}
@@ -1000,7 +1148,7 @@ const TrainingPage: React.FC = () => {
               cardsDealt={cardsDealt} 
               cards={player1Cards}
               onCardClick={(index) => handleCardClick('top', index)}
-              highlight={selectingCardToReplace && currentPlayer === 'player1'}
+              highlight={(selectingCardToReplace && currentPlayer === 'player1') || isKingPowerActive}
             />
           </div>
         </div>
@@ -1072,6 +1220,21 @@ const TrainingPage: React.FC = () => {
                     />
                   </div>
                   <div className="flex flex-col space-y-2">
+                    {drawnCard && getCardValue(drawnCard.value) === 12 && (
+                      <button
+                        onClick={async () => {
+                          // Activer le mode pouvoir du Roi
+                          setShowCardActions(false);
+                          setIsKingPowerActive(true);
+                          setKingSelections([]);
+                          setPowerCue(true);
+                          setTimeout(() => setPowerCue(false), 900);
+                        }}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-sm font-semibold shadow"
+                      >
+                        Activer et défausser
+                      </button>
+                    )}
                     <button
                       onClick={async () => {
                         if (drawnCard) {
@@ -1118,6 +1281,11 @@ const TrainingPage: React.FC = () => {
                   {selectingCardToReplace && (
                     <div className="text-yellow-300 text-xs mt-2 bg-black/30 px-3 py-1 rounded-full text-center">
                       Cliquez sur la carte à remplacer
+                    </div>
+                  )}
+                  {isKingPowerActive && (
+                    <div className="text-indigo-200 text-xs mt-2 bg-black/30 px-3 py-1 rounded-full text-center">
+                      Sélectionnez 2 cartes (toute la table)
                     </div>
                   )}
                 </div>
@@ -1167,7 +1335,7 @@ const TrainingPage: React.FC = () => {
               cardsDealt={cardsDealt} 
               cards={player2Cards}
               onCardClick={(index) => handleCardClick('bottom', index)}
-              highlight={selectingCardToReplace && currentPlayer === 'player2'}
+              highlight={(selectingCardToReplace && currentPlayer === 'player2') || isKingPowerActive}
             />
           </div>
         </div>
