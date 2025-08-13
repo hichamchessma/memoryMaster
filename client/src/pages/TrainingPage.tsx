@@ -1307,7 +1307,7 @@ const TrainingPage: React.FC = () => {
       {/* Plateau (milieu) : deck (gauche) • centre (info + carte piochée) • défausse (droite) */}
       <div className="row-start-3 row-end-4 flex justify-between items-center relative min-h-[240px] px-6 gap-6">
         {/* Deck à gauche */}
-        <div className="flex flex-col items-center ml-6">
+        <div className="flex flex-col items-center ml-6 -mt-6">
           <div 
             ref={deckRef} 
             className={`w-24 h-36 bg-blue-800 border-4 border-white rounded-xl shadow-xl flex flex-col items-center justify-center mb-2 relative cursor-pointer hover:border-blue-300 transition-all duration-500 ${
@@ -1360,7 +1360,7 @@ const TrainingPage: React.FC = () => {
                     position: 'absolute',
                     left: '50%',
                     transform: 'translateX(-50%)',
-                    top: 'calc(100% + 12px)'
+                    top: 'calc(100% + 4px)'
                   }}
                 >
                   <div className="w-28 h-40 mx-auto mb-3 drop-shadow-2xl">
