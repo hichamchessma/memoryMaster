@@ -442,6 +442,8 @@ const TrainingPage: React.FC = () => {
         const discardRect = discardRef.current?.getBoundingClientRect();
 
         if (selEl && deckRect && discardRect) {
+          // Masquer la carte source pendant l'animation sortante
+          selEl.style.visibility = 'hidden';
           const selRect = selEl.getBoundingClientRect();
           const selCenter = { x: selRect.left + selRect.width / 2, y: selRect.top + selRect.height / 2 };
           const deckCenter = { x: deckRect.left + deckRect.width / 2, y: deckRect.top + deckRect.height / 2 };
@@ -485,6 +487,13 @@ const TrainingPage: React.FC = () => {
 
         // Passer au tour suivant
         handleTurnEnd(currentPlayer);
+
+        // Après le re-render, réafficher le slot
+        try {
+          await new Promise(requestAnimationFrame);
+          const selEl2 = document.querySelector(`[data-player="${player}"][data-card-index="${index}"]`) as HTMLElement | null;
+          if (selEl2) selEl2.style.visibility = '';
+        } catch {}
       }
       return;
     }
@@ -853,6 +862,7 @@ const TrainingPage: React.FC = () => {
       state={replaceOutAnim}
       imageSrc={replaceOutImage || undefined}
       durationMs={1000}
+      noFlip
     />
   );
   const replaceInOverlay = (
@@ -860,6 +870,7 @@ const TrainingPage: React.FC = () => {
       state={replaceInAnim}
       imageSrc={replaceInImage || undefined}
       durationMs={1000}
+      noFlip
     />
   );
 

@@ -13,11 +13,15 @@ interface Props {
   state: DealAnimState | null;
   imageSrc?: string;
   durationMs?: number;
+  noFlip?: boolean; // if true, do not rotateY (avoid mirrored/inverted look)
 }
 
-const FlyingCard: React.FC<Props> = ({ state, imageSrc, durationMs = 800 }) => {
+const FlyingCard: React.FC<Props> = ({ state, imageSrc, durationMs = 800, noFlip = false }) => {
   if (!state) return null;
   const { from, to } = state;
+  const rY20 = noFlip ? '0deg' : '180deg';
+  const rY80 = noFlip ? '0deg' : '540deg';
+  const rY100 = noFlip ? '0deg' : '720deg';
   return (
     <div 
       className="absolute w-16 h-24 z-50"
@@ -52,7 +56,7 @@ const FlyingCard: React.FC<Props> = ({ state, imageSrc, durationMs = 800 }) => {
             20% {
               transform: 
                 translate(${(to.x - from.x) * 0.2}px, ${(to.y - from.y) * 0.2}px)
-                rotateY(180deg)
+                rotateY(${rY20})
                 rotateZ(5deg)
                 scale(1.1);
               opacity: 1;
@@ -60,7 +64,7 @@ const FlyingCard: React.FC<Props> = ({ state, imageSrc, durationMs = 800 }) => {
             80% {
               transform: 
                 translate(${(to.x - from.x) * 1.1}px, ${(to.y - from.y) * 1.1}px)
-                rotateY(540deg)
+                rotateY(${rY80})
                 rotateZ(-2deg)
                 scale(0.95);
               opacity: 1;
@@ -68,7 +72,7 @@ const FlyingCard: React.FC<Props> = ({ state, imageSrc, durationMs = 800 }) => {
             100% {
               transform: 
                 translate(${to.x - from.x}px, ${to.y - from.y}px)
-                rotateY(720deg)
+                rotateY(${rY100})
                 rotateZ(0deg)
                 scale(1);
               opacity: 0;
