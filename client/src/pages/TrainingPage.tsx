@@ -133,6 +133,11 @@ const TrainingPage: React.FC = () => {
 
   // Initialise un nouveau jeu
   const initializeDeck = () => {
+    // Stopper tous les timers/timeout éventuels d'une partie précédente
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    if (beforeRoundTimerRef.current) { clearInterval(beforeRoundTimerRef.current); beforeRoundTimerRef.current = null; }
+    if (prepTimeoutRef.current) { clearTimeout(prepTimeoutRef.current); prepTimeoutRef.current = null; }
+
     // Créer un nouveau tableau avec des objets uniques pour chaque carte
     const initialCards = Array(4).fill(null).map((_, i) => ({
       id: `card-${i}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -154,6 +159,7 @@ const TrainingPage: React.FC = () => {
     setCardsDealt(0);
     setCurrentPlayer('player1');
     setIsPlayerTurn(false);
+    setTimeLeft(15);
     // Ne pas initialiser à 15s, on affichera uniquement
     // les 5s de mémorisation puis 7s par joueur
     setGamePhase('preparation');
@@ -165,6 +171,10 @@ const TrainingPage: React.FC = () => {
     setShowCardActions(false);
     setSelectingCardToReplace(false);
     setDiscardPile(null);
+    setQuickDiscardActive(false);
+    setShowPrepOverlay(false);
+    setMemorizationTimerStarted(false);
+    memorizationStartedRef.current = false;
     setWinner(null);
     setShowVictory(false);
     setShowScoreboard(false);
@@ -202,6 +212,7 @@ const TrainingPage: React.FC = () => {
   const [isPlayerTurn, setIsPlayerTurn] = React.useState<boolean>(false);
   const timerRef = React.useRef<NodeJS.Timeout | null>(null);
   const beforeRoundTimerRef = React.useRef<NodeJS.Timeout | null>(null);
+  const prepTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   
   // Formatage du temps n'est plus utilisé ici (timer affiché dans TopBanner)
 
@@ -374,10 +385,13 @@ const TrainingPage: React.FC = () => {
       
       // Afficher l'overlay de préparation (2s), puis démarrer le minuteur de mémorisation
       setShowPrepOverlay(true);
-      setTimeout(() => {
+      // Annuler un éventuel timeout précédent et mémoriser celui en cours
+      if (prepTimeoutRef.current) { clearTimeout(prepTimeoutRef.current); }
+      prepTimeoutRef.current = setTimeout(() => {
         setShowPrepOverlay(false);
         // Démarrer de manière idempotente (protégée par ref)
         startBeforeRoundTimer();
+        prepTimeoutRef.current = null;
       }, 2000);
     }
   }, [cardsDealt, gamePhase]);
