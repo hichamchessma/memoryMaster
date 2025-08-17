@@ -88,6 +88,8 @@ const TrainingPage: React.FC = () => {
   const [showVictory, setShowVictory] = React.useState(false);
   const [scores, setScores] = React.useState<{ player1: number; player2: number }>({ player1: 0, player2: 0 });
   const [showScoreboard, setShowScoreboard] = React.useState(false);
+  // Mode Powerful: cliquer une carte => défausse immédiate
+  const [isPowerfulMode, setIsPowerfulMode] = React.useState(false);
 
   // Ref pour connaître en temps réel si une pénalité est en cours (utilisé dans les callbacks setInterval)
   const isInPenaltyRef = React.useRef(false);
@@ -103,6 +105,9 @@ const TrainingPage: React.FC = () => {
   const startNextGameFromModal = React.useCallback(() => {
     setShowScoreboard(false);
     handleStartNewGame();
+  }, []);
+  const togglePowerfulMode = React.useCallback(() => {
+    setIsPowerfulMode(prev => !prev);
   }, []);
 
   // Initialiser et mélanger le deck au chargement
@@ -163,6 +168,7 @@ const TrainingPage: React.FC = () => {
     setWinner(null);
     setShowVictory(false);
     setShowScoreboard(false);
+    setIsPowerfulMode(false);
   };
 
   // Pour stocker les positions deck/main (pour animation)
@@ -451,6 +457,94 @@ const TrainingPage: React.FC = () => {
     
     const playerKey = player === 'top' ? 'player1' : 'player2';
     const playerCards = player === 'top' ? player1Cards : player2Cards;
+    
+    // Mode Powerful: défausser immédiatement la carte cliquée (si non vide)
+    if (isPowerfulMode) {
+      if (playerCards[index].value === -1) return;
+      // Retourner la carte brièvement (facultatif)
+      if (player === 'top') {
+        setPlayer1Cards(prev => {
+          const newCards = [...prev];
+          newCards[index] = { ...newCards[index], isFlipped: true };
+          return newCards;
+        });
+      } else {
+        setPlayer2Cards(prev => {
+          const newCards = [...prev];
+          newCards[index] = { ...newCards[index], isFlipped: true };
+          return newCards;
+        });
+      }
+
+      const newCardsLocal = [...playerCards];
+      const discardedCard = newCardsLocal[index].value;
+      // Animation: carte depuis la main vers la défausse (1s)
+      try {
+        const oldCard = playerCards[index];
+        const oldCardId = oldCard.id;
+        let selEl = document.querySelector(`[data-player="${player}"][data-card-id="${oldCardId}"]`) as HTMLElement | null;
+        if (!selEl) {
+          selEl = document.querySelector(`[data-player="${player}"][data-card-index="${index}"]`) as HTMLElement | null;
+        }
+        const discardRect = discardRef.current?.getBoundingClientRect();
+        if (selEl && discardRect) {
+          selEl.style.visibility = 'hidden';
+          const selRect = selEl.getBoundingClientRect();
+          const selCenter = { x: selRect.left + selRect.width / 2, y: selRect.top + selRect.height / 2 };
+          const discardCenter = { x: discardRect.left + discardRect.width / 2, y: discardRect.top + discardRect.height / 2 };
+
+          setReplaceOutImage(getCardImage(discardedCard));
+          setReplaceOutAnim({ from: selCenter, to: discardCenter, toPlayer: player, index, cardValue: discardedCard });
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          setReplaceOutAnim(null);
+          setReplaceOutImage(null);
+        }
+      } catch {}
+
+      // Mettre à jour la défausse (après l'animation)
+      setDiscardPile(discardedCard);
+      if (quickDiscardActive) {
+        const rank = getRankLabel(discardedCard);
+        const who = (player === 'top') ? 'Joueur 1' : 'Joueur 2';
+        setQuickDiscardFlash(`${who} a jeté ${rank}`);
+        setTimeout(() => setQuickDiscardFlash(null), 1000);
+      }
+
+      // Retirer la carte du jeu
+      if (player === 'top') {
+        setPlayer1Cards(prev => {
+          const updatedCards = [...prev];
+          updatedCards[index] = { ...updatedCards[index], value: -1, isFlipped: false };
+          return updatedCards;
+        });
+      } else {
+        setPlayer2Cards(prev => {
+          const updatedCards = [...prev];
+          updatedCards[index] = { ...updatedCards[index], value: -1, isFlipped: false };
+          return updatedCards;
+        });
+      }
+
+      // Vérifier la victoire
+      const remainingCards = newCardsLocal.filter(card => card.value !== -1).length - 1; // on vient d'enlever 1
+      if (remainingCards === 0) {
+        setWinner(playerKey);
+        setShowVictory(true);
+        setIsPlayerTurn(false);
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+        }
+        setTimeout(() => {
+          setShowVictory(false);
+          setScores(prev => ({
+            player1: prev.player1 + (playerKey === 'player1' ? 1 : 0),
+            player2: prev.player2 + (playerKey === 'player2' ? 1 : 0)
+          }));
+          setShowScoreboard(true);
+        }, 3000);
+      }
+      return;
+    }
     
     // Mode pouvoir du Roi: sélectionner 2 cartes et les échanger
     if (isKingPowerActive) {
@@ -1323,6 +1417,13 @@ const TrainingPage: React.FC = () => {
           }}
         >
           <span role="img" aria-label="Voir les cartes">👁️</span>
+        </button>
+        <button
+          className={`${isPowerfulMode ? 'bg-red-600 hover:bg-red-700 focus:ring-red-400' : 'bg-yellow-600 hover:bg-yellow-700 focus:ring-yellow-400'} text-white rounded-full shadow-lg w-12 h-12 flex items-center justify-center text-2xl border-2 border-white focus:outline-none focus:ring-2`}
+          title={isPowerfulMode ? 'Désactiver Powerful mode' : 'Activer Powerful mode'}
+          onClick={togglePowerfulMode}
+        >
+          <span role="img" aria-label="Powerful">⚡</span>
         </button>
         <button
           className="bg-amber-600 hover:bg-amber-700 text-white rounded-full shadow-lg w-12 h-12 flex items-center justify-center text-2xl border-2 border-white focus:outline-none focus:ring-2 focus:ring-amber-400"
