@@ -6,6 +6,7 @@ import PrepOverlay from '../components/training/PrepOverlay';
 import DrawnCardAnimation from '../components/training/DrawnCardAnimation';
 import FlyingCard, { type DealAnimState } from '../components/training/FlyingCard';
 import TopBanner from '../components/training/TopBanner';
+import ScoreboardModal from '../components/training/ScoreboardModal';
 import { getCardImage, getCardValue, getRankLabel, isJoker } from '../utils/cards';
 
 // Style pour mettre en évidence le joueur actif
@@ -82,6 +83,12 @@ const TrainingPage: React.FC = () => {
   // Contrôle spécifique de l'overlay sombre (décorrélé du blocage logique isInPenalty)
   const [showPenaltyDim, setShowPenaltyDim] = React.useState(false);
 
+  // Victoire & Scores
+  const [winner, setWinner] = React.useState<null | 'player1' | 'player2'>(null);
+  const [showVictory, setShowVictory] = React.useState(false);
+  const [scores, setScores] = React.useState<{ player1: number; player2: number }>({ player1: 0, player2: 0 });
+  const [showScoreboard, setShowScoreboard] = React.useState(false);
+
   // Ref pour connaître en temps réel si une pénalité est en cours (utilisé dans les callbacks setInterval)
   const isInPenaltyRef = React.useRef(false);
   // Références visuelles
@@ -89,6 +96,14 @@ const TrainingPage: React.FC = () => {
   React.useEffect(() => {
     isInPenaltyRef.current = isInPenalty;
   }, [isInPenalty]);
+
+  // Handlers Scoreboard
+  const openScoreboard = React.useCallback(() => setShowScoreboard(true), []);
+  const closeScoreboard = React.useCallback(() => setShowScoreboard(false), []);
+  const startNextGameFromModal = React.useCallback(() => {
+    setShowScoreboard(false);
+    handleStartNewGame();
+  }, []);
 
   // Initialiser et mélanger le deck au chargement
   React.useEffect(() => {
@@ -145,6 +160,9 @@ const TrainingPage: React.FC = () => {
     setShowCardActions(false);
     setSelectingCardToReplace(false);
     setDiscardPile(null);
+    setWinner(null);
+    setShowVictory(false);
+    setShowScoreboard(false);
   };
 
   // Pour stocker les positions deck/main (pour animation)
@@ -839,8 +857,24 @@ const TrainingPage: React.FC = () => {
         // Vérifier si le joueur a gagné
         const remainingCards = newCards.filter(card => card.value !== -1).length;
         if (remainingCards === 0) {
-          // Le joueur a gagné
-          alert(`Félicitations ${playerKey === 'player1' ? 'Joueur 1' : 'Joueur 2'} a gagné !`);
+          // Le joueur a gagné: afficher overlay 3s puis tableau des scores
+          const playerKey = player === 'top' ? 'player1' : 'player2';
+          setWinner(playerKey);
+          setShowVictory(true);
+          setIsPlayerTurn(false);
+          // arrêter le timer au cas où
+          if (timerRef.current) {
+            clearInterval(timerRef.current);
+          }
+          setTimeout(() => {
+            setShowVictory(false);
+            // Mise à jour provisoire du score (+1 au vainqueur) — règles finales à venir
+            setScores(prev => ({
+              player1: prev.player1 + (playerKey === 'player1' ? 1 : 0),
+              player2: prev.player2 + (playerKey === 'player2' ? 1 : 0)
+            }));
+            setShowScoreboard(true);
+          }, 3000);
           return;
         }
         
@@ -1248,6 +1282,18 @@ const TrainingPage: React.FC = () => {
           </div>
         </div>
       )}
+      {/* Overlay de victoire (3s) */}
+      {showVictory && winner && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/70" />
+          <div className="relative z-10 px-8 py-6 rounded-2xl bg-yellow-400 text-gray-900 border-4 border-white shadow-2xl text-center">
+            <div className="text-5xl mb-2">🏆</div>
+            <div className="text-2xl font-extrabold">
+              {winner === 'player1' ? 'Joueur 1' : 'Joueur 2'} a gagné !
+            </div>
+          </div>
+        </div>
+      )}
       {/* Overlay de préparation */}
       <PrepOverlay show={showPrepOverlay} />
       {/* Bouton Start a new game en haut à gauche */}
@@ -1279,6 +1325,13 @@ const TrainingPage: React.FC = () => {
           <span role="img" aria-label="Voir les cartes">👁️</span>
         </button>
         <button
+          className="bg-amber-600 hover:bg-amber-700 text-white rounded-full shadow-lg w-12 h-12 flex items-center justify-center text-2xl border-2 border-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+          title="Voir le tableau des scores"
+          onClick={openScoreboard}
+        >
+          <span role="img" aria-label="Scores">📊</span>
+        </button>
+        <button
           className="bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg w-12 h-12 flex items-center justify-center text-2xl border-2 border-white focus:outline-none focus:ring-2 focus:ring-blue-400"
           title="Retour au Dashboard"
           onClick={() => navigate('/dashboard')}
@@ -1288,6 +1341,13 @@ const TrainingPage: React.FC = () => {
       </div>
       {/* Titre */}
       <TopBanner gamePhase={gamePhase} currentPlayer={currentPlayer} timeLeft={timeLeft} />
+      {/* Modal Scoreboard (consultable à tout moment et après victoire) */}
+      <ScoreboardModal
+        visible={showScoreboard}
+        scores={scores}
+        onClose={closeScoreboard}
+        onStartNextGame={startNextGameFromModal}
+      />
 
       {/* Joueur 1 (haut) */}
       <div className={`row-start-2 row-end-3 flex items-end justify-center min-h-[40px] ${isInPenalty && penaltyPlayer === 'player1' ? 'relative z-50' : ''}` }>
