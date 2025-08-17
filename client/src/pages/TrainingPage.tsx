@@ -948,11 +948,11 @@ const TrainingPage: React.FC = () => {
           });
         }
         
-        // Vérifier si le joueur a gagné
-        const remainingCards = newCards.filter(card => card.value !== -1).length;
+        // Vérifier si le joueur a gagné (compter les cartes restantes APRÈS avoir retiré celle-ci)
+        // newCards reflète l'état AVANT mise à -1; on soustrait donc 1
+        const remainingCards = (playerCards.filter(card => card.value !== -1).length) - 1;
         if (remainingCards === 0) {
           // Le joueur a gagné: afficher overlay 3s puis tableau des scores
-          const playerKey = player === 'top' ? 'player1' : 'player2';
           setWinner(playerKey);
           setShowVictory(true);
           setIsPlayerTurn(false);
