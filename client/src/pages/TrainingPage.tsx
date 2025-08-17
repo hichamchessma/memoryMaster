@@ -897,11 +897,25 @@ const TrainingPage: React.FC = () => {
       // Petite pause pour montrer la carte
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      const topCardValue = getCardValue(discardPile);
-      const clickedCardValue = getCardValue(playerCards[index].value);
-      
-      // Vérifier si la carte cliquée correspond à la valeur de la défausse
-      if (clickedCardValue === topCardValue) {
+      const topRaw = discardPile;
+      const clickedRaw = playerCards[index].value;
+      const topCardValue = getCardValue(topRaw);
+      const clickedCardValue = getCardValue(clickedRaw);
+
+      // Correspondance: si les deux sont des Jokers, il faut même type (joker vs joker2)
+      // Sinon, comparer les valeurs de rang.
+      const isMatch = (() => {
+        if (isJoker(topRaw) && isJoker(clickedRaw)) {
+          const topType = topRaw >= 110 ? 2 : 1; // 110..115 => joker2
+          const clickedType = clickedRaw >= 110 ? 2 : 1;
+          return topType === clickedType;
+        }
+        if (isJoker(topRaw) || isJoker(clickedRaw)) return false;
+        return clickedCardValue === topCardValue;
+      })();
+
+      // Vérifier si la carte cliquée correspond à la valeur/type de la défausse
+      if (isMatch) {
         // Défausse réussie
         const newCards = [...playerCards];
         const discardedCard = newCards[index].value;
