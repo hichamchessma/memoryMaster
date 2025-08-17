@@ -34,6 +34,21 @@ interface CardState {
   updated?: number; // Timestamp pour forcer les mises à jour
 }
 
+// Calcule le score d'une carte selon les règles
+function getCardScore(value: number): number {
+  if (value === -1) return 0; // slot vide
+  // Jokers
+  if (value >= 104 && value <= 109) return -1; // Joker type 1
+  if (value >= 110 && value <= 115) return -2; // Joker type 2
+  // Cartes classiques
+  const rank = getCardValue(value); // 0..12 (A..K)
+  if (rank === 0) return 1; // As
+  if (rank >= 1 && rank <= 8) return rank + 1; // 2..9
+  if (rank === 9) return 0; // 10
+  // Valet, Dame, Roi
+  return 10;
+}
+
 const TrainingPage: React.FC = () => {
   const navigate = useNavigate();
   const deckRef = React.useRef<HTMLDivElement>(null);
@@ -548,11 +563,15 @@ const TrainingPage: React.FC = () => {
         if (timerRef.current) {
           clearInterval(timerRef.current);
         }
+        // Calculer le score à ajouter pour le perdant (somme de ses cartes restantes)
+        const loserKey: 'player1'|'player2' = playerKey === 'player1' ? 'player2' : 'player1';
+        const loserCardsArr = loserKey === 'player1' ? player1Cards : player2Cards;
+        const loserScoreToAdd = loserCardsArr.reduce((sum, c) => sum + getCardScore(c.value), 0);
         setTimeout(() => {
           setShowVictory(false);
           setScores(prev => ({
-            player1: prev.player1 + (playerKey === 'player1' ? 1 : 0),
-            player2: prev.player2 + (playerKey === 'player2' ? 1 : 0)
+            player1: prev.player1 + (loserKey === 'player1' ? loserScoreToAdd : 0),
+            player2: prev.player2 + (loserKey === 'player2' ? loserScoreToAdd : 0)
           }));
           setShowScoreboard(true);
         }, 3000);
@@ -988,12 +1007,15 @@ const TrainingPage: React.FC = () => {
           if (timerRef.current) {
             clearInterval(timerRef.current);
           }
+          // Calculer le score du perdant (somme des cartes restantes)
+          const loserKey: 'player1'|'player2' = playerKey === 'player1' ? 'player2' : 'player1';
+          const loserCardsArr = loserKey === 'player1' ? player1Cards : player2Cards;
+          const loserScoreToAdd = loserCardsArr.reduce((sum, c) => sum + getCardScore(c.value), 0);
           setTimeout(() => {
             setShowVictory(false);
-            // Mise à jour provisoire du score (+1 au vainqueur) — règles finales à venir
             setScores(prev => ({
-              player1: prev.player1 + (playerKey === 'player1' ? 1 : 0),
-              player2: prev.player2 + (playerKey === 'player2' ? 1 : 0)
+              player1: prev.player1 + (loserKey === 'player1' ? loserScoreToAdd : 0),
+              player2: prev.player2 + (loserKey === 'player2' ? loserScoreToAdd : 0)
             }));
             setShowScoreboard(true);
           }, 3000);
