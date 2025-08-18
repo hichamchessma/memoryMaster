@@ -119,7 +119,8 @@ const TrainingPage: React.FC = () => {
   const closeScoreboard = React.useCallback(() => setShowScoreboard(false), []);
   const startNextGameFromModal = React.useCallback(() => {
     setShowScoreboard(false);
-    handleStartNewGame();
+    // Ne pas réinitialiser les scores pour "Next Game"
+    handleStartNewGame(false);
   }, []);
   const togglePowerfulMode = React.useCallback(() => {
     setIsPowerfulMode(prev => !prev);
@@ -1108,9 +1109,14 @@ const TrainingPage: React.FC = () => {
   };
 
   // Lance la distribution stylée
-  const handleStartNewGame = async () => {
+  const handleStartNewGame = async (resetScores: boolean = true) => {
     if (isDealing) return; // Éviter les clics multiples
     
+    // Réinitialiser les scores si demandé (bouton "Start a new game")
+    if (resetScores) {
+      setScores({ player1: 0, player2: 0 });
+    }
+
     // Réinitialiser le jeu
     initializeDeck();
     
@@ -1444,7 +1450,7 @@ const TrainingPage: React.FC = () => {
       <button
         className="absolute top-3 left-3 z-30 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow-lg px-4 py-2 flex items-center justify-center text-base font-bold border-2 border-white focus:outline-none focus:ring-2 focus:ring-green-400 disabled:opacity-60 disabled:cursor-not-allowed"
         title="Start a new game"
-        onClick={handleStartNewGame}
+        onClick={() => handleStartNewGame(true)}
         disabled={isDealing}
       >
         <span className="mr-2">🆕</span> Start a new game
