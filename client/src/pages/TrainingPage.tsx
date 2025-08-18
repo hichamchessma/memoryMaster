@@ -555,6 +555,10 @@ const TrainingPage: React.FC = () => {
         });
       }
 
+      // Vérifier la victoire (ignorer pendant un remplacement en cours)
+      if (selectingCardToReplace) {
+        return;
+      }
       // Vérifier la victoire
       const remainingCards = newCardsLocal.filter(card => card.value !== -1).length - 1; // on vient d'enlever 1
       if (remainingCards === 0) {
@@ -996,7 +1000,10 @@ const TrainingPage: React.FC = () => {
           });
         }
         
-        // Vérifier si le joueur a gagné (compter les cartes restantes APRÈS avoir retiré celle-ci)
+        // Vérifier si le joueur a gagné (ignorer pendant un remplacement) (compter les cartes restantes APRÈS avoir retiré celle-ci)
+        if (selectingCardToReplace) {
+          return;
+        }
         // newCards reflète l'état AVANT mise à -1; on soustrait donc 1
         const remainingCards = (playerCards.filter(card => card.value !== -1).length) - 1;
         if (remainingCards === 0) {
@@ -1004,20 +1011,8 @@ const TrainingPage: React.FC = () => {
           setWinner(playerKey);
           setShowVictory(true);
           setIsPlayerTurn(false);
-          // arrêter le timer au cas où
-          if (timerRef.current) {
-            clearInterval(timerRef.current);
-          }
-          // Calculer le score du perdant (somme des cartes restantes)
-          const loserKey: 'player1'|'player2' = playerKey === 'player1' ? 'player2' : 'player1';
-          const loserCardsArr = loserKey === 'player1' ? player1Cards : player2Cards;
-          const loserScoreToAdd = loserCardsArr.reduce((sum, c) => sum + getCardScore(c.value), 0);
           setTimeout(() => {
             setShowVictory(false);
-            setScores(prev => ({
-              player1: prev.player1 + (loserKey === 'player1' ? loserScoreToAdd : 0),
-              player2: prev.player2 + (loserKey === 'player2' ? loserScoreToAdd : 0)
-            }));
             setShowScoreboard(true);
           }, 3000);
           return;
