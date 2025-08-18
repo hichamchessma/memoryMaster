@@ -75,6 +75,13 @@ const TrainingPage: React.FC = () => {
   const [isJackPowerActive, setIsJackPowerActive] = React.useState(false);
   const [jackCue, setJackCue] = React.useState(false);
   const [deck, setDeck] = React.useState<number[]>([]);
+  // Test helper: force next draw
+  const [forcedNextDraw, setForcedNextDraw] = React.useState<
+    | { kind: 'rank'; rank: number }
+    | { kind: 'joker'; type: 1 | 2 }
+    | null
+  >(null);
+  const [showForceMenu, setShowForceMenu] = React.useState(false);
   const [discardPile, setDiscardPile] = React.useState<number | null>(null);
   const [isDeckGlowing, setIsDeckGlowing] = React.useState(false);
   const [isInPenalty, setIsInPenalty] = React.useState(false);
@@ -1476,6 +1483,68 @@ const TrainingPage: React.FC = () => {
         >
           <span role="img" aria-label="Powerful">⚡</span>
         </button>
+        <div className="relative">
+          <button
+            className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-full shadow-lg w-12 h-12 flex items-center justify-center text-2xl border-2 border-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
+            title="Forcer la prochaine pioche"
+            onClick={() => setShowForceMenu(v => !v)}
+          >
+            <span role="img" aria-label="Force Draw">🎯</span>
+          </button>
+          {showForceMenu && (
+            <div className="absolute right-0 mt-2 bg-black/80 text-white rounded-xl shadow-2xl border border-white/20 p-3 w-52">
+              <div className="text-xs mb-2 opacity-80">Choisir la prochaine carte</div>
+              <div className="grid grid-cols-4 gap-2 text-sm">
+                {['A','2','3','4','5','6','7','8','9','10','J','Q','K','Jok1','Jok2'].map(lbl => (
+                  <button
+                    key={lbl}
+                    className={`px-2 py-1 rounded-md border border-white/30 hover:bg-white/10 ${
+                      (forcedNextDraw && (
+                        (forcedNextDraw.kind==='rank' && lbl === (forcedNextDraw.rank===0?'A': forcedNextDraw.rank>=1 && forcedNextDraw.rank<=8 ? String(forcedNextDraw.rank+1) : forcedNextDraw.rank===9?'10': forcedNextDraw.rank===10?'J': forcedNextDraw.rank===11?'Q':'K')) ||
+                        (forcedNextDraw?.kind==='joker' && ((forcedNextDraw.type===1 && lbl==='Jok1') || (forcedNextDraw.type===2 && lbl==='Jok2')))
+                      )) ? 'bg-white/10' : ''
+                    }`}
+                    onClick={() => {
+                      // Map label to internal representation
+                      if (lbl === 'Jok1') {
+                        setForcedNextDraw({ kind: 'joker', type: 1 });
+                      } else if (lbl === 'Jok2') {
+                        setForcedNextDraw({ kind: 'joker', type: 2 });
+                      } else {
+                        const mapRank = (l: string): number => {
+                          if (l === 'A') return 0;
+                          if (l === 'J') return 10;
+                          if (l === 'Q') return 11;
+                          if (l === 'K') return 12;
+                          if (l === '10') return 9;
+                          // '2'..'9' => 1..8
+                          const n = parseInt(l, 10);
+                          return (isNaN(n) ? 0 : (n - 1));
+                        };
+                        setForcedNextDraw({ kind: 'rank', rank: mapRank(lbl) });
+                      }
+                      setShowForceMenu(false);
+                    }}
+                  >
+                    {lbl}
+                  </button>
+                ))}
+              </div>
+              {forcedNextDraw && (
+                <div className="mt-3 text-xs opacity-80 flex items-center justify-between">
+                  <span>
+                    Forcé: {
+                      forcedNextDraw.kind==='rank'
+                        ? (forcedNextDraw.rank===0?'A': forcedNextDraw.rank>=1 && forcedNextDraw.rank<=8 ? String(forcedNextDraw.rank+1) : forcedNextDraw.rank===9?'10': forcedNextDraw.rank===10?'J': forcedNextDraw.rank===11?'Q':'K')
+                        : (forcedNextDraw.type===1?'Jok1':'Jok2')
+                    }
+                  </span>
+                  <button className="underline" onClick={() => setForcedNextDraw(null)}>Effacer</button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         <button
           className="bg-amber-600 hover:bg-amber-700 text-white rounded-full shadow-lg w-12 h-12 flex items-center justify-center text-2xl border-2 border-white focus:outline-none focus:ring-2 focus:ring-amber-400"
           title="Voir le tableau des scores"
@@ -1537,7 +1606,24 @@ const TrainingPage: React.FC = () => {
               // Piocher une carte du deck
               if (deck.length > 0) {
                 const newDeck = [...deck];
-                const cardValue = newDeck.pop();
+                // Si une pioche forcée est sélectionnée, tenter de trouver une carte correspondante
+                let cardValue: number | undefined;
+                if (forcedNextDraw) {
+                  const findIndexByRank = (rank: number) => newDeck.findIndex(v => !isJoker(v) && getCardValue(v) === rank);
+                  const findIndexJoker = (type: 1|2) => newDeck.findIndex(v => (type===1 ? (v>=104 && v<=109) : (v>=110 && v<=115)));
+                  let idx = -1;
+                  if (forcedNextDraw.kind === 'rank') {
+                    idx = findIndexByRank(forcedNextDraw.rank);
+                  } else {
+                    idx = findIndexJoker(forcedNextDraw.type);
+                  }
+                  if (idx !== -1) {
+                    cardValue = newDeck.splice(idx, 1)[0];
+                  }
+                }
+                if (cardValue === undefined) {
+                  cardValue = newDeck.pop();
+                }
                 setDeck(newDeck);
                 
                 if (cardValue !== undefined) {
@@ -1548,6 +1634,10 @@ const TrainingPage: React.FC = () => {
                       value: cardValue, 
                       isFlipped: false 
                     });
+                    // Consommer la pioche forcée après usage
+                    if (forcedNextDraw) {
+                      setForcedNextDraw(null);
+                    }
                   }
                   
                   // Mettre en pause le minuteur pendant que le joueur prend sa décision
