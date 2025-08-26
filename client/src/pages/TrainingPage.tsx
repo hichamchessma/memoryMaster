@@ -1018,8 +1018,19 @@ const TrainingPage: React.FC = () => {
           setWinner(playerKey);
           setShowVictory(true);
           setIsPlayerTurn(false);
+          if (timerRef.current) {
+            clearInterval(timerRef.current);
+          }
+          // Calculer le score à ajouter pour le perdant (somme de ses cartes restantes)
+          const loserKey: 'player1'|'player2' = playerKey === 'player1' ? 'player2' : 'player1';
+          const loserCardsArr = loserKey === 'player1' ? player1Cards : player2Cards;
+          const loserScoreToAdd = loserCardsArr.reduce((sum, c) => sum + getCardScore(c.value), 0);
           setTimeout(() => {
             setShowVictory(false);
+            setScores(prev => ({
+              player1: prev.player1 + (loserKey === 'player1' ? loserScoreToAdd : 0),
+              player2: prev.player2 + (loserKey === 'player2' ? loserScoreToAdd : 0)
+            }));
             setShowScoreboard(true);
           }, 3000);
           return;
