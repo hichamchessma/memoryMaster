@@ -20,6 +20,9 @@ const io = socketIo(server, {
   }
 });
 
+// Rendre io accessible depuis les contrôleurs
+app.set('io', io);
+
 // Middleware
 app.use(cors({
   origin: 'http://localhost:5173',

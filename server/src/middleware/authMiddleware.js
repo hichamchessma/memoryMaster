@@ -34,7 +34,23 @@ const protect = async (req, res, next) => {
       }
       // Vérifier le token normalement sinon
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      req.user = await User.findById(decoded.id).select('-password');
+      // Support des invités (pas de lookup DB)
+      if (decoded && decoded.guest) {
+        req.user = {
+          _id: decoded.id,
+          firstName: decoded.firstName || 'Invité',
+          lastName: '',
+          email: '',
+          age: null,
+          nationality: '',
+          elo: 1000,
+          totalPoints: 0,
+          avatar: '',
+          role: 'guest',
+        };
+      } else {
+        req.user = await User.findById(decoded.id).select('-password');
+      }
       next();
     } catch (error) {
       console.error('Erreur d\'authentification:', error);

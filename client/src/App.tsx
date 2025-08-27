@@ -14,14 +14,14 @@ import TrainingPage from './pages/TrainingPage';
 import { useAuth } from './context/AuthContext';
 import { Navigate } from 'react-router-dom';
 import HomePage from './pages/HomePage';
-import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
 import DashboardPage from './pages/DashboardPage';
 import ProtectedRoute from './components/ProtectedRoute';
+import StartGamePage from './pages/StartGamePage';
+import RoomPage from './pages/RoomPage';
+import OnlineGamePage from './pages/OnlineGamePage';
 
 // Temporary placeholder pages
 const ProfilePage = () => <div>Profil en construction</div>;
-const GamePage = () => <div>Jeu en construction</div>;
 const NotFoundPage = () => <div>Page non trouvée</div>;
 
 const queryClient = new QueryClient({
@@ -35,7 +35,7 @@ const queryClient = new QueryClient({
 
 function AuthRedirectHome() {
   const { user } = useAuth();
-  if (user || (import.meta.env.DEV && localStorage.getItem('token') === 'dev-token')) {
+  if (user) {
     return <Navigate to="/dashboard" replace />;
   }
   return <HomePage />;
@@ -51,15 +51,18 @@ function App() {
               <Route element={<Layout />}>
                   {/* Public Routes */}
                   <Route path="/" element={<AuthRedirectHome />} />
-                  <Route path="/login" element={<LoginPage />} />
-                  <Route path="/register" element={<RegisterPage />} />
+                  {/* Legacy routes -> redirect to Home (Google/Guest only) */}
+                  <Route path="/login" element={<Navigate to="/" replace />} />
+                  <Route path="/register" element={<Navigate to="/" replace />} />
                   <Route path="/training" element={<TrainingPage />} />
 
                   {/* Protected Routes */}
                   <Route element={<ProtectedRoute />}>
                     <Route path="/dashboard" element={<DashboardPage />} />
                     <Route path="/profile" element={<ProfilePage />} />
-                    <Route path="/game/:gameId" element={<GamePage />} />
+                    <Route path="/start-game" element={<StartGamePage />} />
+                    <Route path="/room/:code" element={<RoomPage />} />
+                    <Route path="/game/:gameId" element={<OnlineGamePage />} />
                   </Route>
 
                   {/* Not Found */}

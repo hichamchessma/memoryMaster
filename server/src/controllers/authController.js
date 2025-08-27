@@ -1,12 +1,84 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { generateGameCode } = require('../utils/gameUtils');
+const { OAuth2Client } = require('google-auth-library');
+
+const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_change_me';
 
 // Générer un token JWT
 const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
+  return jwt.sign({ id }, JWT_SECRET, {
     expiresIn: '30d'
   });
+};
+
+// Connexion via Google (Google Identity Services — idToken -> JWT interne)
+exports.googleLogin = async (req, res, next) => {
+  try {
+    const { idToken } = req.body;
+    if (!idToken) {
+      return res.status(400).json({ message: 'idToken manquant' });
+    }
+
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    if (!clientId) {
+      return res.status(500).json({ message: 'GOOGLE_CLIENT_ID non configuré' });
+    }
+
+    const client = new OAuth2Client(clientId);
+    const ticket = await client.verifyIdToken({ idToken, audience: clientId });
+    const payload = ticket.getPayload();
+    if (!payload || !payload.email) {
+      return res.status(401).json({ message: 'Token Google invalide' });
+    }
+
+    const email = payload.email.toLowerCase();
+    const firstName = payload.given_name || 'Joueur';
+    const lastName = payload.family_name || '';
+
+    // Upsert utilisateur basé sur l'email Google
+    let user = await User.findOne({ email });
+    if (!user) {
+      user = await User.create({
+        firstName,
+        lastName,
+        email,
+        password: Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2),
+        nationality: '',
+        age: null,
+      });
+    } else {
+      user.firstName = firstName || user.firstName;
+      user.lastName = lastName || user.lastName;
+      user.lastLogin = new Date();
+      await user.save();
+    }
+
+    const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '30d' });
+    res.json({
+      _id: user._id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      elo: user.elo,
+      totalPoints: user.totalPoints,
+      gamesPlayed: user.gamesPlayed,
+      gamesWon: user.gamesWon,
+      token
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Générer un token JWT invité (sans utilisateur DB)
+const generateGuestToken = (guest) => {
+  return jwt.sign({
+    guest: true,
+    id: guest._id,
+    role: 'guest',
+    firstName: guest.firstName,
+  }, JWT_SECRET, { expiresIn: '7d' });
 };
 
 // Inscription d'un nouvel utilisateur
@@ -159,6 +231,40 @@ exports.updateProfile = async (req, res, next) => {
       age: user.age,
       nationality: user.nationality,
       elo: user.elo
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Connexion en mode invité (sans compte)
+exports.guestLogin = async (req, res, next) => {
+  try {
+    const suffix = Math.floor(1000 + Math.random() * 9000);
+    const guest = {
+      _id: `guest-${Date.now()}-${suffix}`,
+      firstName: `Invité ${suffix}`,
+      lastName: '',
+      email: '',
+      age: null,
+      nationality: '',
+      elo: 1000,
+      totalPoints: 0,
+      gamesPlayed: 0,
+      gamesWon: 0,
+      role: 'guest'
+    };
+
+    const token = jwt.sign({
+      guest: true,
+      id: guest._id,
+      role: 'guest',
+      firstName: guest.firstName,
+    }, JWT_SECRET, { expiresIn: '7d' });
+
+    res.json({
+      ...guest,
+      token
     });
   } catch (error) {
     next(error);

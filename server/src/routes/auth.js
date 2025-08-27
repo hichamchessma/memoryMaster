@@ -2,15 +2,15 @@ const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/authMiddleware');
 const {
-  register,
-  login,
+  guestLogin,
+  googleLogin,
   getProfile,
   updateProfile
 } = require('../controllers/authController');
 
 // Routes d'authentification
-router.post('/register', register);
-router.post('/login', login);
+router.post('/guest', guestLogin);
+router.post('/google', googleLogin);
 
 // Routes protégées nécessitant une authentification
 router.route('/profile')

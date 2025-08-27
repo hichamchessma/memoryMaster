@@ -1,11 +1,75 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 
 const HomePage = () => {
-  const { isAuthenticated } = useAuth();
+  const { login } = useAuth();
   const navigate = useNavigate();
+  const [loadingGuest, setLoadingGuest] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const googleBtnRef = useRef<HTMLDivElement | null>(null);
+  const apiBase = (import.meta as any).env?.VITE_API_URL || '/api';
+
+  // Google Identity Services: handler pour recevoir l'id_token
+  const handleGoogleCredential = useCallback(async (response: any) => {
+    const idToken = response?.credential;
+    if (!idToken) return;
+    setError(null);
+    
+    try {
+      const resp = await fetch(`${apiBase}/auth/google`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      });
+      if (!resp.ok) throw new Error('Google login failed');
+      const data = await resp.json();
+      login({ ...(data || {}), token: data?.token });
+      navigate('/dashboard');
+    } catch (e: any) {
+      setError(e.message || 'Erreur Google');
+    } finally {
+    }
+  }, [login, navigate]);
+
+  // Initialiser Google One Tap et le bouton officiel si la librairie est disponible
+  useEffect(() => {
+    // @ts-ignore
+    const google = (window as any).google;
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+    if (!google || !clientId) return;
+    try {
+      google.accounts.id.initialize({
+        client_id: clientId,
+        callback: handleGoogleCredential,
+      });
+      if (googleBtnRef.current) {
+        google.accounts.id.renderButton(googleBtnRef.current, {
+          theme: 'outline',
+          size: 'large',
+          text: 'continue_with',
+          shape: 'pill',
+        });
+      }
+    } catch (_) { /* noop */ }
+  }, [handleGoogleCredential]);
+
+  const continueAsGuest = async () => {
+    setError(null);
+    setLoadingGuest(true);
+    try {
+      const resp = await fetch(`${apiBase}/auth/guest`, { method: 'POST' });
+      if (!resp.ok) throw new Error('Impossible de continuer en invité');
+      const data = await resp.json();
+      login({ ...(data || {}), token: data?.token });
+      navigate('/dashboard');
+    } catch (e: any) {
+      setError(e.message || 'Erreur inconnue');
+    } finally {
+      setLoadingGuest(false);
+    }
+  };
 
 
   return (
@@ -35,14 +99,23 @@ const HomePage = () => {
             Rejoignez vos amis dans une aventure palpitante de mémoire et de stratégie. Créez ou rejoignez une partie et prouvez que vous êtes le vrai Memory Master !
           </p>
           <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link to="/register" className="btn-main">Commencer une partie</Link>
-            <Link to="/scores" className="btn-secondary">Voir les scores</Link>
+            <div ref={googleBtnRef} className="flex" />
+
             <button
-  className="btn-main"
-  style={{background: 'linear-gradient(90deg, #ff6f00 0%, #ffb300 100%)', color: '#fff'}} 
-  onClick={() => { window.scrollTo(0,0); navigate('/training'); }}
->S'entraîner</button>
+              disabled={loadingGuest}
+              onClick={continueAsGuest}
+              className="btn-secondary disabled:opacity-60"
+            >{loadingGuest ? 'Chargement...' : 'Continuer en invité'}</button>
+
+            <button
+              className="btn-main"
+              style={{background: 'linear-gradient(90deg, #ff6f00 0%, #ffb300 100%)', color: '#fff'}} 
+              onClick={() => { window.scrollTo(0,0); navigate('/training'); }}
+            >S'entraîner</button>
           </div>
+          {error && (
+            <p className="mt-4 text-red-600 text-center">{error}</p>
+          )}
           <img
             src="https://example.com/app-screenshot.jpg"
             alt="App screenshot"
@@ -112,17 +185,17 @@ const HomePage = () => {
         <div className="mx-auto max-w-2xl py-16 px-4 text-center sm:py-20 sm:px-6 lg:px-8">
           <h2 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
             <span className="block">Prêt à jouer ?</span>
-            <span className="block">Créez votre compte dès maintenant.</span>
+            <span className="block">Connectez-vous avec Google ou jouez en invité.</span>
           </h2>
-          <p className="mt-4 text-lg leading-6 text-indigo-100">
-            Rejoignez notre communauté de joueurs et commencez à jouer en quelques clics.
-          </p>
-          <Link
-            to="/register"
-            className="mt-8 inline-flex w-full items-center justify-center rounded-md border border-transparent bg-white px-5 py-3 text-base font-medium text-indigo-600 hover:bg-indigo-50 sm:w-auto"
-          >
-            S'inscrire gratuitement
-          </Link>
+          <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
+            <div ref={googleBtnRef} />
+            <button
+              onClick={continueAsGuest}
+              className="inline-flex items-center justify-center rounded-md bg-white/10 px-5 py-3 text-base font-medium text-white ring-1 ring-white/20 hover:bg-white/20"
+            >
+              Continuer en invité
+            </button>
+          </div>
         </div>
       </div> {/* homepage-content */}
     </div> /* homepage-bg */

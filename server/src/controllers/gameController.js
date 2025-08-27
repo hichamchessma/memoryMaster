@@ -1,6 +1,7 @@
 const Game = require('../models/Game');
 const User = require('../models/User');
 const { v4: uuidv4 } = require('uuid');
+const { getGameState } = require('../services/socketService');
 
 // Fonction utilitaire pour générer un code de jeu unique
 const generateGameCode = async () => {
@@ -372,6 +373,16 @@ exports.startGame = async (req, res, next) => {
       message: 'Partie démarrée avec succès',
       game: gameData
     });
+
+    // Émettre l'état aux clients du salon via Socket.IO
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        io.to(game.code).emit('game_updated', await getGameState(game));
+      }
+    } catch (e) {
+      console.error('Erreur émission socket startGame:', e);
+    }
   } catch (error) {
     next(error);
   }

@@ -29,8 +29,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   // Vérifier l'état d'authentification au chargement
   useEffect(() => {
-    // DEV ONLY: auto-login d'un utilisateur fictif si aucun token n'est présent
-    if (import.meta.env.DEV && !localStorage.getItem('token')) {
+    // DEV ONLY (opt-in): auto-login d'un utilisateur fictif si VITE_ENABLE_DEV_AUTOLOGIN === 'true'
+    const devAutologinEnabled = import.meta.env.DEV && import.meta.env.VITE_ENABLE_DEV_AUTOLOGIN === 'true';
+    if (devAutologinEnabled && !localStorage.getItem('token')) {
       const devUser = {
         _id: 'dev-user-id',
         firstName: 'Dev',
@@ -57,8 +58,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
-      // DEV ONLY: si token est 'dev-token', injecte le user de dev sans appel API
-      if (import.meta.env.DEV && token === 'dev-token') {
+      // DEV ONLY (opt-in): si token est 'dev-token', injecte le user de dev sans appel API
+      if (devAutologinEnabled && token === 'dev-token') {
         const devUser = {
           _id: 'dev-user-id',
           firstName: 'Dev',

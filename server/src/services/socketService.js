@@ -225,3 +225,6 @@ async function getGameState(game) {
     turnEndTime: populatedGame.turnEndTime
   };
 }
+
+// Export utilitaire pour réutilisation côté contrôleurs (REST)
+module.exports.getGameState = getGameState;

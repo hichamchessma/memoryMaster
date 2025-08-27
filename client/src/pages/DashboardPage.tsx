@@ -14,6 +14,7 @@ const DashboardPage = () => {
       <div className="max-w-md mx-auto space-y-4">
         <button 
           className="w-full bg-blue-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-600 transition duration-300 shadow-lg"
+          onClick={() => navigate('/start-game')}
         >
           Commencer une partie
         </button>
