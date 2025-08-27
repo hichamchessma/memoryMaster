@@ -112,6 +112,10 @@ const TrainingPage: React.FC = () => {
   const [showScoreboard, setShowScoreboard] = React.useState(false);
   // Mode Powerful: cliquer une carte => défausse immédiate
   const [isPowerfulMode, setIsPowerfulMode] = React.useState(false);
+  // Bombom & ShowTime
+  const [bombomDeclaredBy, setBombomDeclaredBy] = React.useState<null | 'player1' | 'player2'>(null);
+  const [bombomCancelUsed, setBombomCancelUsed] = React.useState<{ player1: boolean; player2: boolean }>({ player1: false, player2: false });
+  const [showShowTimePrompt, setShowShowTimePrompt] = React.useState(false);
 
   // Ref pour connaître en temps réel si une pénalité est en cours (utilisé dans les callbacks setInterval)
   const isInPenaltyRef = React.useRef(false);
@@ -202,6 +206,10 @@ const TrainingPage: React.FC = () => {
     setShowVictory(false);
     setShowScoreboard(false);
     setIsPowerfulMode(false);
+    // Reset Bombom state for a new game
+    setBombomDeclaredBy(null);
+    setBombomCancelUsed({ player1: false, player2: false });
+    setShowShowTimePrompt(false);
   };
 
   // Pour stocker les positions deck/main (pour animation)
@@ -274,6 +282,26 @@ const TrainingPage: React.FC = () => {
     const newPhase = currentPlayer === 'player1' ? 'player1_turn' : 'player2_turn';
     setGamePhase(newPhase);
     
+    // Si Bombom a été déclaré précédemment par ce joueur, gérer ShowTime avant tout
+    if (bombomDeclaredBy === currentPlayer) {
+      // Stopper tout timer en cours par sécurité
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+      // Si l'annulation n'a pas encore été utilisée, proposer d'annuler ou de lancer ShowTime
+      const canCancel = !bombomCancelUsed[currentPlayer];
+      if (canCancel) {
+        setIsPlayerTurn(false);
+        setShowShowTimePrompt(true);
+        return; // Attendre la décision
+      } else {
+        // Annulation déjà utilisée: lancer ShowTime automatiquement
+        setIsPlayerTurn(false);
+        triggerShowTime();
+        return;
+      }
+    }
+
     // Activer le tour du joueur
     setIsPlayerTurn(true);
     // Réinitialiser le temps à 7 secondes
@@ -314,7 +342,51 @@ const TrainingPage: React.FC = () => {
         return prev - 1;
       });
     }, 1000);
-  }, [currentPlayer, handleTurnEnd, drawnCard]);
+  }, [currentPlayer, handleTurnEnd, drawnCard, bombomDeclaredBy, bombomCancelUsed]);
+
+  // Déclenche ShowTime: révèle toutes les cartes, calcule le gagnant (score le plus bas gagne), affiche et enregistre les scores
+  const triggerShowTime = React.useCallback(async () => {
+    // Révéler toutes les cartes
+    setPlayer1Cards(prev => prev.map(c => ({ ...c, isFlipped: true })));
+    setPlayer2Cards(prev => prev.map(c => ({ ...c, isFlipped: true })));
+
+    // Stopper timers
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (beforeRoundTimerRef.current) clearInterval(beforeRoundTimerRef.current);
+
+    // Calculer les totaux
+    const p1Total = (player1Cards || []).reduce((sum, c) => sum + getCardScore(c.value), 0);
+    const p2Total = (player2Cards || []).reduce((sum, c) => sum + getCardScore(c.value), 0);
+
+    let winnerKey: 'player1' | 'player2' | null = null;
+    if (p1Total < p2Total) winnerKey = 'player1';
+    else if (p2Total < p1Total) winnerKey = 'player2';
+    else winnerKey = null; // égalité
+
+    // Affichage overlay victoire/égalité
+    if (winnerKey) {
+      setWinner(winnerKey);
+      setShowVictory(true);
+    }
+
+    // Nettoyer état Bombom
+    setBombomDeclaredBy(null);
+    setShowShowTimePrompt(false);
+
+    // Après 2.5s, mettre à jour scores et afficher scoreboard
+    setTimeout(() => {
+      setShowVictory(false);
+      if (winnerKey) {
+        const loserKey: 'player1' | 'player2' = winnerKey === 'player1' ? 'player2' : 'player1';
+        const loserTotal = loserKey === 'player1' ? p1Total : p2Total;
+        setScores(prev => ({
+          player1: prev.player1 + (loserKey === 'player1' ? loserTotal : 0),
+          player2: prev.player2 + (loserKey === 'player2' ? loserTotal : 0)
+        }));
+      }
+      setShowScoreboard(true);
+    }, 2500);
+  }, [player1Cards, player2Cards]);
   
   // Mettre à jour la référence quand la fonction change
   React.useEffect(() => {
@@ -418,6 +490,52 @@ const TrainingPage: React.FC = () => {
       }, 2000);
     }
   }, [cardsDealt, gamePhase]);
+
+  // Actions Bombom
+  const canDeclareBombom = React.useMemo(() => {
+    // Déclarable seulement pendant son propre tour, sans action en cours (pas de carte piochée ni remplacement en cours)
+    const correctPhase = (gamePhase === 'player1_turn' && currentPlayer === 'player1') || (gamePhase === 'player2_turn' && currentPlayer === 'player2');
+    return correctPhase && isPlayerTurn && !drawnCard && !selectingCardToReplace && !isInPenalty && bombomDeclaredBy === null;
+  }, [gamePhase, currentPlayer, isPlayerTurn, drawnCard, selectingCardToReplace, isInPenalty, bombomDeclaredBy]);
+
+  const handleDeclareBombom = React.useCallback(() => {
+    if (!canDeclareBombom) return;
+    setBombomDeclaredBy(currentPlayer);
+    // Petit flash visuel via quickDiscardFlash pour signaler
+    const who = currentPlayer === 'player1' ? 'Joueur 1' : 'Joueur 2';
+    setQuickDiscardFlash(`${who} a déclaré Bombom!`);
+    setTimeout(() => setQuickDiscardFlash(null), 1000);
+  }, [canDeclareBombom, currentPlayer]);
+
+  const handleCancelBombom = React.useCallback(() => {
+    // Annuler seulement lors du prompt au retour du tour, et seulement une fois par joueur
+    if (!showShowTimePrompt || bombomDeclaredBy !== currentPlayer) return;
+    if (bombomCancelUsed[currentPlayer]) return;
+    setBombomCancelUsed(prev => ({ ...prev, [currentPlayer]: true }));
+    setBombomDeclaredBy(null);
+    setShowShowTimePrompt(false);
+    // Reprendre le tour normalement
+    setIsPlayerTurn(true);
+    setTimeLeft(7);
+    if (timerRef.current) clearInterval(timerRef.current);
+    // Redémarrer le timer
+    timerRef.current = setInterval(() => {
+      setTimeLeft(prev => {
+        if (isInPenaltyRef.current) return prev;
+        if (prev <= 1) {
+          clearInterval(timerRef.current!);
+          if (drawnCard) {
+            setDrawnCard(null);
+            setShowCardActions(false);
+            setSelectingCardToReplace(false);
+          }
+          handleTurnEnd(currentPlayer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, [showShowTimePrompt, bombomDeclaredBy, currentPlayer, bombomCancelUsed, drawnCard, handleTurnEnd]);
 
   // utilitaires déplacés dans ../utils/cards
 
@@ -1445,6 +1563,27 @@ const TrainingPage: React.FC = () => {
           </div>
         </div>
       )}
+      {/* Prompt ShowTime suite à Bombom */}
+      {showShowTimePrompt && bombomDeclaredBy === currentPlayer && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/70" />
+          <div className="relative z-10 px-6 py-5 rounded-2xl bg-yellow-400 text-gray-900 border-4 border-white shadow-2xl text-center w-[min(90%,420px)]">
+            <div className="text-4xl mb-2">🎬</div>
+            <div className="text-xl font-extrabold mb-3">ShowTime déclenché par Bombom</div>
+            {!bombomCancelUsed[currentPlayer] ? (
+              <div className="space-y-2">
+                <button onClick={() => triggerShowTime()} className="w-full bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg text-sm font-semibold shadow border-2 border-white">Lancer ShowTime</button>
+                <button onClick={handleCancelBombom} className="w-full bg-gray-800 hover:bg-gray-900 text-white px-3 py-2 rounded-lg text-sm font-semibold shadow border-2 border-white">Annuler Bombom (une seule fois)</button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <button onClick={() => triggerShowTime()} className="w-full bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg text-sm font-semibold shadow border-2 border-white">Lancer ShowTime</button>
+                <div className="text-sm mt-2">Annulation déjà utilisée. ShowTime est obligatoire.</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       {/* Overlay de victoire (3s) */}
       {showVictory && winner && (
         <div className="absolute inset-0 z-50 flex items-center justify-center">
@@ -1793,6 +1932,21 @@ const TrainingPage: React.FC = () => {
           {isInPenalty && (
             <div className="mt-2 text-sm bg-red-600 bg-opacity-70 px-3 py-1 rounded-full animate-pulse">
               Mauvaise carte ! Pénalité en cours...
+            </div>
+          )}
+          {/* Bouton Bombom visible pendant son tour, si aucune action en cours et aucune déclaration active */}
+          {canDeclareBombom && (
+            <button
+              className="mt-3 bg-pink-600 hover:bg-pink-700 text-white rounded-full shadow-lg px-4 py-2 text-base font-bold border-2 border-white"
+              title="Déclarer Bombom (provoquera ShowTime à votre prochain tour)"
+              onClick={handleDeclareBombom}
+            >
+              🍬 Bombom
+            </button>
+          )}
+          {bombomDeclaredBy && (
+            <div className="mt-2 text-xs bg-yellow-300/80 text-black px-3 py-1 rounded-full border border-yellow-600">
+              Bombom déclaré par {bombomDeclaredBy === 'player1' ? 'Joueur 1' : 'Joueur 2'}
             </div>
           )}
         </div>
