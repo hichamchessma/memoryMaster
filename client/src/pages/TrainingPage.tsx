@@ -491,21 +491,20 @@ const TrainingPage: React.FC = () => {
     }
   }, [cardsDealt, gamePhase]);
 
-  // Actions Bombom
-  const canDeclareBombom = React.useMemo(() => {
-    // Déclarable seulement pendant son propre tour, sans action en cours (pas de carte piochée ni remplacement en cours)
-    const correctPhase = (gamePhase === 'player1_turn' && currentPlayer === 'player1') || (gamePhase === 'player2_turn' && currentPlayer === 'player2');
-    return correctPhase && isPlayerTurn && !drawnCard && !selectingCardToReplace && !isInPenalty && bombomDeclaredBy === null;
+  // Actions Bombom (par joueur)
+  const canDeclareBombomFor = React.useCallback((player: 'player1' | 'player2') => {
+    const correctPhase = (gamePhase === 'player1_turn' && player === 'player1') || (gamePhase === 'player2_turn' && player === 'player2');
+    // Déclarable uniquement pendant le tour du joueur, sans action en cours, et si aucun Bombom actif
+    return correctPhase && currentPlayer === player && isPlayerTurn && !drawnCard && !selectingCardToReplace && !isInPenalty && bombomDeclaredBy === null;
   }, [gamePhase, currentPlayer, isPlayerTurn, drawnCard, selectingCardToReplace, isInPenalty, bombomDeclaredBy]);
 
-  const handleDeclareBombom = React.useCallback(() => {
-    if (!canDeclareBombom) return;
-    setBombomDeclaredBy(currentPlayer);
-    // Petit flash visuel via quickDiscardFlash pour signaler
-    const who = currentPlayer === 'player1' ? 'Joueur 1' : 'Joueur 2';
+  const handleDeclareBombomFor = React.useCallback((player: 'player1' | 'player2') => {
+    if (!canDeclareBombomFor(player)) return;
+    setBombomDeclaredBy(player);
+    const who = player === 'player1' ? 'Joueur 1' : 'Joueur 2';
     setQuickDiscardFlash(`${who} a déclaré Bombom!`);
     setTimeout(() => setQuickDiscardFlash(null), 1000);
-  }, [canDeclareBombom, currentPlayer]);
+  }, [canDeclareBombomFor]);
 
   const handleCancelBombom = React.useCallback(() => {
     // Annuler seulement lors du prompt au retour du tour, et seulement une fois par joueur
@@ -1732,6 +1731,19 @@ const TrainingPage: React.FC = () => {
               onCardClick={(index) => handleCardClick('top', index)}
               highlight={(selectingCardToReplace && currentPlayer === 'player1') || isKingPowerActive || (isQueenPowerActive && currentPlayer === 'player2') || (isJackPowerActive && currentPlayer === 'player1')}
             />
+            <div className="mt-2 flex items-center justify-center gap-2">
+              <button
+                className={`px-3 py-1 rounded-full text-sm font-bold border-2 ${canDeclareBombomFor('player1') ? 'bg-pink-600 hover:bg-pink-700 text-white border-white' : 'bg-pink-600/40 text-white/60 border-white/40 cursor-not-allowed'}`}
+                disabled={!canDeclareBombomFor('player1')}
+                title="Déclarer Bombom (Joueur 1)"
+                onClick={() => handleDeclareBombomFor('player1')}
+              >
+                🍬 Bombom
+              </button>
+              {bombomDeclaredBy === 'player1' && (
+                <span className="text-[11px] bg-yellow-300/90 text-black px-2 py-0.5 rounded-full border border-yellow-600">Bombom activé</span>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -1927,26 +1939,11 @@ const TrainingPage: React.FC = () => {
             <div className="text-sm text-gray-300 mt-1">Cliquez pour piocher</div>
           </div>
 
-        {/* Zone centrale avec les informations de jeu (sans message d'invite ni timer) */}
+        {/* Zone centrale: informations (pas de bouton Bombom global) */}
         <div className="flex flex-col items-center justify-center relative flex-1">
           {isInPenalty && (
             <div className="mt-2 text-sm bg-red-600 bg-opacity-70 px-3 py-1 rounded-full animate-pulse">
               Mauvaise carte ! Pénalité en cours...
-            </div>
-          )}
-          {/* Bouton Bombom visible pendant son tour, si aucune action en cours et aucune déclaration active */}
-          {canDeclareBombom && (
-            <button
-              className="mt-3 bg-pink-600 hover:bg-pink-700 text-white rounded-full shadow-lg px-4 py-2 text-base font-bold border-2 border-white"
-              title="Déclarer Bombom (provoquera ShowTime à votre prochain tour)"
-              onClick={handleDeclareBombom}
-            >
-              🍬 Bombom
-            </button>
-          )}
-          {bombomDeclaredBy && (
-            <div className="mt-2 text-xs bg-yellow-300/80 text-black px-3 py-1 rounded-full border border-yellow-600">
-              Bombom déclaré par {bombomDeclaredBy === 'player1' ? 'Joueur 1' : 'Joueur 2'}
             </div>
           )}
         </div>
@@ -1985,6 +1982,19 @@ const TrainingPage: React.FC = () => {
               onCardClick={(index) => handleCardClick('bottom', index)}
               highlight={(selectingCardToReplace && currentPlayer === 'player2') || isKingPowerActive || (isQueenPowerActive && currentPlayer === 'player1') || (isJackPowerActive && currentPlayer === 'player2')}
             />
+            <div className="mt-2 flex items-center justify-center gap-2">
+              <button
+                className={`px-3 py-1 rounded-full text-sm font-bold border-2 ${canDeclareBombomFor('player2') ? 'bg-pink-600 hover:bg-pink-700 text-white border-white' : 'bg-pink-600/40 text-white/60 border-white/40 cursor-not-allowed'}`}
+                disabled={!canDeclareBombomFor('player2')}
+                title="Déclarer Bombom (Joueur 2)"
+                onClick={() => handleDeclareBombomFor('player2')}
+              >
+                🍬 Bombom
+              </button>
+              {bombomDeclaredBy === 'player2' && (
+                <span className="text-[11px] bg-yellow-300/90 text-black px-2 py-0.5 rounded-full border border-yellow-600">Bombom activé</span>
+              )}
+            </div>
           </div>
         </div>
       </div>
