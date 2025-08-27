@@ -1,6 +1,9 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
+// Use the same fallback as in authController.js
+const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_change_me';
+
 // Protéger les routes
 const protect = async (req, res, next) => {
   let token;
@@ -18,6 +21,7 @@ const protect = async (req, res, next) => {
       if (token === 'dev-token' && (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV)) {
         req.user = {
           _id: 'dev-user-id',
+          id: 'dev-user-id',
           firstName: 'Dev',
           lastName: 'User',
           email: 'dev@memorymaster.local',
@@ -33,11 +37,12 @@ const protect = async (req, res, next) => {
         return next();
       }
       // Vérifier le token normalement sinon
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const decoded = jwt.verify(token, JWT_SECRET);
       // Support des invités (pas de lookup DB)
       if (decoded && decoded.guest) {
         req.user = {
           _id: decoded.id,
+          id: decoded.id,
           firstName: decoded.firstName || 'Invité',
           lastName: '',
           email: '',
@@ -50,6 +55,10 @@ const protect = async (req, res, next) => {
         };
       } else {
         req.user = await User.findById(decoded.id).select('-password');
+        if (req.user && !req.user.id) {
+          // Garantir la présence de req.user.id pour les contrôleurs
+          req.user.id = req.user._id;
+        }
       }
       next();
     } catch (error) {
@@ -76,3 +85,4 @@ const authorize = (...roles) => {
 };
 
 module.exports = { protect, authorize };
+

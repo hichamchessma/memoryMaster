@@ -237,33 +237,43 @@ exports.updateProfile = async (req, res, next) => {
   }
 };
 
-// Connexion en mode invité (sans compte)
+// Connexion en mode invité (persisté en base pour obtenir un ObjectId)
 exports.guestLogin = async (req, res, next) => {
   try {
     const suffix = Math.floor(1000 + Math.random() * 9000);
-    const guest = {
-      _id: `guest-${Date.now()}-${suffix}`,
-      firstName: `Invité ${suffix}`,
-      lastName: '',
-      email: '',
-      age: null,
+    const firstName = `Invité ${suffix}`;
+    const email = `guest-${Date.now()}-${suffix}@guest.local`;
+    const randomPwd = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+
+    // Créer un utilisateur invité minimal en base (pour disposer d'un ObjectId)
+    const user = await User.create({
+      firstName,
+      lastName: 'Guest',
+      email,
+      password: randomPwd,
       nationality: '',
-      elo: 1000,
-      totalPoints: 0,
-      gamesPlayed: 0,
-      gamesWon: 0,
-      role: 'guest'
-    };
+      age: null,
+    });
 
     const token = jwt.sign({
       guest: true,
-      id: guest._id,
+      id: user._id,
       role: 'guest',
-      firstName: guest.firstName,
+      firstName: user.firstName,
     }, JWT_SECRET, { expiresIn: '7d' });
 
     res.json({
-      ...guest,
+      _id: user._id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      age: user.age,
+      nationality: user.nationality,
+      elo: user.elo,
+      totalPoints: user.totalPoints,
+      gamesPlayed: user.gamesPlayed,
+      gamesWon: user.gamesWon,
+      role: 'guest',
       token
     });
   } catch (error) {

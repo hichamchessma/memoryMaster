@@ -9,6 +9,7 @@ const StartGamePage: React.FC = () => {
   const [joinCode, setJoinCode] = React.useState('');
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const apiBase = (import.meta as any).env?.VITE_API_URL || '/api';
 
   const authHeader: HeadersInit = React.useMemo(() => {
     const token = user?.token || localStorage.getItem('token');
@@ -18,14 +19,14 @@ const StartGamePage: React.FC = () => {
     };
   }, [user?.token]);
 
-  const handleCreate = async () => {
+  const handleCreate = async (players?: 2|3|4) => {
     setError(null);
     setLoading(true);
     try {
-      const resp = await fetch('/api/game', {
+      const resp = await fetch(`${apiBase}/game`, {
         method: 'POST',
         headers: authHeader,
-        body: JSON.stringify({ maxPlayers })
+        body: JSON.stringify({ maxPlayers: players ?? maxPlayers })
       });
       if (!resp.ok) throw new Error('Impossible de créer la partie');
       const data = await resp.json(); // { success, message, game: { code } }
@@ -44,7 +45,7 @@ const StartGamePage: React.FC = () => {
     setError(null);
     setLoading(true);
     try {
-      const resp = await fetch(`/api/game/${encodeURIComponent(joinCode)}/join`, {
+      const resp = await fetch(`${apiBase}/game/${encodeURIComponent(joinCode)}/join`, {
         method: 'POST',
         headers: authHeader
       });
@@ -68,8 +69,10 @@ const StartGamePage: React.FC = () => {
             {[2,3,4].map(n => (
               <button
                 key={n}
-                className={`px-3 py-2 rounded border ${maxPlayers===n? 'bg-emerald-600 border-white' : 'bg-black/30 border-white/40'}`}
-                onClick={() => setMaxPlayers(n as 2|3|4)}
+                className={`px-3 py-2 rounded border transition-colors ${maxPlayers===n? 'bg-emerald-600 border-white' : 'bg-black/30 border-white/40 hover:bg-black/40'}`}
+                onClick={() => { setMaxPlayers(n as 2|3|4); if (!loading) handleCreate(n as 2|3|4); }}
+                disabled={loading}
+                title={`Créer une partie à ${n} joueurs`}
               >
                 {n}
               </button>
@@ -78,7 +81,7 @@ const StartGamePage: React.FC = () => {
         </div>
 
         <button
-          onClick={handleCreate}
+          onClick={() => handleCreate()}
           disabled={loading}
           className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-semibold py-2 rounded mb-6"
         >
@@ -92,6 +95,7 @@ const StartGamePage: React.FC = () => {
           <input
             value={joinCode}
             onChange={e => setJoinCode(e.target.value.trim())}
+            onKeyDown={(e) => { if (e.key === 'Enter' && joinCode && !loading) handleJoin(); }}
             placeholder="Ex: ABC123"
             className="w-full bg-black/30 border border-white/30 rounded px-3 py-2 text-white outline-none"
           />
