@@ -2,6 +2,7 @@ const Game = require('../models/Game');
 const User = require('../models/User');
 const { v4: uuidv4 } = require('uuid');
 const { getGameState } = require('../services/socketService');
+const jwt = require('jsonwebtoken');
 
 // Fonction utilitaire pour générer un code de jeu unique
 const generateGameCode = async () => {
@@ -24,6 +25,82 @@ const generateGameCode = async () => {
   return code;
 };
 
+// Remplir automatiquement la partie avec des invités simulés
+exports.autofillGame = async (req, res, next) => {
+  try {
+    const { code } = req.params;
+    const { count } = req.body || {};
+
+    const game = await Game.findOne({ code });
+    if (!game) {
+      return res.status(404).json({ success: false, message: 'Partie non trouvée' });
+    }
+    if (game.status !== 'waiting') {
+      return res.status(400).json({ success: false, message: 'La partie n\'est pas en attente' });
+    }
+
+    const missing = Math.max(0, (count ?? (game.maxPlayers - game.players.length)));
+    const toAdd = Math.min(missing, game.maxPlayers - game.players.length);
+    if (toAdd <= 0) {
+      return res.json({ success: true, message: 'Aucun invité à ajouter', players: game.players.length });
+    }
+
+    for (let i = 0; i < toAdd; i++) {
+      const suffix = Math.floor(1000 + Math.random() * 9000);
+      const firstName = `Invité ${suffix}`;
+      const lastName = 'Guest';
+      const email = `guest-${Date.now()}-${suffix}@guest.local`;
+      const randomPwd = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+
+      // Créer l'utilisateur invité minimal
+      const guestUser = await User.create({
+        firstName, lastName, email, password: randomPwd, nationality: '', age: null
+      });
+
+      // Ajouter comme joueur
+      game.players.push({
+        user: guestUser._id,
+        socketId: '',
+        username: `${firstName} ${lastName}`,
+        position: game.players.length + 1,
+        score: 0,
+        actualScore: 0,
+        cards: [],
+        isReady: true,
+        isHost: false,
+        isEliminated: false,
+        hasBombom: false,
+        bombomActivated: false,
+        bombomCanceled: false,
+        powers: { jUsed: false, qUsed: false, kUsed: false }
+      });
+    }
+
+    // Marquer l'hôte prêt si la salle est pleine
+    if (game.players.length >= game.maxPlayers) {
+      const hostPlayer = game.players.find(p => p.user.toString() === game.host.toString());
+      if (hostPlayer) hostPlayer.isReady = true;
+    }
+
+    await game.save();
+
+    const gameData = game.toObject();
+    delete gameData.__v;
+    gameData.players.forEach(p => delete p.socketId);
+
+    res.json({ success: true, message: 'Invités ajoutés', game: gameData });
+
+    // notifier via socket
+    try {
+      const io = req.app.get('io');
+      if (io) io.to(game.code).emit('game_updated', await getGameState(game));
+    } catch (e) {
+      console.error('Erreur émission socket autofill:', e);
+    }
+  } catch (error) {
+    next(error);
+  }
+};
 // Fonction utilitaire pour calculer le score d'une carte
 const calculateCardPoints = (cardValue) => {
   if (cardValue === 'A') return 1;
