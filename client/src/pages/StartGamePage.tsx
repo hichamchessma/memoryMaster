@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 const StartGamePage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [maxPlayers, setMaxPlayers] = React.useState<2 | 3 | 4>(2);
+  // Default room uses 2 players; additional tables can be created from RoomPage
   const [joinCode, setJoinCode] = React.useState('');
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -23,7 +23,7 @@ const StartGamePage: React.FC = () => {
     setError(null);
     setLoading(true);
     try {
-      const targetPlayers = players ?? maxPlayers;
+      const targetPlayers = players ?? 2;
       const resp = await fetch(`${apiBase}/game`, {
         method: 'POST',
         headers: authHeader,
@@ -76,31 +76,14 @@ const StartGamePage: React.FC = () => {
   return (
     <div className="min-h-[calc(100vh-80px)] flex items-center justify-center p-6">
       <div className="w-full max-w-md bg-white/10 backdrop-blur rounded-2xl p-6 border border-white/20 text-white">
-        <h1 className="text-2xl font-bold mb-4">Nouvelle partie en ligne</h1>
-
-        <div className="mb-6">
-          <label className="block text-sm mb-2">Nombre de joueurs</label>
-          <div className="flex gap-2">
-            {[2,3,4].map(n => (
-              <button
-                key={n}
-                className={`px-3 py-2 rounded border transition-colors ${maxPlayers===n? 'bg-emerald-600 border-white' : 'bg-black/30 border-white/40 hover:bg-black/40'}`}
-                onClick={() => { setMaxPlayers(n as 2|3|4); if (!loading) handleCreate(n as 2|3|4); }}
-                disabled={loading}
-                title={`Créer une partie à ${n} joueurs`}
-              >
-                {n}
-              </button>
-            ))}
-          </div>
-        </div>
+        <h1 className="text-2xl font-bold mb-4">Salons en ligne</h1>
 
         <button
           onClick={() => handleCreate()}
           disabled={loading}
           className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-semibold py-2 rounded mb-6"
         >
-          {loading ? 'Création...' : 'Créer une partie'}
+          {loading ? 'Création...' : 'Créer un salon'}
         </button>
 
         <div className="h-px bg-white/20 my-4" />

@@ -66,9 +66,8 @@ const OnlineGamePage: React.FC = () => {
 
   // If exactly 2 players, render the online-specific 2P table mirroring Training visuals
   if ((playersToRender?.length ?? 0) === 2) {
-    const topName = `${playersToRender[0].firstName ?? ''} ${playersToRender[0].lastName ?? ''}`.trim() || 'Joueur 1';
-    const bottomName = `${playersToRender[1].firstName ?? ''} ${playersToRender[1].lastName ?? ''}`.trim() || 'Joueur 2';
-    return <TwoPlayerOnlineTable playerTopName={topName} playerBottomName={bottomName} />;
+    // TwoPlayerOnlineTable accepts optional names; render without props to avoid typing mismatches
+    return <TwoPlayerOnlineTable />;
   }
 
   return (
