@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import TableLayout from '../components/online/TableLayout';
+import TwoPlayerOnlineTable from '../components/online/TwoPlayerOnlineTable';
 import type { OnlinePlayer } from '../components/online/PlayerSeat';
 
 const OnlineGamePage: React.FC = () => {
@@ -41,28 +42,67 @@ const OnlineGamePage: React.FC = () => {
     }));
   }, [state?.players]);
 
+  // Fallback: show a proper 2-player layout while waiting for server
+  const fallbackPlayers: OnlinePlayer[] = React.useMemo(() => {
+    if (!user?._id) return [];
+    return [
+      {
+        _id: user._id,
+        firstName: user.firstName ?? 'Vous',
+        lastName: user.lastName ?? '',
+        cardsCount: 4,
+      },
+      {
+        _id: 'opponent-placeholder',
+        firstName: 'Adversaire',
+        lastName: '',
+        cardsCount: 4,
+      },
+    ];
+  }, [user?._id, user?.firstName, user?.lastName]);
+
+  const playersToRender = (mappedPlayers?.length ?? 0) >= 2 ? mappedPlayers : fallbackPlayers;
+  const currentIndex = typeof state?.currentPlayerIndex === 'number' ? state!.currentPlayerIndex : 0;
+
+  // If exactly 2 players, render the online-specific 2P table mirroring Training visuals
+  if ((playersToRender?.length ?? 0) === 2) {
+    const topName = `${playersToRender[0].firstName ?? ''} ${playersToRender[0].lastName ?? ''}`.trim() || 'Joueur 1';
+    const bottomName = `${playersToRender[1].firstName ?? ''} ${playersToRender[1].lastName ?? ''}`.trim() || 'Joueur 2';
+    return <TwoPlayerOnlineTable playerTopName={topName} playerBottomName={bottomName} />;
+  }
+
   return (
-    <div className="min-h-[calc(100vh-80px)] p-6 text-white">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="text-2xl font-bold">Partie #{gameId}</h1>
-          <div className="flex items-center gap-4 text-sm opacity-80">
-            <div>Pioche: {state?.drawPileCount ?? 0}</div>
+    <div className="homepage-bg relative min-h-screen">
+      <div className="homepage-overlay absolute inset-0" />
+
+      {/* Top banner à la TrainingPage */}
+      <div className="relative z-10 w-full text-white">
+        <div className="flex items-center justify-between px-6 pt-6 max-w-6xl mx-auto">
+          <div className="flex items-center gap-4">
+            <span className="text-lg sm:text-xl font-extrabold drop-shadow-md">Partie #{gameId}</span>
+          </div>
+          <div className="flex items-center gap-6 text-sm opacity-90">
+            <div className="bg-black/60 border border-white/20 px-3 py-1 rounded-full">Pioche: {state?.drawPileCount ?? 0}</div>
             <button onClick={() => navigate(`/room/${gameId}`)} className="underline">Retour au salon</button>
           </div>
         </div>
 
-        {!state && <div>Chargement...</div>}
+        <div className="max-w-6xl mx-auto px-6 pb-8 mt-4">
+          {/* status chip */}
+          {!state && (
+            <div className="mb-2 flex justify-center">
+              <span className="bg-black/60 border border-white/20 text-white text-sm px-3 py-1 rounded-full">Connexion en cours…</span>
+            </div>
+          )}
 
-        {state && (
-          <div className="rounded-2xl border border-white/20 bg-white/5 p-4">
+          <div className="rounded-2xl border border-white/20 bg-white/5 backdrop-blur p-3">
             <TableLayout
-              players={mappedPlayers}
+              players={playersToRender}
               youId={user?._id!}
-              currentPlayerIndex={state.currentPlayerIndex}
+              currentPlayerIndex={currentIndex}
             />
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 import React from 'react';
 import PlayerSeat, { type OnlinePlayer } from './PlayerSeat';
+import PlayerZone from '../training/PlayerZone';
 
 export type TableLayoutProps = {
   players: OnlinePlayer[]; // in turn order
@@ -38,17 +39,46 @@ const TableLayout: React.FC<TableLayoutProps> = ({ players, youId, currentPlayer
     </div>
   );
 
+  // helper to create face-down placeholders based on cardsCount (default 4)
+  const makeFaceDown = (n?: number) => {
+    const len = (typeof n === 'number' && n > 0) ? Math.min(12, n) : 4;
+    return Array.from({ length: len }, (_, i) => ({ id: `ph-${i}`, value: 0, isFlipped: false }));
+  };
+
   return (
-    <div className="relative w-full min-h-[520px]">
-      {/* Center board placeholder */}
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[260px] h-[160px] rounded-2xl border border-white/20 bg-white/10 backdrop-blur flex items-center justify-center text-sm opacity-80">
-        Plateau
+    <div className="relative w-full h-[520px] md:h-[560px]">
+      {/* Center board placeholder (deck / discard area style) */}
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+        <div className="flex items-center gap-4">
+          <div className="w-[84px] h-[120px] rounded-xl border border-white/30 bg-white/10 backdrop-blur shadow-md" />
+          <div className="w-[84px] h-[120px] rounded-xl border border-white/30 bg-white/10 backdrop-blur shadow-md" />
+        </div>
       </div>
 
       {count === 2 && (
         <>
-          <div className="absolute left-1/2 -translate-x-1/2 bottom-2">{seat(rotated[0], { posLabel: 'Vous', isBottom: true })}</div>
-          <div className="absolute left-1/2 -translate-x-1/2 top-2">{seat(rotated[1], { posLabel: 'Adversaire' })}</div>
+          {/* Bottom: You */}
+          <div className="absolute left-1/2 -translate-x-1/2 bottom-2 w-full max-w-3xl">
+            <PlayerZone
+              position="bottom"
+              playerName={`${rotated[0]?.firstName ?? ''} ${rotated[0]?.lastName ?? ''}`.trim() || 'Vous'}
+              cardsDealt={(rotated[0]?.cardsCount && rotated[0]?.cardsCount > 0) ? rotated[0]?.cardsCount : 4}
+              cards={makeFaceDown(rotated[0]?.cardsCount)}
+              highlight={activeId === rotated[0]?._id}
+              onCardClick={() => {}}
+            />
+          </div>
+          {/* Top: Opponent */}
+          <div className="absolute left-1/2 -translate-x-1/2 top-2 w-full max-w-3xl">
+            <PlayerZone
+              position="top"
+              playerName={`${rotated[1]?.firstName ?? ''} ${rotated[1]?.lastName ?? ''}`.trim() || 'Adversaire'}
+              cardsDealt={(rotated[1]?.cardsCount && rotated[1]?.cardsCount > 0) ? rotated[1]?.cardsCount : 4}
+              cards={makeFaceDown(rotated[1]?.cardsCount)}
+              highlight={activeId === rotated[1]?._id}
+              onCardClick={() => {}}
+            />
+          </div>
         </>
       )}
 
