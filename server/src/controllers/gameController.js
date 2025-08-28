@@ -510,13 +510,13 @@ exports.getGame = async (req, res, next) => {
       turnEndTime: game.turnEndTime
     };
 
-    // Si la partie est en cours, ajouter les cartes du joueur
-    if (['EXPLORATION', 'PLAYING', 'FINISHED'].includes(game.status)) {
+    // Si la partie est en cours, ajouter les cartes du joueur (statuts en minuscules)
+    if (['exploration', 'playing', 'finished'].includes(game.status)) {
       response.playerCards = player.cards.map(card => ({
         ...card.toObject(),
         // Ne pas révéler les cartes des autres joueurs
-        isVisible: card.isVisible || game.status === 'FINISHED' || 
-                  (game.status === 'EXPLORATION' && card.position === 'BOTTOM')
+        isVisible: card.isVisible || game.status === 'finished' || 
+                  (game.status === 'exploration' && card.position === 'BOTTOM')
       }));
     }
 
@@ -539,8 +539,8 @@ exports.playTurn = async (req, res, next) => {
       return res.status(404).json({ message: 'Partie non trouvée' });
     }
 
-    // Vérifier que la partie est en cours
-    if (game.status !== 'PLAYING') {
+    // Vérifier que la partie est en cours (statuts en minuscules)
+    if (game.status !== 'playing') {
       return res.status(400).json({ message: 'La partie n\'est pas en cours' });
     }
 

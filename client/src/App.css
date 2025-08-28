@@ -34,18 +34,20 @@ html {
   }
   
   .homepage-bg {
-    background-image: url('background-memorymasters.jpg') !important;
+    /* Image depuis public/ to ensure Vite serves it at root */
+    background-image: url('/background-memorymasters.jpg') !important;
     background-size: cover !important;
-    background-position: center !important;
+    background-position: center center !important;
     background-repeat: no-repeat !important;
     min-height: 100vh;
     position: relative;
-    background-color: #e91e63 !important;
+    background-color: #0b0b10; /* neutral dark fallback, not red */
   }
   
   .homepage-overlay {
-    background: rgba(30, 30, 40, 0.65);
-    backdrop-filter: blur(2px);
+    /* subtle vignette to improve text contrast */
+    background: radial-gradient(ellipse at center, rgba(10,10,14,0.25) 0%, rgba(10,10,14,0.55) 55%, rgba(10,10,14,0.75) 100%);
+    backdrop-filter: blur(1.5px);
     z-index: 1;
   }
   
@@ -74,43 +76,52 @@ html {
     margin-bottom: 2rem;
   }
   
-  .homepage-content .btn-main {
+  .homepage-content .btn-main,
+  .btn-main {
     background: linear-gradient(90deg, #ffb300 0%, #ff6f00 100%);
     color: #fff;
-    font-weight: bold;
+    font-weight: 800;
+    letter-spacing: .02em;
     border: none;
-    border-radius: 2rem;
-    padding: 0.9rem 2.2rem;
-    font-size: 1.2rem;
+    border-radius: 9999px;
+    padding: 0.95rem 2.4rem;
+    font-size: 1.15rem;
     margin: 0 0.5rem;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.18);
-    transition: transform 0.18s, box-shadow 0.18s, background 0.18s;
+    box-shadow: 0 8px 24px rgba(255, 111, 0, 0.35), 0 2px 8px rgba(0,0,0,0.25);
+    transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, filter 0.18s ease;
     cursor: pointer;
   }
-  .homepage-content .btn-main:hover {
+  .homepage-content .btn-main:hover,
+  .btn-main:hover {
     background: linear-gradient(90deg, #ff6f00 0%, #ffb300 100%);
-    transform: translateY(-2px) scale(1.04);
-    box-shadow: 0 6px 18px rgba(0,0,0,0.22);
+    transform: translateY(-2px) scale(1.035);
+    box-shadow: 0 12px 28px rgba(255, 179, 0, 0.35), 0 6px 18px rgba(0,0,0,0.25);
+    filter: brightness(1.02);
   }
+  .btn-main:active { transform: translateY(0) scale(0.995); }
   
-  .homepage-content .btn-secondary {
-    background: linear-gradient(90deg, #00c9ff 0%, #92fe9d 100%);
-    color: #222;
-    font-weight: 600;
+  .homepage-content .btn-secondary,
+  .btn-secondary {
+    background: linear-gradient(90deg, #00c9ff 0%, #00e6b8 50%, #92fe9d 100%);
+    color: #0d0f12;
+    font-weight: 700;
     border: none;
-    border-radius: 2rem;
-    padding: 0.9rem 2.2rem;
-    font-size: 1.1rem;
+    border-radius: 9999px;
+    padding: 0.95rem 2.2rem;
+    font-size: 1.05rem;
     margin: 0 0.5rem;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.10);
-    transition: transform 0.18s, box-shadow 0.18s, background 0.18s;
+    box-shadow: 0 8px 22px rgba(0, 201, 255, 0.25), 0 2px 8px rgba(0,0,0,0.18);
+    transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, filter 0.18s ease;
     cursor: pointer;
   }
-  .homepage-content .btn-secondary:hover {
-    background: linear-gradient(90deg, #92fe9d 0%, #00c9ff 100%);
-    transform: translateY(-2px) scale(1.04);
-    box-shadow: 0 6px 18px rgba(0,0,0,0.16);
+  .homepage-content .btn-secondary:hover,
+  .btn-secondary:hover {
+    background: linear-gradient(90deg, #92fe9d 0%, #00e6b8 50%, #00c9ff 100%);
+    transform: translateY(-2px) scale(1.03);
+    box-shadow: 0 12px 26px rgba(0, 230, 184, 0.28), 0 6px 18px rgba(0,0,0,0.18);
+    filter: brightness(1.02);
   }
+  .btn-secondary:active { transform: translateY(0) scale(0.995); }
   
   @keyframes fadein {
     0% { opacity: 0; transform: translateY(30px); }

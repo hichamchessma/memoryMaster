@@ -2,6 +2,8 @@ import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
+import TableLayout from '../components/online/TableLayout';
+import type { OnlinePlayer } from '../components/online/PlayerSeat';
 
 const OnlineGamePage: React.FC = () => {
   const { gameId } = useParams<{ gameId: string }>();
@@ -26,43 +28,39 @@ const OnlineGamePage: React.FC = () => {
     };
   }, [socket, gameId, user?._id]);
 
+  // Map server players to OnlinePlayer shape
+  const mappedPlayers: OnlinePlayer[] = React.useMemo(() => {
+    if (!state?.players) return [];
+    return state.players.map((p: any) => ({
+      _id: p._id ?? p.user ?? p.user?._id ?? String(p.position ?? Math.random()),
+      firstName: p.firstName ?? 'Invité',
+      lastName: p.lastName ?? 'Guest',
+      score: p.score,
+      cardsCount: p.cardsCount ?? (p.cards?.length ?? 0),
+      isEliminated: p.isEliminated,
+    }));
+  }, [state?.players]);
+
   return (
     <div className="min-h-[calc(100vh-80px)] p-6 text-white">
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-2xl font-bold">Partie #{gameId}</h1>
-          <button onClick={() => navigate(`/room/${gameId}`)} className="text-sm underline">Retour au salon</button>
+          <div className="flex items-center gap-4 text-sm opacity-80">
+            <div>Pioche: {state?.drawPileCount ?? 0}</div>
+            <button onClick={() => navigate(`/room/${gameId}`)} className="underline">Retour au salon</button>
+          </div>
         </div>
 
         {!state && <div>Chargement...</div>}
 
         {state && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-white/10 border border-white/20 rounded-xl p-4">
-              <div className="opacity-80 text-sm mb-2">Tour du joueur</div>
-              <div className="text-lg font-semibold">Index: {state.currentPlayerIndex}</div>
-              <div className="opacity-80 text-sm">Pioche restante: {state.drawPileCount}</div>
-            </div>
-
-            <div className="bg-white/10 border border-white/20 rounded-xl p-4">
-              <div className="font-semibold mb-2">Joueurs</div>
-              <div className="space-y-2">
-                {state.players.map((p: any) => (
-                  <div key={p._id} className="flex items-center justify-between bg-black/30 border border-white/10 rounded px-3 py-2">
-                    <div>
-                      <div className="font-semibold">{p.firstName} {p.lastName}</div>
-                      <div className="text-xs opacity-70">Score: {p.score} • Cartes: {p.cardsCount}</div>
-                    </div>
-                    {p.isEliminated && <span className="text-xs text-red-300">Éliminé</span>}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="md:col-span-2 bg-white/10 border border-white/20 rounded-xl p-4">
-              <div className="opacity-80 text-sm mb-2">Plateau (placeholder)</div>
-              <div className="text-sm opacity-70">L'UI finale réutilisera vos composants (`PlayerZone`, etc.) pour N joueurs.</div>
-            </div>
+          <div className="rounded-2xl border border-white/20 bg-white/5 p-4">
+            <TableLayout
+              players={mappedPlayers}
+              youId={user?._id!}
+              currentPlayerIndex={state.currentPlayerIndex}
+            />
           </div>
         )}
       </div>

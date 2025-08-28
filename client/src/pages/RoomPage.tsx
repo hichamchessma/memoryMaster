@@ -17,7 +17,7 @@ type GamePlayer = {
 
 type GameState = {
   code: string;
-  status: 'lobby' | 'playing' | 'ended';
+  status: 'waiting' | 'lobby' | 'playing' | 'finished' | 'ended';
   currentPlayerIndex: number;
   maxPlayers: number;
   cardsPerPlayer: number;
@@ -31,6 +31,7 @@ const RoomPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { socket } = useSocket();
+  const apiBase = (import.meta as any).env?.VITE_API_URL || '/api';
 
   const [state, setState] = React.useState<GameState | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -65,13 +66,14 @@ const RoomPage: React.FC = () => {
   }, [socket, code, user?._id, navigate]);
 
   const isHost = React.useMemo(() => state && user?._id && state.host?._id === user._id, [state, user?._id]);
+  const isLobbyLike = React.useMemo(() => state?.status === 'lobby' || state?.status === 'waiting', [state?.status]);
 
   const startGame = async () => {
     if (!state) return;
     setStarting(true);
     try {
       const token = user?.token || localStorage.getItem('token');
-      const resp = await fetch(`/api/game/${encodeURIComponent(state.code)}/start`, {
+      const resp = await fetch(`${apiBase}/game/${encodeURIComponent(state.code)}/start`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -118,7 +120,7 @@ const RoomPage: React.FC = () => {
             className="px-4 py-2 rounded bg-black/30 border border-white/30 hover:bg-black/40"
           >Changer</button>
 
-          {isHost && state?.status === 'lobby' && (
+          {isHost && isLobbyLike && (
             <button
               onClick={startGame}
               disabled={starting}
