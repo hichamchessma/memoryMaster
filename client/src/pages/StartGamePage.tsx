@@ -33,20 +33,7 @@ const StartGamePage: React.FC = () => {
       const data = await resp.json(); // { success, message, game: { code } }
       const code = data?.game?.code;
       if (!code) throw new Error('Code de partie manquant');
-
-      // Autofill guests: add (targetPlayers - 1) minus current players in lobby (already 1 host)
-      const countToAdd = Math.max(0, (targetPlayers - (data?.game?.players?.length ?? 1)));
-      if (countToAdd > 0) {
-        const token = user?.token || localStorage.getItem('token');
-        await fetch(`${apiBase}/game/${encodeURIComponent(code)}/autofill`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {})
-          },
-          body: JSON.stringify({ count: countToAdd })
-        });
-      }
+      // Ne plus autofill des joueurs: laisser l'hôte créer/ajouter manuellement
       navigate(`/room/${code}`);
     } catch (e: any) {
       setError(e.message || 'Erreur inconnue');

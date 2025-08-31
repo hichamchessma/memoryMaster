@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import tableGameImg from '../../assets/cards/tableGame.png';
 
 import PlayerZone from '../../components/training/PlayerZone';
 import PrepOverlay from '../../components/training/PrepOverlay';
@@ -1747,10 +1748,25 @@ const TrainingPage: React.FC = () => {
           </div>
         </div>
       </div>
-      {/* Plateau (milieu) : deck (gauche) • centre (info + carte piochée) • défausse (droite) */}
-      <div className="row-start-3 row-end-4 flex justify-between items-center relative min-h-[240px] px-6 gap-6">
+      {/* Plateau (milieu) : deck (gauche) • centre (info + carte piochée) • défausse (droite)
+          Encapsulé dans un cadre avec image de table */}
+      <div className="row-start-3 row-end-4 flex items-center justify-center relative min-h-[260px] px-3">
+        {/* Cadre table avec l'image de fond, taille contenue pour éviter un rendu trop grand */}
+        <div
+          className="relative w-full max-w-5xl h-[360px] md:h-[440px] lg:h-[520px] bg-center bg-no-repeat bg-contain"
+          style={{ backgroundImage: `url(${tableGameImg})` }}
+        >
+          {/* Image de table en calque pour garantir l'affichage */}
+          <img
+            src={tableGameImg}
+            alt="Table de jeu"
+            className="absolute inset-0 w-full h-full object-contain pointer-events-none select-none"
+            aria-hidden
+          />
+          {/* Zone jouable à l'intérieur du cadre */}
+          <div className="absolute inset-0 flex justify-between items-center px-8 sm:px-10 lg:px-14 gap-6 z-10">
         {/* Deck à gauche */}
-        <div className="flex flex-col items-center ml-6 -mt-6">
+        <div className="flex flex-col items-center -mt-6">
           <div 
             ref={deckRef} 
             className={`w-24 h-36 bg-blue-800 border-4 border-white rounded-xl shadow-xl flex flex-col items-center justify-center mb-2 relative cursor-pointer hover:border-blue-300 transition-all duration-500 ${
@@ -1949,7 +1965,7 @@ const TrainingPage: React.FC = () => {
         </div>
 
         {/* La défausse est dans la colonne de droite */}
-        <div className="flex flex-col items-center mr-6">
+        <div className="flex flex-col items-center">
           <div ref={discardRef} className="w-28 h-40 bg-gray-900/70 border-4 border-yellow-400 rounded-2xl shadow-2xl flex flex-col items-center justify-center mb-2 relative overflow-hidden backdrop-blur-sm">
             <span className="absolute -top-3 left-2 bg-yellow-400 text-gray-900 font-extrabold px-2 py-1 rounded-full text-xs shadow z-10">Défausse</span>
             {discardPile !== null ? (
@@ -1967,6 +1983,8 @@ const TrainingPage: React.FC = () => {
               </>
             )}
           </div>
+        </div>
+      </div>
         </div>
       </div>
 

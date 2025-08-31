@@ -1,4 +1,6 @@
 import React from 'react';
+import tableGameImg from '../assets/cards/tableGame.png';
+import playerOutImg from '../assets/cards/playerOut.png';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
@@ -92,7 +94,7 @@ const RoomPage: React.FC = () => {
     }
   };
 
-  const createNewTable = async () => {
+  const createNewTable = async (players?: 2|3|4) => {
     try {
       const token = user?.token || localStorage.getItem('token');
       const resp = await fetch(`${apiBase}/game`, {
@@ -101,7 +103,7 @@ const RoomPage: React.FC = () => {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {})
         },
-        body: JSON.stringify({ maxPlayers: newTablePlayers })
+        body: JSON.stringify({ maxPlayers: players ?? newTablePlayers })
       });
       if (!resp.ok) throw new Error('Impossible de créer la table');
       const data = await resp.json();
@@ -119,7 +121,7 @@ const RoomPage: React.FC = () => {
 
   return (
     <div className="min-h-[calc(100vh-80px)] p-6 text-white">
-      <div className="max-w-3xl mx-auto bg-white/10 border border-white/20 rounded-2xl p-6">
+      <div className="max-w-3xl mx-auto bg-transparent rounded-2xl p-6">
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-2xl font-bold">Salon #{code}</h1>
           <div className="text-sm opacity-80">Statut: {state?.status ?? '...'}</div>
@@ -141,16 +143,44 @@ const RoomPage: React.FC = () => {
         <div className="mb-6">
           <div className="flex items-center justify-between mb-2">
             <div className="font-semibold">Tables <span className="opacity-70 text-sm">(1/8)</span></div>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white border border-white/20 shadow"
-            >Créer une table</button>
+            <div className="flex items-center gap-2">
+              <span className="text-sm opacity-80">Créer: </span>
+              {[2,3,4].map(n => (
+                <button
+                  key={n}
+                  onClick={() => createNewTable(n as 2|3|4)}
+                  className="w-8 h-8 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold flex items-center justify-center"
+                  title={`Créer une table ${n} joueurs`}
+                >{n}</button>
+              ))}
+            </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-              <div className="text-sm opacity-80 mb-1">Table actuelle</div>
-              <div className="text-lg font-semibold">{state?.players.length ?? 0}/{state?.maxPlayers ?? '-'}</div>
-              <div className="text-xs opacity-70">Code: {state?.code}</div>
+            <div className="relative rounded-xl overflow-hidden cursor-default select-none">
+              <img src={tableGameImg} alt="Table" className="w-full h-32 object-contain bg-center bg-no-repeat select-none pointer-events-none" />
+              {/* Seat placeholders (mini) + Join button */}
+              {typeof state?.maxPlayers === 'number' && state.maxPlayers > 0 && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                  <div className="flex gap-3">
+                    {Array.from({ length: state.maxPlayers }).map((_, i) => (
+                      <img
+                        key={i}
+                        src={playerOutImg}
+                        alt={`Seat ${i+1}`}
+                        className="w-7 h-7 sm:w-8 sm:h-8 object-contain drop-shadow-md"
+                        draggable={false}
+                      />
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => state?.code && navigate(`/game/${state.code}`)}
+                    className="px-3 py-1 rounded-full text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                  >Rejoindre</button>
+                </div>
+              )}
+              <div className="absolute left-2 bottom-2 text-xs bg-black/50 text-white px-2 py-1 rounded-full">
+                {state?.players.length ?? 0}/{state?.maxPlayers ?? '-'} • Code: {state?.code}
+              </div>
             </div>
             {/* TODO: afficher d'autres tables lorsqu'on aura une API de liste */}
           </div>
@@ -191,7 +221,7 @@ const RoomPage: React.FC = () => {
               </div>
               <div className="flex gap-3 justify-end">
                 <button onClick={() => setShowCreateModal(false)} className="px-3 py-2 rounded bg-black/30 border border-white/30 hover:bg-black/40">Annuler</button>
-                <button onClick={createNewTable} className="px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-700">Créer</button>
+                <button onClick={() => createNewTable()} className="px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-700">Créer</button>
               </div>
             </div>
           </div>
