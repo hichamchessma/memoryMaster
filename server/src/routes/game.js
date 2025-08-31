@@ -7,8 +7,13 @@ const {
   startGame,
   getGame,
   playTurn,
-  autofillGame
+  autofillGame,
+  listGames,
+  updateGameName
 } = require('../controllers/gameController');
+
+// Lister les parties (salons)
+router.get('/', protect, listGames);
 
 // Créer une nouvelle partie
 router.post('/', protect, createGame);
@@ -24,6 +29,9 @@ router.post('/:code/start', protect, startGame);
 
 // Obtenir les informations d'une partie
 router.get('/:code', protect, getGame);
+
+// Mettre à jour le nom d'un salon
+router.patch('/:code/name', protect, updateGameName);
 
 // Jouer un tour
 router.post('/:code/play', protect, playTurn);

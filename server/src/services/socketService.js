@@ -62,6 +62,8 @@ exports.setupSocket = (io) => {
         
         // Informer tous les joueurs de la mise à jour
         io.to(gameCode).emit('game_updated', await getGameState(game));
+        // Notifier le lobby (capacité mise à jour)
+        io.emit('lobby_updated');
         
       } catch (error) {
         console.error('Erreur lors de la connexion à la partie:', error);
@@ -90,10 +92,14 @@ exports.setupSocket = (io) => {
           // Si plus de joueurs, supprimer la partie
           if (game.players.length === 0) {
             await Game.deleteOne({ _id: game._id });
+            // Notifier le lobby de la suppression
+            io.emit('lobby_updated');
           } else {
             await game.save();
             // Informer les autres joueurs
             io.to(gameCode).emit('game_updated', await getGameState(game));
+            // Notifier le lobby d'une mise à jour
+            io.emit('lobby_updated');
           }
         }
         
@@ -126,6 +132,8 @@ exports.setupSocket = (io) => {
           
           // Informer les autres joueurs
           io.to(gameCode).emit('player_disconnected', { userId });
+          // Notifier le lobby d'un changement potentiel
+          io.emit('lobby_updated');
         }
       } catch (error) {
         console.error('Erreur lors de la gestion de la déconnexion:', error);

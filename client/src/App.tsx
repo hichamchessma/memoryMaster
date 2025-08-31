@@ -19,6 +19,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import StartGamePage from './pages/StartGamePage';
 import RoomPage from './pages/RoomPage';
 import OnlineGamePage from './pages/OnlineGamePage';
+import SalonListPage from './pages/SalonListPage';
 
 // Temporary placeholder pages
 const ProfilePage = () => <div>Profil en construction</div>;
@@ -59,6 +60,7 @@ function App() {
                   {/* Protected Routes */}
                   <Route element={<ProtectedRoute />}>
                     <Route path="/dashboard" element={<DashboardPage />} />
+                    <Route path="/lobby" element={<SalonListPage />} />
                     <Route path="/profile" element={<ProfilePage />} />
                     <Route path="/start-game" element={<StartGamePage />} />
                     <Route path="/room/:code" element={<RoomPage />} />

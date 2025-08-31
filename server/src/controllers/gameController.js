@@ -192,10 +192,81 @@ exports.createGame = async (req, res, next) => {
     res.status(201).json({
       success: true,
       message: 'Partie créée avec succès',
-      game: gameData
+      data: gameData
     });
+
+    // Notifier le lobby (liste des salons)
+    try {
+      const io = req.app.get('io');
+      if (io) io.emit('lobby_updated');
+    } catch (e) {
+      console.error('Erreur émission socket lobby_updated (createGame):', e);
+    }
   } catch (error) {
     console.error('Erreur lors de la création de la partie:', error);
+    next(error);
+  }
+};
+
+// Lister les parties (salons) avec filtres simples
+exports.listGames = async (req, res, next) => {
+  try {
+    const { status = 'waiting' } = req.query;
+    const query = {};
+    if (status) query.status = status;
+
+    const games = await Game.find(query)
+      .select('code name status maxPlayers players host createdAt')
+      .populate('host', 'firstName lastName')
+      .lean();
+
+    const data = games.map(g => ({
+      code: g.code,
+      name: g.name || '',
+      status: g.status,
+      maxPlayers: g.maxPlayers,
+      playerCount: g.players?.length || 0,
+      host: g.host,
+      createdAt: g.createdAt
+    }));
+
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Mettre à jour le nom d'un salon (réservé à l'hôte)
+exports.updateGameName = async (req, res, next) => {
+  try {
+    const { code } = req.params;
+    const { name } = req.body || {};
+    const userId = req.user.id;
+
+    if (typeof name !== 'string' || name.length > 64) {
+      return res.status(400).json({ success: false, message: 'Nom invalide' });
+    }
+
+    const game = await Game.findOne({ code });
+    if (!game) return res.status(404).json({ success: false, message: 'Partie non trouvée' });
+
+    if (game.host.toString() !== userId) {
+      return res.status(403).json({ success: false, message: "Seul l'hôte peut renommer le salon" });
+    }
+
+    game.name = name.trim();
+    await game.save();
+
+    res.json({ success: true, data: { code: game.code, name: game.name } });
+
+    // Notifier le lobby
+    try {
+      const io = req.app.get('io');
+      if (io) io.emit('lobby_updated');
+    } catch (e) {
+      console.error('Erreur émission socket lobby_updated (updateGameName):', e);
+    }
+  } catch (error) {
     next(error);
   }
 };

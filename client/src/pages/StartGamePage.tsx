@@ -1,6 +1,10 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import api from '../lib/api';
+import { useSocket } from '../context/SocketContext';
+import salonImg from '../assets/cards/salonJeux.png';
 
 const StartGamePage: React.FC = () => {
   const navigate = useNavigate();
@@ -10,6 +14,8 @@ const StartGamePage: React.FC = () => {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const apiBase = (import.meta as any).env?.VITE_API_URL || '/api';
+  const qc = useQueryClient();
+  const { socket } = useSocket();
 
   const authHeader: HeadersInit = React.useMemo(() => {
     const token = user?.token || localStorage.getItem('token');
@@ -18,6 +24,36 @@ const StartGamePage: React.FC = () => {
       ...(token ? { Authorization: `Bearer ${token}` } : {})
     };
   }, [user?.token]);
+
+  // --- Lobby list (real-time) ---
+  type LobbyItem = {
+    code: string;
+    name: string;
+    status: 'waiting' | 'playing' | 'finished';
+    maxPlayers: number;
+    playerCount: number;
+  };
+
+  const fetchSalons = async (): Promise<LobbyItem[]> => {
+    const res: any = await api.get<LobbyItem[]>('/game?status=waiting');
+    const ok = res?.data?.success;
+    if (!ok) throw new Error(res?.data?.error || 'Erreur de chargement');
+    return (res?.data?.data as LobbyItem[]) || [];
+  };
+
+  const { data: salons = [], isLoading: isLobbyLoading, isFetching: isLobbyFetching } = useQuery({
+    queryKey: ['lobby', 'waiting'],
+    queryFn: fetchSalons,
+    // Fallback polling in case socket events don't arrive
+    refetchInterval: 5000,
+  });
+
+  React.useEffect(() => {
+    if (!socket) return;
+    const onLobby = () => qc.invalidateQueries({ queryKey: ['lobby', 'waiting'] });
+    socket.on('lobby_updated', onLobby);
+    return () => { socket.off('lobby_updated', onLobby); };
+  }, [socket, qc]);
 
   const handleCreate = async (players?: 2|3|4) => {
     setError(null);
@@ -30,8 +66,8 @@ const StartGamePage: React.FC = () => {
         body: JSON.stringify({ maxPlayers: targetPlayers })
       });
       if (!resp.ok) throw new Error('Impossible de créer la partie');
-      const data = await resp.json(); // { success, message, game: { code } }
-      const code = data?.game?.code;
+      const data = await resp.json(); // { success, message, data: { code } }
+      const code = data?.data?.code;
       if (!code) throw new Error('Code de partie manquant');
       // Ne plus autofill des joueurs: laisser l'hôte créer/ajouter manuellement
       navigate(`/room/${code}`);
@@ -73,6 +109,8 @@ const StartGamePage: React.FC = () => {
           {loading ? 'Création...' : 'Créer un salon'}
         </button>
 
+        {/* bouton supprimé: la liste s'affiche directement */}
+
         <div className="h-px bg-white/20 my-4" />
 
         <div className="mb-3">
@@ -94,6 +132,39 @@ const StartGamePage: React.FC = () => {
         </button>
 
         {error && <div className="mt-4 text-red-300 text-sm">{error}</div>}
+
+        <div className="h-px bg-white/20 my-6" />
+
+        <h2 className="text-xl font-semibold mb-3">Salons en attente</h2>
+        {(isLobbyLoading || isLobbyFetching) && <div>Chargement des salons...</div>}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {salons.map((s: LobbyItem) => (
+            <div key={s.code} className="bg-white/10 border border-white/20 rounded-lg p-3">
+              <div className="relative">
+                <img src={salonImg} alt="Salon" className="w-full h-32 object-cover rounded" />
+                <div className="absolute top-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded">
+                  {s.playerCount}/{s.maxPlayers}
+                </div>
+              </div>
+              <div className="flex items-center justify-between mt-2">
+                <div>
+                  <div className="font-semibold">{s.name?.trim() ? s.name : `Salon ${s.code}`}</div>
+                  <div className="text-xs opacity-80">Code: {s.code}</div>
+                </div>
+                <button
+                  onClick={() => navigate(`/room/${s.code}`)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-3 py-1 rounded"
+                >
+                  Entrer
+                </button>
+              </div>
+            </div>
+          ))}
+          {!isLobbyLoading && !isLobbyFetching && salons.length === 0 && (
+            <div className="text-sm opacity-80">Aucun salon pour le moment.</div>
+          )}
+        </div>
       </div>
     </div>
   );
