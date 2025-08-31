@@ -1,6 +1,7 @@
 import React from 'react';
 import tableGameImg from '../assets/cards/tableGame.png';
 import playerOutImg from '../assets/cards/playerOut.png';
+import playerInImg from '../assets/cards/playerIn.png';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
@@ -40,6 +41,7 @@ const RoomPage: React.FC = () => {
   const [starting, setStarting] = React.useState(false);
   const [showCreateModal, setShowCreateModal] = React.useState(false);
   const [newTablePlayers, setNewTablePlayers] = React.useState<2|3|4>(2);
+  const [joined, setJoined] = React.useState(false);
 
   React.useEffect(() => {
     if (!socket || !code || !user?._id) return;
@@ -73,6 +75,17 @@ const RoomPage: React.FC = () => {
 
   const isHost = React.useMemo(() => state && user?._id && state.host?._id === user._id, [state, user?._id]);
   const isLobbyLike = React.useMemo(() => state?.status === 'lobby' || state?.status === 'waiting', [state?.status]);
+
+  // Affichage du compteur: on exclut l'utilisateur local tant qu'il n'a pas cliqué "Rejoindre"
+  const othersCount = React.useMemo(() => {
+    if (!state?.players) return 0;
+    return state.players.filter(p => p._id !== user?._id).length;
+  }, [state?.players, user?._id]);
+  const displayedCount = othersCount + (joined ? 1 : 0);
+
+  const handleToggleJoin = () => {
+    setJoined(j => !j);
+  };
 
   const startGame = async () => {
     if (!state) return;
@@ -165,7 +178,7 @@ const RoomPage: React.FC = () => {
                     {Array.from({ length: state.maxPlayers }).map((_, i) => (
                       <img
                         key={i}
-                        src={playerOutImg}
+                        src={i === 0 && joined ? playerInImg : playerOutImg}
                         alt={`Seat ${i+1}`}
                         className="w-7 h-7 sm:w-8 sm:h-8 object-contain drop-shadow-md"
                         draggable={false}
@@ -173,14 +186,21 @@ const RoomPage: React.FC = () => {
                     ))}
                   </div>
                   <button
-                    onClick={() => state?.code && navigate(`/game/${state.code}`)}
-                    className="px-3 py-1 rounded-full text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow focus:outline-none focus:ring-2 focus:ring-emerald-300"
-                  >Rejoindre</button>
+                    onClick={handleToggleJoin}
+                    className={`px-3 py-1 rounded-full text-xs text-white shadow focus:outline-none focus:ring-2 ${joined ? 'bg-rose-600 hover:bg-rose-700 focus:ring-rose-300' : 'bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-300'}`}
+                  >{joined ? 'Quitter' : 'Rejoindre'}</button>
                 </div>
               )}
+              {/* Compteur et code */}
               <div className="absolute left-2 bottom-2 text-xs bg-black/50 text-white px-2 py-1 rounded-full">
-                {state?.players.length ?? 0}/{state?.maxPlayers ?? '-'} • Code: {state?.code}
+                {displayedCount}/{state?.maxPlayers ?? '-'} • Code: {state?.code}
               </div>
+              {/* Nom du joueur rejoint collé à droite de la table */}
+              {joined && (
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 text-white text-xs px-2 py-1 rounded-md whitespace-nowrap">
+                  {user?.firstName || 'Vous'}
+                </div>
+              )}
             </div>
             {/* TODO: afficher d'autres tables lorsqu'on aura une API de liste */}
           </div>
