@@ -25,6 +25,28 @@ const generateGameCode = async () => {
   return code;
 };
 
+// Supprimer une partie (réservé à l'hôte)
+exports.deleteGame = async (req, res, next) => {
+  try {
+    const { code } = req.params;
+    const game = await Game.findOne({ code });
+    if (!game) return res.status(404).json({ success: false, message: 'Partie non trouvée' });
+
+    // Suppression sans restriction d'hôte (droits suprêmes côté client)
+    await Game.deleteOne({ _id: game._id });
+
+    res.json({ success: true, message: 'Salon supprimé' });
+
+    try {
+      const io = req.app.get('io');
+      if (io) io.emit('lobby_updated');
+    } catch (e) {
+      console.error('Erreur émission socket lobby_updated (deleteGame):', e);
+    }
+  } catch (error) {
+    next(error);
+  }
+};
 // Remplir automatiquement la partie avec des invités simulés
 exports.autofillGame = async (req, res, next) => {
   try {
@@ -217,7 +239,7 @@ exports.listGames = async (req, res, next) => {
 
     const games = await Game.find(query)
       .select('code name status maxPlayers players host createdAt')
-      .populate('host', 'firstName lastName')
+      .populate('host', '_id firstName lastName')
       .lean();
 
     const data = games.map(g => ({

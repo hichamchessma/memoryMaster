@@ -32,6 +32,7 @@ const StartGamePage: React.FC = () => {
     status: 'waiting' | 'playing' | 'finished';
     maxPlayers: number;
     playerCount: number;
+    host?: { _id: string; firstName?: string; lastName?: string } | string;
   };
 
   const fetchSalons = async (): Promise<LobbyItem[]> => {
@@ -54,6 +55,19 @@ const StartGamePage: React.FC = () => {
     socket.on('lobby_updated', onLobby);
     return () => { socket.off('lobby_updated', onLobby); };
   }, [socket, qc]);
+
+  const handleDelete = async (code: string) => {
+    const ok = window.confirm('Supprimer ce salon ?');
+    if (!ok) return;
+    try {
+      const res: any = await api.delete(`/game/${code}`);
+      if (!res?.data?.success) throw new Error(res?.data?.error || 'Suppression échouée');
+      await qc.invalidateQueries({ queryKey: ['lobby', 'waiting'] });
+    } catch (e) {
+      console.error(e);
+      alert('Impossible de supprimer le salon');
+    }
+  };
 
   const handleCreate = async (players?: 2|3|4) => {
     setError(null);
@@ -157,6 +171,14 @@ const StartGamePage: React.FC = () => {
                   className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-3 py-1 rounded"
                 >
                   Entrer
+                </button>
+              </div>
+              <div className="flex justify-end mt-2">
+                <button
+                  onClick={() => handleDelete(s.code)}
+                  className="bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1 rounded"
+                >
+                  Supprimer
                 </button>
               </div>
             </div>

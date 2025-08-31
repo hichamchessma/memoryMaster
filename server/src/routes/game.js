@@ -9,7 +9,8 @@ const {
   playTurn,
   autofillGame,
   listGames,
-  updateGameName
+  updateGameName,
+  deleteGame
 } = require('../controllers/gameController');
 
 // Lister les parties (salons)
@@ -32,6 +33,9 @@ router.get('/:code', protect, getGame);
 
 // Mettre à jour le nom d'un salon
 router.patch('/:code/name', protect, updateGameName);
+
+// Supprimer un salon
+router.delete('/:code', protect, deleteGame);
 
 // Jouer un tour
 router.post('/:code/play', protect, playTurn);

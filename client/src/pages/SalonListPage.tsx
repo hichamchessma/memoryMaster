@@ -12,7 +12,7 @@ interface LobbyItem {
   status: 'waiting' | 'playing' | 'finished';
   maxPlayers: number;
   playerCount: number;
-  host?: { firstName: string; lastName: string } | string;
+  host?: { _id: string; firstName?: string; lastName?: string } | string;
   createdAt?: string;
 }
 
@@ -23,14 +23,15 @@ export default function SalonListPage() {
   const qc = useQueryClient();
 
   const fetchSalons = async (): Promise<LobbyItem[]> => {
-    const res = await api.get<LobbyItem[]>('/game?status=waiting');
-    if (!res.success) throw new Error(res.error || 'Erreur de chargement');
-    return res.data || [];
+    const res: any = await api.get<LobbyItem[]>('/game?status=waiting');
+    if (!res?.data?.success) throw new Error(res?.data?.message || 'Erreur de chargement');
+    return (res?.data?.data as LobbyItem[]) || [];
   };
 
   const { data: salons = [], isLoading, refetch, isFetching } = useQuery({
     queryKey: ['lobby', 'waiting'],
     queryFn: fetchSalons,
+    refetchInterval: 5000,
   });
 
   useEffect(() => {
@@ -44,11 +45,24 @@ export default function SalonListPage() {
     };
   }, [socket, qc]);
 
+  const handleDelete = async (code: string) => {
+    const ok = window.confirm('Supprimer ce salon ?');
+    if (!ok) return;
+    try {
+      const res: any = await api.delete(`/game/${code}`);
+      if (!res?.data?.success) throw new Error(res?.data?.message || 'Suppression échouée');
+      await refetch();
+    } catch (e) {
+      console.error(e);
+      alert('Impossible de supprimer le salon');
+    }
+  };
+
   const handleCreate = async (maxPlayers: number) => {
     try {
       const res = await api.post<any>('/game', { maxPlayers, cardsPerPlayer: 6 });
-      if (!res.success || !res.data) throw new Error(res.error || 'Création échouée');
-      const code = res.data.code;
+      if (!('data' in res) || !res.data?.success) throw new Error((res as any)?.data?.message || 'Création échouée');
+      const code = (res as any).data.data.code;
       // Optionally prompt for name
       const suggested = `Salon de ${user?.firstName ?? 'joueur'}`;
       const name = window.prompt('Nom du salon (optionnel):', suggested);
@@ -78,46 +92,54 @@ export default function SalonListPage() {
   const grid = useMemo(() => salons, [salons]);
 
   return (
-    <div className="container" style={{ padding: '16px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h2 style={{ margin: 0 }}>Salons en attente</h2>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => handleCreate(2)}>Créer 2</button>
-          <button onClick={() => handleCreate(3)}>Créer 3</button>
-          <button onClick={() => handleCreate(4)}>Créer 4</button>
+    <div className="max-w-6xl mx-auto p-4">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-2xl font-bold text-white drop-shadow">Salons en attente</h2>
+        <div className="flex gap-2">
+          <button className="px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-sm" onClick={() => handleCreate(2)}>Créer 2</button>
+          <button className="px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-sm" onClick={() => handleCreate(3)}>Créer 3</button>
+          <button className="px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-sm" onClick={() => handleCreate(4)}>Créer 4</button>
         </div>
       </div>
 
-      {(isLoading || isFetching) && <div>Chargement...</div>}
+      {(isLoading || isFetching) && <div className="text-white/90">Chargement...</div>}
 
       {grid.length === 0 && !isLoading && (
-        <div>Aucun salon. Créez-en un pour commencer.</div>
+        <div className="text-white/80">Aucun salon. Créez-en un pour commencer.</div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16 }}>
-        {grid.map((s) => (
-          <div key={s.code} style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12, background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
-            <div style={{ position: 'relative' }}>
-              <img src={salonImg} alt="Salon" style={{ width: '100%', height: 140, objectFit: 'cover', borderRadius: 6 }} />
-              <div style={{ position: 'absolute', top: 8, left: 8, background: 'rgba(0,0,0,0.6)', color: '#fff', padding: '4px 8px', borderRadius: 4, fontSize: 12 }}>
-                {s.playerCount}/{s.maxPlayers}
-              </div>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-              <div>
-                <div style={{ fontWeight: 600, cursor: 'pointer' }} title="Renommer" onClick={() => handleRename(s.code, s.name)}>
-                  {s.name?.trim() ? s.name : `Salon ${s.code}`}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {grid.map((s) => {
+          return (
+            <div key={s.code} className="group rounded-xl border border-white/20 bg-white/10 backdrop-blur-md shadow-lg overflow-hidden transition-transform hover:-translate-y-0.5 hover:shadow-xl">
+              <div className="relative">
+                <img src={salonImg} alt="Salon" className="w-full h-40 object-cover" />
+                <div className="absolute top-2 left-2 text-xs px-2 py-1 rounded bg-black/60 text-white">
+                  {s.playerCount}/{s.maxPlayers}
                 </div>
-                <div style={{ fontSize: 12, color: '#666' }}>Code: {s.code}</div>
+                <div className="absolute top-2 right-2 text-[10px] uppercase tracking-wider px-2 py-1 rounded bg-indigo-600 text-white">
+                  {s.status}
+                </div>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <button onClick={() => navigate(`/room/${s.code}`)}>
-                  Rejoindre
-                </button>
+              <div className="p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="font-semibold text-white drop-shadow cursor-pointer" title="Renommer" onClick={() => handleRename(s.code, s.name)}>
+                      {s.name?.trim() ? s.name : `Salon ${s.code}`}
+                    </div>
+                    <div className="text-xs text-white/80">Code: {s.code}</div>
+                  </div>
+                  <button onClick={() => navigate(`/room/${s.code}`)} className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-3 py-1 rounded">Entrer</button>
+                </div>
+                <div className="flex justify-end mt-2">
+                  <button onClick={() => handleDelete(s.code)} className="bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1 rounded">
+                    Supprimer
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
