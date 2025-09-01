@@ -53,38 +53,52 @@ const RoomPage: React.FC = () => {
       }
     };
 
-  
+    // Rediriger automatiquement quand une table 2 joueurs devient pleine
+    const handleTableFull = ({ gameCode }: { gameCode: string }) => {
+      if (gameCode === code) {
+        navigate(`/game/${gameCode}`);
+      }
+    };
 
     const handleDisconnectedPlayer = ({ userId }: { userId: string }) => {
       // Optionally show a toast, kept minimal here
       console.log('Player disconnected', userId);
     };
 
-    socket.emit('join_game', { gameCode: code, userId: user._id });
+    // Observer la salle sans prendre une place à la table
+    socket.emit('watch_room', { gameCode: code });
     socket.on('game_updated', handleUpdated);
+    socket.on('table_full', handleTableFull);
     socket.on('player_disconnected', handleDisconnectedPlayer);
     socket.on('error', (e: any) => setError(e?.message ?? 'Erreur socket'));
 
     return () => {
       socket.off('game_updated', handleUpdated);
+      socket.off('table_full', handleTableFull);
       socket.off('player_disconnected', handleDisconnectedPlayer);
       socket.off('error');
-      socket.emit('leave_game');
+      // Si l'utilisateur avait rejoint explicitement, on l'enlève
+      if (joined) socket.emit('leave_game');
     };
   }, [socket, code, user?._id, navigate]);
 
   const isHost = React.useMemo(() => state && user?._id && state.host?._id === user._id, [state, user?._id]);
   const isLobbyLike = React.useMemo(() => state?.status === 'lobby' || state?.status === 'waiting', [state?.status]);
 
-  // Affichage du compteur: on exclut l'utilisateur local tant qu'il n'a pas cliqué "Rejoindre"
-  const othersCount = React.useMemo(() => {
-    if (!state?.players) return 0;
-    return state.players.filter(p => p._id !== user?._id).length;
-  }, [state?.players, user?._id]);
-  const displayedCount = othersCount + (joined ? 1 : 0);
+  // Compteur basé sur l'état serveur
+  const displayedCount = React.useMemo(() => state?.players?.length ?? 0, [state?.players]);
 
   const handleToggleJoin = () => {
-    setJoined(j => !j);
+    if (!socket || !code || !user?._id) return;
+    setJoined(prev => {
+      const next = !prev;
+      if (next) {
+        socket.emit('join_game', { gameCode: code, userId: user._id });
+      } else {
+        socket.emit('leave_game');
+      }
+      return next;
+    });
   };
 
   const startGame = async () => {
