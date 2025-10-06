@@ -36,14 +36,14 @@ const StartGamePage: React.FC = () => {
   };
 
   const fetchSalons = async (): Promise<LobbyItem[]> => {
-    const res: any = await api.get<LobbyItem[]>('/game?status=waiting');
+    const res: any = await api.get<LobbyItem[]>('/game?status=waiting,playing');
     const ok = res?.data?.success;
     if (!ok) throw new Error(res?.data?.error || 'Erreur de chargement');
     return (res?.data?.data as LobbyItem[]) || [];
   };
 
   const { data: salons = [], isLoading: isLobbyLoading, isFetching: isLobbyFetching } = useQuery({
-    queryKey: ['lobby', 'waiting'],
+    queryKey: ['lobby', 'waiting,playing'],
     queryFn: fetchSalons,
     // Fallback polling in case socket events don't arrive
     refetchInterval: 5000,
@@ -51,7 +51,7 @@ const StartGamePage: React.FC = () => {
 
   React.useEffect(() => {
     if (!socket) return;
-    const onLobby = () => qc.invalidateQueries({ queryKey: ['lobby', 'waiting'] });
+    const onLobby = () => qc.invalidateQueries({ queryKey: ['lobby', 'waiting,playing'] });
     socket.on('lobby_updated', onLobby);
     return () => { socket.off('lobby_updated', onLobby); };
   }, [socket, qc]);

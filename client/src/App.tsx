@@ -11,7 +11,6 @@ import Layout from './components/layout/Layout';
 
 // Page Components
 import TrainingPage from './pages/TrainingPage';
-import { useAuth } from './context/AuthContext';
 import { Navigate } from 'react-router-dom';
 import HomePage from './pages/HomePage';
 import DashboardPage from './pages/DashboardPage';
@@ -34,13 +33,7 @@ const queryClient = new QueryClient({
   },
 });
 
-function AuthRedirectHome() {
-  const { user } = useAuth();
-  if (user) {
-    return <Navigate to="/dashboard" replace />;
-  }
-  return <HomePage />;
-}
+// Supprime l'auto-redirection depuis la home pour préserver la page au rafraîchissement
 
 function App() {
   return (
@@ -51,7 +44,7 @@ function App() {
             <Routes>
               <Route element={<Layout />}>
                   {/* Public Routes */}
-                  <Route path="/" element={<AuthRedirectHome />} />
+                  <Route path="/" element={<HomePage />} />
                   {/* Legacy routes -> redirect to Home (Google/Guest only) */}
                   <Route path="/login" element={<Navigate to="/" replace />} />
                   <Route path="/register" element={<Navigate to="/" replace />} />

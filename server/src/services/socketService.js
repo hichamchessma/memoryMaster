@@ -154,16 +154,29 @@ exports.setupSocket = (io) => {
         const game = await Game.findOne({ code: gameCode });
         if (!game) return;
         
-        // Marquer le joueur comme déconnecté
-        const player = game.players.find(p => p.user.toString() === userId);
-        if (player) {
-          player.socketId = null;
-          await game.save();
-          
-          // Informer les autres joueurs
-          io.to(gameCode).emit('player_disconnected', { userId });
-          // Notifier le lobby d'un changement potentiel
-          io.emit('lobby_updated');
+        // Si un joueur était associé à ce socket, on le retire de la table
+        if (userId) {
+          const before = game.players.length;
+          game.players = game.players.filter(p => p.user.toString() !== userId);
+
+          if (before !== game.players.length) {
+            // Réassigner l'hôte si nécessaire
+            if (game.host && game.host.toString() === userId && game.players.length > 0) {
+              game.host = game.players[0].user;
+            }
+
+            if (game.players.length === 0) {
+              await Game.deleteOne({ _id: game._id });
+              io.emit('lobby_updated');
+            } else {
+              await game.save();
+              io.to(gameCode).emit('game_updated', await getGameState(game));
+              io.emit('lobby_updated');
+            }
+          } else {
+            // Pas dans la liste des joueurs, juste notifier déconnexion légère
+            io.to(gameCode).emit('player_disconnected', { userId });
+          }
         }
       } catch (error) {
         console.error('Erreur lors de la gestion de la déconnexion:', error);

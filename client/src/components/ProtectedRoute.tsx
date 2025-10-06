@@ -3,19 +3,22 @@ import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const ProtectedRoute = () => {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
+
+  // Pendant le chargement de la session, ne pas rediriger (évite le reset sur F5)
+  if (isLoading) {
+    return <></>;
+  }
 
   // DEV: accepte le user de dev même si pas d'appel API
   if (!user) {
     if (import.meta.env.DEV && localStorage.getItem('token') === 'dev-token') {
-      // On considère l'utilisateur comme connecté en dev
       return <Outlet />;
     }
-    // Sinon, redirige vers la page de connexion
-    return <Navigate to="/login" replace />;
+    // Non authentifié une fois le chargement terminé
+    return <Navigate to="/" replace />;
   }
 
-  // Si l'utilisateur est connecté, affiche le contenu de la route protégée
   return <Outlet />;
 };
 

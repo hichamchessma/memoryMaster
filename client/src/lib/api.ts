@@ -13,7 +13,9 @@ const api: AxiosInstance = axios.create({
 // Intercepteur pour ajouter le token JWT aux requêtes
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
+    // Priorité au token invité stocké par onglet
+    const sessionToken = sessionStorage.getItem('token');
+    const token = sessionToken || localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -42,9 +44,10 @@ api.interceptors.response.use(
     if (error.response) {
       // Erreur 401 - Non autorisé
       if (error.response.status === 401) {
-        // Rediriger vers la page de connexion
+        // Nettoyer les tokens mais NE PAS rediriger ici.
+        // Laisser les composants (ProtectedRoute) gérer la navigation sans casser l'URL courante.
         localStorage.removeItem('token');
-        window.location.href = '/login';
+        // Ne pas toucher au sessionStorage pour préserver les invités par onglet
       }
       
       // Retourner l'erreur avec le message du serveur

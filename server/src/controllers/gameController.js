@@ -233,9 +233,17 @@ exports.createGame = async (req, res, next) => {
 // Lister les parties (salons) avec filtres simples
 exports.listGames = async (req, res, next) => {
   try {
-    const { status = 'waiting' } = req.query;
+    const { status = 'waiting,playing' } = req.query;
     const query = {};
-    if (status) query.status = status;
+    if (status) {
+      const statuses = String(status)
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+      if (statuses.length > 0) {
+        query.status = { $in: statuses };
+      }
+    }
 
     const games = await Game.find(query)
       .select('code name status maxPlayers players host createdAt')

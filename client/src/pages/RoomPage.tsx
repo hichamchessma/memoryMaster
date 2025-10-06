@@ -82,6 +82,13 @@ const RoomPage: React.FC = () => {
     };
   }, [socket, code, user?._id, navigate]);
 
+  // Garder le bouton "Rejoindre/Quitter" cohérent avec l'état serveur
+  React.useEffect(() => {
+    if (!user?._id) return;
+    const isIn = !!state?.players?.some(p => p._id === user._id);
+    setJoined(isIn);
+  }, [state?.players, user?._id]);
+
   const isHost = React.useMemo(() => state && user?._id && state.host?._id === user._id, [state, user?._id]);
   const isLobbyLike = React.useMemo(() => state?.status === 'lobby' || state?.status === 'waiting', [state?.status]);
 
@@ -148,16 +155,6 @@ const RoomPage: React.FC = () => {
 
   return (
     <div className="min-h-[calc(100vh-80px)] p-6 text-white">
-      {/* User chip + Retour menu (toujours visibles en haut à droite) */}
-      <div className="fixed top-4 right-4 z-50 flex items-center gap-3">
-        <span className="px-3 py-1 rounded-full bg-black/50 border border-white/20 text-sm whitespace-nowrap">
-          {user?.firstName ? `${user.firstName} ${user.lastName ?? ''}`.trim() : 'Utilisateur' }
-        </span>
-        <button
-          onClick={() => navigate('/')}
-          className="px-3 py-1 rounded-lg bg-black/40 hover:bg-black/50 border border-white/20 text-sm"
-        >Menu principal</button>
-      </div>
       <div className="max-w-3xl mx-auto bg-transparent rounded-2xl p-6">
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-2xl font-bold">Salon #{code}</h1>
@@ -199,15 +196,21 @@ const RoomPage: React.FC = () => {
               {typeof state?.maxPlayers === 'number' && state.maxPlayers > 0 && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
                   <div className="flex gap-3">
-                    {Array.from({ length: state.maxPlayers }).map((_, i) => (
-                      <img
-                        key={i}
-                        src={i === 0 && joined ? playerInImg : playerOutImg}
-                        alt={`Seat ${i+1}`}
-                        className="w-7 h-7 sm:w-8 sm:h-8 object-contain drop-shadow-md"
-                        draggable={false}
-                      />
-                    ))}
+                    {Array.from({ length: state.maxPlayers }).map((_, i) => {
+                      // Occuper un siège si un joueur a cette position (1-based) ou si i < players.length
+                      const byPosition = state.players?.some(p => p.position === i + 1);
+                      const occupied = byPosition || (state.players?.length ?? 0) > i;
+                      return (
+                        <img
+                          key={i}
+                          src={occupied ? playerInImg : playerOutImg}
+                          alt={`Seat ${i+1}`}
+                          className="w-7 h-7 sm:w-8 sm:h-8 object-contain drop-shadow-md"
+                          draggable={false}
+                          title={occupied ? (state.players?.find(p => p.position === i + 1)?.firstName || 'Joueur') : 'Siège libre'}
+                        />
+                      );
+                    })}
                   </div>
                   <button
                     onClick={handleToggleJoin}

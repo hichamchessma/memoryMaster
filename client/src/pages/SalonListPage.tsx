@@ -23,13 +23,13 @@ export default function SalonListPage() {
   const qc = useQueryClient();
 
   const fetchSalons = async (): Promise<LobbyItem[]> => {
-    const res: any = await api.get<LobbyItem[]>('/game?status=waiting');
+    const res: any = await api.get<LobbyItem[]>('/game?status=waiting,playing');
     if (!res?.data?.success) throw new Error(res?.data?.message || 'Erreur de chargement');
     return (res?.data?.data as LobbyItem[]) || [];
   };
 
   const { data: salons = [], isLoading, refetch, isFetching } = useQuery({
-    queryKey: ['lobby', 'waiting'],
+    queryKey: ['lobby', 'waiting,playing'],
     queryFn: fetchSalons,
     refetchInterval: 5000,
   });
@@ -37,7 +37,7 @@ export default function SalonListPage() {
   useEffect(() => {
     if (!socket) return;
     const onLobby = () => {
-      qc.invalidateQueries({ queryKey: ['lobby', 'waiting'] });
+      qc.invalidateQueries({ queryKey: ['lobby', 'waiting,playing'] });
     };
     socket.on('lobby_updated', onLobby);
     return () => {

@@ -23,7 +23,7 @@ const DashboardPage = () => {
               className="btn-main w-full"
               onClick={() => navigate('/start-game')}
             >
-              Commencer une partie
+              Salons
             </button>
 
             <button
