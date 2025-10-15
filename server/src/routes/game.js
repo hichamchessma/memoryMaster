@@ -10,7 +10,12 @@ const {
   autofillGame,
   listGames,
   updateGameName,
-  deleteGame
+  deleteGame,
+  createTable,
+  listTables,
+  joinTable,
+  leaveTable,
+  startTableGame
 } = require('../controllers/gameController');
 
 // Lister les parties (salons)
@@ -39,5 +44,12 @@ router.delete('/:code', protect, deleteGame);
 
 // Jouer un tour
 router.post('/:code/play', protect, playTurn);
+
+// Nouveaux endpoints pour les tables (dans un salon global)
+router.post('/tables', protect, createTable);
+router.get('/tables', protect, listTables);
+router.post('/tables/:tableId/join', protect, joinTable);
+router.post('/tables/:tableId/leave', protect, leaveTable);
+router.post('/tables/:tableId/start', protect, startTableGame);
 
 module.exports = router;

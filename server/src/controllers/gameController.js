@@ -791,20 +791,389 @@ async function handleBombom(game, player) {
   // (À compléter selon les règles du jeu)
 }
 
-function checkPlayerStatus(game, player) {
-  // Calculer le score actuel du joueur
-  const score = player.cards.reduce((sum, card) => sum + card.points, 0);
-  player.score = score;
+// Créer une nouvelle table (similaire à createGame mais pour une table individuelle)
+exports.createTable = async (req, res, next) => {
+  try {
+    const { maxPlayers = 4 } = req.body;
+    const userId = req.user.id;
 
-  // Vérifier si le joueur est éliminé
-  if (score > 100) {
-    player.isEliminated = true;
+    // Vérifier que l'utilisateur existe ou créer un invité si nécessaire
+    let user = await User.findById(userId);
+    if (!user) {
+      // Si l'utilisateur n'existe pas (invité), le créer
+      const guestSuffix = Math.floor(1000 + Math.random() * 9000);
+      const firstName = 'Invité';
+      const lastName = `${guestSuffix}`;
+      const email = `guest-${Date.now()}-${guestSuffix}@guest.local`;
+      const randomPwd = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+
+      user = await User.create({
+        firstName,
+        lastName,
+        email,
+        password: randomPwd,
+        nationality: '',
+        age: null
+      });
+    }
+
+    // Valider le nombre maximum de joueurs
+    if (maxPlayers < 2 || maxPlayers > 6) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Le nombre de joueurs doit être compris entre 2 et 6' 
+      });
+    }
+
+    // Générer un code de jeu unique
+    const code = await generateGameCode();
+
+    // Créer la nouvelle partie (table)
+    const game = new Game({
+      code,
+      host: userId,
+      maxPlayers,
+      cardsPerPlayer: 6, // Par défaut
+      players: [{
+        user: userId,
+        socketId: req.socketId || '',
+        username: `${user.firstName} ${user.lastName}`,
+        position: 1,
+        score: 0,
+        actualScore: 0,
+        cards: [],
+        isReady: false,
+        isHost: true,
+        isEliminated: false,
+        hasBombom: false,
+        bombomActivated: false,
+        bombomCanceled: false,
+        powers: {
+          jUsed: false,
+          qUsed: false,
+          kUsed: false
+        }
+      }],
+      status: 'waiting',
+      phase: 'waiting',
+      currentTurn: 0,
+      settings: {
+        turnDuration: 30, // secondes
+        explorationDuration: 10, // secondes
+        powerJDuration: 3, // secondes
+        powerQDuration: 3  // secondes
+      }
+    });
+
+    await game.save();
+
+    // Préparer la réponse
+    const gameData = game.toObject();
+    console.log('Game créé avec ID:', gameData._id);
+    console.log('Game data complet:', JSON.stringify(gameData, null, 2));
+    delete gameData.__v;
+    gameData.players.forEach(player => {
+      delete player.socketId;
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Table créée avec succès',
+      data: gameData
+    });
+
+    // Notifier le lobby (liste des tables)
+    try {
+      const io = req.app.get('io');
+      if (io) io.emit('table_created', gameData);
+    } catch (e) {
+      console.error('Erreur émission socket table_created (createTable):', e);
+    }
+  } catch (error) {
+    console.error('Erreur lors de la création de la table:', error);
+    next(error);
   }
-  // Vérifier le cas spécial du score exactement à 100
-  else if (score === 100) {
-    player.score = 50; // Réinitialiser à 50 points
+};
+
+// Lister les tables actives
+exports.listTables = async (req, res, next) => {
+  try {
+    const { status = 'waiting,playing' } = req.query;
+    const query = {};
+    if (status) {
+      const statuses = String(status)
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+      if (statuses.length > 0) {
+        query.status = { $in: statuses };
+      }
+    }
+
+    const games = await Game.find(query)
+      .select('_id code maxPlayers players host createdAt')
+      .populate('host', '_id firstName lastName')
+      .lean();
+
+    const data = games.map(g => ({
+      _id: g._id,
+      code: g.code,
+      maxPlayers: g.maxPlayers,
+      players: g.players.map(p => ({
+        _id: p.user,
+        firstName: p.username.split(' ')[0],
+        lastName: p.username.split(' ').slice(1).join(' '),
+        position: p.position
+      })),
+      status: g.status,
+      hostId: g.host._id,
+      createdAt: g.createdAt
+    }));
+
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
   }
-}
+};
+
+// Rejoindre une table
+exports.joinTable = async (req, res, next) => {
+  try {
+    const { tableId } = req.params;
+    const userId = req.user.id;
+
+    // Vérifier que l'utilisateur existe ou créer un invité si nécessaire
+    let user = await User.findById(userId);
+    if (!user) {
+      // Si l'utilisateur n'existe pas (invité), le créer
+      const guestSuffix = Math.floor(1000 + Math.random() * 9000);
+      const firstName = 'Invité';
+      const lastName = `${guestSuffix}`;
+      const email = `guest-${Date.now()}-${guestSuffix}@guest.local`;
+      const randomPwd = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+
+      user = await User.create({
+        firstName,
+        lastName,
+        email,
+        password: randomPwd,
+        nationality: '',
+        age: null
+      });
+    }
+
+    // Trouver la table
+    const game = await Game.findById(tableId);
+    if (!game) {
+      return res.status(404).json({ success: false, message: 'Table non trouvée' });
+    }
+
+    // Vérifier si la table est en attente
+    if (game.status !== 'waiting') {
+      return res.status(400).json({ success: false, message: 'Impossible de rejoindre cette table car elle a déjà commencé' });
+    }
+
+    // Vérifier si le joueur est déjà dans la table
+    const playerExists = game.players.some(p => p.user.toString() === userId);
+    if (playerExists) {
+      return res.status(400).json({ success: false, message: 'Vous avez déjà rejoint cette table' });
+    }
+
+    // Vérifier s'il reste de la place
+    if (game.players.length >= game.maxPlayers) {
+      return res.status(400).json({ success: false, message: 'La table est complète' });
+    }
+
+    // Ajouter le joueur à la table
+    game.players.push({
+      user: userId,
+      socketId: req.socketId || '',
+      username: `${user.firstName} ${user.lastName}`,
+      position: game.players.length + 1,
+      score: 0,
+      actualScore: 0,
+      cards: [],
+      isReady: false,
+      isHost: false,
+      isEliminated: false,
+      hasBombom: false,
+      bombomActivated: false,
+      bombomCanceled: false,
+      powers: {
+        jUsed: false,
+        qUsed: false,
+        kUsed: false
+      }
+    });
+
+    await game.save();
+
+    // Préparer la réponse
+    const gameData = game.toObject();
+    delete gameData.__v;
+    gameData.players.forEach(player => {
+      delete player.socketId;
+    });
+
+    res.json({
+      success: true,
+      message: 'Vous avez rejoint la table',
+      data: gameData
+    });
+
+    // Notifier les autres joueurs
+    try {
+      const io = req.app.get('io');
+      if (io) io.emit('player_joined_table', { tableId, player: gameData.players[gameData.players.length - 1] });
+    } catch (e) {
+      console.error('Erreur émission socket player_joined_table:', e);
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Quitter une table
+exports.leaveTable = async (req, res, next) => {
+  try {
+    const { tableId } = req.params;
+    const userId = req.user.id;
+
+    // Trouver la table
+    const game = await Game.findById(tableId);
+    if (!game) {
+      return res.status(404).json({ success: false, message: 'Table non trouvée' });
+    }
+
+    // Vérifier si le joueur est dans la table
+    const playerIndex = game.players.findIndex(p => p.user.toString() === userId);
+    if (playerIndex === -1) {
+      return res.status(400).json({ success: false, message: 'Vous ne faites pas partie de cette table' });
+    }
+
+    // Retirer le joueur
+    game.players.splice(playerIndex, 1);
+
+    // Si plus de joueurs, supprimer la table
+    if (game.players.length === 0) {
+      await Game.deleteOne({ _id: tableId });
+      res.json({ success: true, message: 'Table supprimée car vide' });
+    } else {
+      await game.save();
+      res.json({ success: true, message: 'Vous avez quitté la table' });
+    }
+
+    // Notifier les autres joueurs
+    try {
+      const io = req.app.get('io');
+      if (io) io.emit('player_left_table', { tableId, playerId: userId });
+    } catch (e) {
+      console.error('Erreur émission socket player_left_table:', e);
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Démarrer une table
+exports.startTableGame = async (req, res, next) => {
+  try {
+    const { tableId } = req.params;
+    const userId = req.user.id;
+
+    // Trouver la table
+    const game = await Game.findById(tableId);
+    if (!game) {
+      return res.status(404).json({ success: false, message: 'Table non trouvée' });
+    }
+
+    // Vérifier que l'utilisateur est l'hôte
+    if (game.host.toString() !== userId) {
+      return res.status(403).json({ success: false, message: 'Seul l\'hôte peut démarrer la table' });
+    }
+
+    // Vérifier qu'il y a assez de joueurs
+    if (game.players.length < 2) {
+      return res.status(400).json({ success: false, message: 'Il faut au moins 2 joueurs pour commencer' });
+    }
+
+    // Démarrer le jeu (utiliser la logique existante de startGame)
+    game.status = 'playing';
+    game.phase = 'exploration';
+    game.startedAt = new Date();
+    game.currentTurn = 1;
+
+    // Créer le paquet de cartes (simplifié)
+    const cardValues = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+    const jokers = Array(2).fill('JOKER');
+    let deck = [];
+
+    cardValues.forEach(value => {
+      for (let i = 0; i < 4; i++) {
+        deck.push({
+          value,
+          isFlipped: false,
+          isVisible: false,
+          position: deck.length,
+          isDiscarded: false
+        });
+      }
+    });
+
+    jokers.forEach(joker => {
+      deck.push({
+        value: joker,
+        isFlipped: false,
+        isVisible: false,
+        position: deck.length,
+        isDiscarded: false
+      });
+    });
+
+    // Mélanger le paquet
+    for (let i = deck.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+
+    // Distribuer les cartes
+    game.players.forEach(player => {
+      player.cards = [];
+      for (let i = 0; i < game.cardsPerPlayer; i++) {
+        if (deck.length === 0) break;
+        const card = { ...deck.pop() };
+        card.ownerId = player.user;
+        player.cards.push(card);
+      }
+
+      // Révéler la moitié des cartes
+      const halfCards = Math.floor(game.cardsPerPlayer / 2);
+      for (let i = 0; i < halfCards; i++) {
+        if (player.cards[i]) {
+          player.cards[i].isVisible = true;
+        }
+      }
+    });
+
+    game.deck = deck;
+    game.currentPlayer = game.players[0].user;
+    game.explorationEndTime = new Date(Date.now() + (game.settings.explorationDuration * 1000));
+
+    await game.save();
+
+    res.json({ success: true, message: 'Table démarrée' });
+
+    // Notifier les joueurs
+    try {
+      const io = req.app.get('io');
+      if (io) io.emit('game_started', { tableId });
+    } catch (e) {
+      console.error('Erreur émission socket game_started:', e);
+    }
+  } catch (error) {
+    next(error);
+  }
+};
 
 // Jouer une carte
 exports.playCard = async (req, res, next) => {

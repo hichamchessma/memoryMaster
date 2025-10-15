@@ -1,10 +1,16 @@
 
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
 
 const DashboardPage = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+
+  // Rediriger vers le salon global après connexion
+  useEffect(() => {
+    navigate('/lobby');
+  }, [navigate]);
 
   const displayName = user?.firstName || 'Invité';
 
@@ -16,28 +22,14 @@ const DashboardPage = () => {
           <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight mb-2 drop-shadow-[0_2px_16px_rgba(0,0,0,0.6)]">
             Bienvenue{displayName ? `, ${displayName}` : ''} !
           </h1>
-          <p className="text-base sm:text-lg opacity-90 mb-8">Que souhaitez-vous faire ?</p>
+          <p className="text-base sm:text-lg opacity-90 mb-8">Redirection vers le salon...</p>
 
           <div className="flex flex-col gap-3 max-w-sm mx-auto">
             <button
               className="btn-main w-full"
-              onClick={() => navigate('/start-game')}
+              onClick={() => navigate('/lobby')}
             >
-              Salons
-            </button>
-
-            <button
-              className="btn-secondary w-full"
-              onClick={() => navigate('/scores')}
-            >
-              Voir les scores
-            </button>
-
-            <button
-              className="w-full px-5 py-3 rounded-full border border-white/25 bg-white/10 hover:bg-white/20 transition text-white"
-              onClick={() => navigate('/training')}
-            >
-              S'entraîner
+              Aller au salon
             </button>
           </div>
 
