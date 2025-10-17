@@ -2,54 +2,34 @@ const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/authMiddleware');
 const {
+  createTable,
+  listTables,
+  getTable,
+  joinTable,
+  leaveTable,
+  startTableGame,
   createGame,
   joinGame,
   startGame,
   getGame,
   playTurn,
-  autofillGame,
-  listGames,
-  updateGameName,
-  deleteGame,
-  createTable,
-  listTables,
-  joinTable,
-  leaveTable,
-  startTableGame
+  autofillGame
 } = require('../controllers/gameController');
 
-// Lister les parties (salons)
-router.get('/', protect, listGames);
-
-// Créer une nouvelle partie
-router.post('/', protect, createGame);
-
-// Rejoindre une partie existante
-router.post('/:code/join', protect, joinGame);
-
-// Remplir automatiquement avec des invités
-router.post('/:code/autofill', protect, autofillGame);
-
-// Démarrer une partie (seul l'hôte peut le faire)
-router.post('/:code/start', protect, startGame);
-
-// Obtenir les informations d'une partie
-router.get('/:code', protect, getGame);
-
-// Mettre à jour le nom d'un salon
-router.patch('/:code/name', protect, updateGameName);
-
-// Supprimer un salon
-router.delete('/:code', protect, deleteGame);
-
-// Jouer un tour
-router.post('/:code/play', protect, playTurn);
-
-// Nouveaux endpoints pour les tables (dans un salon global)
+// Routes pour les tables (nouveau système)
 router.post('/tables', protect, createTable);
 router.get('/tables', protect, listTables);
+router.get('/tables/:tableId', protect, getTable);
 router.post('/tables/:tableId/join', protect, joinTable);
 router.post('/tables/:tableId/leave', protect, leaveTable);
 router.post('/tables/:tableId/start', protect, startTableGame);
+
+// Anciennes routes pour compatibilité (avec codes)
+router.post('/', protect, createGame);
+router.post('/:code/join', protect, joinGame);
+router.post('/:code/autofill', protect, autofillGame);
+router.post('/:code/start', protect, startGame);
+router.get('/:code', protect, getGame);
+router.post('/:code/play', protect, playTurn);
 
 module.exports = router;

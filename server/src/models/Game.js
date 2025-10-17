@@ -121,12 +121,6 @@ const gameSchema = new mongoose.Schema({
     minlength: 4,
     maxlength: 6
   },
-  name: {
-    type: String,
-    default: '',
-    trim: true,
-    maxlength: 64
-  },
   host: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

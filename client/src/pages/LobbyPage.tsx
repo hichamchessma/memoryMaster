@@ -26,15 +26,22 @@ const LobbyPage: React.FC = () => {
   };
 
   const fetchTables = async (): Promise<TableItem[]> => {
+    // Vérifier que l'utilisateur est authentifié avant de faire la requête
+    if (!user?.token && !sessionStorage.getItem('token') && !localStorage.getItem('token')) {
+      console.log('Aucun token disponible, requête annulée');
+      return [];
+    }
+
     const res: any = await api.get<TableItem[]>('/game/tables?status=waiting,playing');
     const ok = res?.data?.success;
     if (!ok) throw new Error(res?.data?.error || 'Erreur de chargement');
     return (res?.data?.data as TableItem[]) || [];
   };
 
-  const { data: tables = [], isLoading: isTablesLoading, isFetching: isTablesFetching } = useQuery({
+  const { data: tables = [], isLoading: isTablesLoading, isFetching: isTablesFetching, error: tablesError } = useQuery({
     queryKey: ['tables', 'waiting,playing'],
     queryFn: fetchTables,
+    enabled: !!user || !!sessionStorage.getItem('token') || !!localStorage.getItem('token'), // Seulement si authentifié
     refetchInterval: 5000, // Polling de secours
   });
 
@@ -180,6 +187,7 @@ const LobbyPage: React.FC = () => {
           <div className="mb-8">
             <h2 className="text-3xl font-semibold text-white mb-6">Tables Actives</h2>
             {(isTablesLoading || isTablesFetching) && <div className="text-gray-300">Chargement des tables...</div>}
+            {tablesError && <div className="text-red-300">Erreur de chargement des tables: {tablesError.message}</div>}
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {tables.map((table) => (

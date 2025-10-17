@@ -35,10 +35,16 @@ app.use('/api/auth', authRoutes);
 app.use('/api/game', gameRoutes);
 app.use('/api/debug', debugRoutes);
 
-// Connexion à MongoDB
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/memoryMaster')
-  .then(() => console.log('Connecté à MongoDB'))
-  .catch(err => console.error('Erreur de connexion à MongoDB:', err));
+// Configuration MongoDB selon le modèle de lingobango
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/memoryMaster';
+
+// Connexion à MongoDB (options modernes, sans paramètres dépréciés)
+mongoose.connect(MONGODB_URI)
+  .then(() => console.log(`✅ Connecté à MongoDB - Base: memoryMaster`))
+  .catch(err => {
+    console.error('❌ Erreur de connexion à MongoDB:', err.message);
+    console.log('💡 Astuce: Assure-toi que MongoDB est démarré (net start MongoDB)');
+  });
 
 // Gestion des connexions Socket.IO
 const { setupSocket } = require('./services/socketService');

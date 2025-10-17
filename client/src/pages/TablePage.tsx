@@ -3,6 +3,7 @@ import tableGameImg from '../assets/cards/tableGame.png';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
+import api from '../lib/api';
 
 type TablePlayer = {
   _id: string;
@@ -29,6 +30,30 @@ const TablePage: React.FC = () => {
 
   const [table, setTable] = React.useState<GameTable | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [loading, setLoading] = React.useState(true);
+
+  // Récupérer les détails de la table
+  React.useEffect(() => {
+    const fetchTable = async () => {
+      if (!tableId) return;
+
+      try {
+        setLoading(true);
+        const response = await api.get(`/game/tables/${tableId}`);
+        if (response.data?.success) {
+          setTable(response.data.data);
+        } else {
+          setError(response.data?.error || 'Erreur lors du chargement de la table');
+        }
+      } catch (e: any) {
+        setError(e.error || e.message || 'Erreur de chargement');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTable();
+  }, [tableId]);
 
   React.useEffect(() => {
     if (!socket || !tableId || !user?._id) return;
@@ -49,14 +74,59 @@ const TablePage: React.FC = () => {
     socket.emit('watch_table', { tableId });
     socket.on('table_updated', handleTableUpdated);
     socket.on('game_started', handleGameStarted);
-    socket.on('error', (e: any) => setError(e?.message ?? 'Erreur socket'));
 
     return () => {
       socket.off('table_updated', handleTableUpdated);
       socket.off('game_started');
-      socket.off('error');
     };
   }, [socket, tableId, user?._id, navigate]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+          <p>Chargement de la table...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">
+        <div className="text-center">
+          <p className="text-red-400 mb-4">Erreur : {error}</p>
+          <button
+            onClick={() => navigate('/lobby')}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded"
+          >
+            Retour au salon
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!table) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">
+        <div className="text-center">
+          <p className="mb-4">Table non trouvée</p>
+          <button
+            onClick={() => navigate('/lobby')}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded"
+          >
+            Retour au salon
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const isUserInTable = table.players.some(p => p._id === user?._id);
+  const availableSeats = table.maxPlayers - table.players.length;
+  const isHost = table.hostId === user?._id;
 
   const joinTable = async () => {
     if (!user?._id) return;
@@ -79,18 +149,6 @@ const TablePage: React.FC = () => {
   const startGame = () => {
     socket?.emit('start_game', { tableId });
   };
-
-  if (!table) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">
-        <div>Chargement de la table...</div>
-      </div>
-    );
-  }
-
-  const isUserInTable = table.players.some(p => p._id === user?._id);
-  const availableSeats = table.maxPlayers - table.players.length;
-  const isHost = table.hostId === user?._id;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-indigo-900 relative overflow-hidden">

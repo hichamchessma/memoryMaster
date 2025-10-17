@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const mongoose = require('mongoose');
 
 // Use the same fallback as in authController.js
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_change_me';
@@ -38,11 +39,35 @@ const protect = async (req, res, next) => {
       }
       // Vérifier le token normalement sinon
       const decoded = jwt.verify(token, JWT_SECRET);
+      
       // Support des invités (pas de lookup DB)
       if (decoded && decoded.guest) {
+        // Vérifier si l'ID est un ObjectId valide
+        let userId = decoded.id;
+        
+        // Si l'ID n'est pas un ObjectId valide (ancien système temporaire)
+        if (!mongoose.Types.ObjectId.isValid(userId)) {
+          // Créer un utilisateur invité en base pour avoir un vrai ObjectId
+          const suffix = Math.floor(1000 + Math.random() * 9000);
+          const firstName = decoded.firstName || `Invité ${suffix}`;
+          const email = `guest-${Date.now()}-${suffix}@guest.local`;
+          const randomPwd = Math.random().toString(36).slice(2);
+          
+          const guestUser = await User.create({
+            firstName,
+            lastName: 'Guest',
+            email,
+            password: randomPwd,
+            nationality: '',
+            age: null,
+          });
+          
+          userId = guestUser._id;
+        }
+        
         req.user = {
-          _id: decoded.id,
-          id: decoded.id,
+          _id: userId,
+          id: userId,
           firstName: decoded.firstName || 'Invité',
           lastName: '',
           email: '',

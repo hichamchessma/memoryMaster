@@ -10,24 +10,6 @@ exports.setupSocket = (io) => {
   io.on('connection', (socket) => {
     console.log(`Nouvelle connexion: ${socket.id}`);
 
-    // Observer un salon sans rejoindre la table
-    socket.on('watch_room', async ({ gameCode }) => {
-      try {
-        const game = await Game.findOne({ code: gameCode });
-        if (!game) {
-          return socket.emit('error', { message: 'Partie non trouvée' });
-        }
-        // Rejoindre la salle pour recevoir les mises à jour, SANS toucher aux joueurs
-        socket.join(gameCode);
-        // Mémoriser uniquement le code pour gérer les rooms (pas d'userId)
-        activeConnections.set(socket.id, { gameCode });
-        socket.emit('game_updated', await getGameState(game));
-      } catch (e) {
-        console.error('Erreur watch_room:', e);
-        socket.emit('error', { message: 'Erreur lors de l\'ouverture du salon' });
-      }
-    });
-
     // Événement lorsqu'un joueur rejoint une partie
     socket.on('join_game', async ({ gameCode, userId }) => {
       try {
@@ -52,25 +34,18 @@ exports.setupSocket = (io) => {
             return socket.emit('error', { message: 'La partie est complète' });
           }
           
-          // Ajouter le joueur à la partie (conforme au schema playerSchema)
+          // Ajouter le joueur à la partie
           player = {
             user: userId,
             socketId: socket.id,
-            username: `${user.firstName || 'Invité'} ${user.lastName || ''}`.trim(),
             position: game.players.length + 1,
-            score: 0,
-            actualScore: 0,
             cards: [],
-            isReady: false,
-            isHost: game.host && game.host.toString() === userId,
-            isEliminated: false,
+            score: 0,
+            hasThrown: false,
             hasBombom: false,
-            bombomActivated: false,
-            bombomCanceled: false,
-            powers: { jUsed: false, qUsed: false, kUsed: false },
-            lastAction: null,
+            isEliminated: false
           };
-
+          
           game.players.push(player);
           await game.save();
         } else {
@@ -87,13 +62,6 @@ exports.setupSocket = (io) => {
         
         // Informer tous les joueurs de la mise à jour
         io.to(gameCode).emit('game_updated', await getGameState(game));
-        // Notifier le lobby (capacité mise à jour)
-        io.emit('lobby_updated');
-
-        // Si une table de 2 atteint la capacité, notifier pour redirection
-        if (game.maxPlayers === 2 && game.players.length === 2) {
-          io.to(gameCode).emit('table_full', { gameCode, maxPlayers: game.maxPlayers });
-        }
         
       } catch (error) {
         console.error('Erreur lors de la connexion à la partie:', error);
@@ -122,14 +90,10 @@ exports.setupSocket = (io) => {
           // Si plus de joueurs, supprimer la partie
           if (game.players.length === 0) {
             await Game.deleteOne({ _id: game._id });
-            // Notifier le lobby de la suppression
-            io.emit('lobby_updated');
           } else {
             await game.save();
             // Informer les autres joueurs
             io.to(gameCode).emit('game_updated', await getGameState(game));
-            // Notifier le lobby d'une mise à jour
-            io.emit('lobby_updated');
           }
         }
         
@@ -154,29 +118,14 @@ exports.setupSocket = (io) => {
         const game = await Game.findOne({ code: gameCode });
         if (!game) return;
         
-        // Si un joueur était associé à ce socket, on le retire de la table
-        if (userId) {
-          const before = game.players.length;
-          game.players = game.players.filter(p => p.user.toString() !== userId);
-
-          if (before !== game.players.length) {
-            // Réassigner l'hôte si nécessaire
-            if (game.host && game.host.toString() === userId && game.players.length > 0) {
-              game.host = game.players[0].user;
-            }
-
-            if (game.players.length === 0) {
-              await Game.deleteOne({ _id: game._id });
-              io.emit('lobby_updated');
-            } else {
-              await game.save();
-              io.to(gameCode).emit('game_updated', await getGameState(game));
-              io.emit('lobby_updated');
-            }
-          } else {
-            // Pas dans la liste des joueurs, juste notifier déconnexion légère
-            io.to(gameCode).emit('player_disconnected', { userId });
-          }
+        // Marquer le joueur comme déconnecté
+        const player = game.players.find(p => p.user.toString() === userId);
+        if (player) {
+          player.socketId = null;
+          await game.save();
+          
+          // Informer les autres joueurs
+          io.to(gameCode).emit('player_disconnected', { userId });
         }
       } catch (error) {
         console.error('Erreur lors de la gestion de la déconnexion:', error);
