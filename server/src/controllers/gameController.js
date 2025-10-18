@@ -179,6 +179,16 @@ exports.createTable = async (req, res, next) => {
       message: 'Table créée avec succès',
       data: gameData  // Frontend attend "data" et non "game"
     });
+
+    // Notifier tous les clients qu'une nouvelle table a été créée
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        io.emit('table_created', { tableId: game._id, code: game.code });
+      }
+    } catch (e) {
+      console.error('Erreur émission socket table_created:', e);
+    }
   } catch (error) {
     console.error('Erreur lors de la création de la table:', error);
     next(error);
@@ -1244,14 +1254,19 @@ exports.listTables = async (req, res, next) => {
   try {
     const { status } = req.query;
 
-    // Récupérer toutes les parties du stockage temporaire
-    const allGames = await Game.find({}).populate('host', 'firstName lastName elo').populate('players.user', 'firstName lastName elo');
-
-    // Filtrer par statut si nécessaire
-    let games = allGames;
+    // Construire le filtre MongoDB
+    let filter = {};
     if (status) {
-      games = allGames.filter(game => game.status === status);
+      // Support pour plusieurs statuts séparés par des virgules
+      const statusArray = status.split(',').map(s => s.trim());
+      filter.status = { $in: statusArray };
     }
+
+    // Récupérer les parties filtrées
+    const games = await Game.find(filter)
+      .populate('host', 'firstName lastName elo')
+      .populate('players.user', 'firstName lastName elo')
+      .sort({ createdAt: -1 });  // Plus récentes en premier
 
     // Préparer la réponse
     const tables = games.map(game => ({
@@ -1433,20 +1448,69 @@ exports.joinTable = async (req, res, next) => {
     res.json({
       success: true,
       message: 'Vous vous êtes assis à la table',
-      game: response
+      data: response  // Frontend attend "data"
     });
 
     // Émettre l'état aux clients du salon via Socket.IO
     try {
       const io = req.app.get('io');
       if (io) {
-        io.to(game.code).emit('game_updated', await getGameState(game));
+        // Notifier les joueurs de la table
+        io.to(game.code).emit('table_updated', response);
+        // Notifier tous les clients du lobby
+        io.emit('player_joined_table', { tableId: game._id, code: game.code });
       }
     } catch (e) {
       console.error('Erreur émission socket joinTable:', e);
     }
   } catch (error) {
     console.error('Erreur lors de la connexion à la table:', error);
+    next(error);
+  }
+};
+
+// Supprimer une table (seulement l'hôte)
+exports.deleteTable = async (req, res, next) => {
+  try {
+    const { tableId } = req.params;
+    const userId = req.user.id;
+
+    const game = await Game.findById(tableId);
+    if (!game) {
+      return res.status(404).json({
+        success: false,
+        message: 'Table non trouvée'
+      });
+    }
+
+    // Vérifier que l'utilisateur est l'hôte
+    if (game.host.toString() !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Seul l\'hôte peut supprimer la table'
+      });
+    }
+
+    // Supprimer la table
+    await Game.findByIdAndDelete(tableId);
+
+    res.json({
+      success: true,
+      message: 'Table supprimée avec succès'
+    });
+
+    // Notifier tous les clients
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        io.to(game.code).emit('table_deleted', { tableId: game._id });
+        io.emit('table_deleted', { tableId: game._id });
+      }
+    } catch (e) {
+      console.error('Erreur émission socket deleteTable:', e);
+    }
+  } catch (error) {
+    console.error('Erreur lors de la suppression de la table:', error);
     next(error);
   }
 };
@@ -1531,18 +1595,21 @@ exports.leaveTable = async (req, res, next) => {
       res.json({
         success: true,
         message: 'Vous avez quitté la table',
-        game: response
+        data: response  // Frontend attend "data"
       });
-    }
 
-    // Émettre l'état aux clients du salon via Socket.IO
-    try {
-      const io = req.app.get('io');
-      if (io) {
-        io.to(game.code).emit('game_updated', await getGameState(game));
+      // Émettre l'état aux clients du salon via Socket.IO
+      try {
+        const io = req.app.get('io');
+        if (io) {
+          // Notifier les joueurs de la table
+          io.to(game.code).emit('table_updated', response);
+          // Notifier tous les clients du lobby
+          io.emit('player_left_table', { tableId: game._id, code: game.code });
+        }
+      } catch (e) {
+        console.error('Erreur émission socket leaveTable:', e);
       }
-    } catch (e) {
-      console.error('Erreur émission socket leaveTable:', e);
     }
   } catch (error) {
     console.error('Erreur lors de la déconnexion de la table:', error);

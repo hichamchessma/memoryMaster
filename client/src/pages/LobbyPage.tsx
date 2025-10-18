@@ -51,6 +51,7 @@ const LobbyPage: React.FC = () => {
     const onTableUpdate = () => qc.invalidateQueries({ queryKey: ['tables', 'waiting,playing'] });
     socket.on('table_updated', onTableUpdate);
     socket.on('table_created', onTableUpdate);
+    socket.on('table_deleted', onTableUpdate);
     socket.on('player_joined_table', onTableUpdate);
     socket.on('player_left_table', onTableUpdate);
     socket.on('game_started', (data: { tableCode: string }) => {
@@ -59,6 +60,7 @@ const LobbyPage: React.FC = () => {
     return () => {
       socket.off('table_updated', onTableUpdate);
       socket.off('table_created');
+      socket.off('table_deleted');
       socket.off('player_joined_table');
       socket.off('player_left_table');
       socket.off('game_started');
@@ -117,9 +119,27 @@ const LobbyPage: React.FC = () => {
     }
   };
 
+  // Supprimer une table (seulement l'hôte)
+  const handleDeleteTable = async (tableId: string) => {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer cette table ?')) return;
+    try {
+      const response = await api.delete(`/game/tables/${tableId}`);
+      if (response.data?.success) {
+        qc.invalidateQueries({ queryKey: ['tables', 'waiting,playing'] });
+      }
+    } catch (e: any) {
+      setError(e.error || e.message || 'Erreur lors de la suppression');
+    }
+  };
+
   // Vérifier si l'utilisateur est dans une table
   const isUserInTable = (table: TableItem) => {
     return table.players.some(p => p._id === user?._id);
+  };
+
+  // Vérifier si l'utilisateur est l'hôte
+  const isUserHost = (table: TableItem) => {
+    return table.hostId === user?._id;
   };
 
   // Places disponibles
@@ -215,34 +235,22 @@ const LobbyPage: React.FC = () => {
                       ))}
                     </div>
                   </div>
-                  <div className="flex gap-2">
-                    {isUserInTable(table) ? (
-                      <>
-                        <button
-                          onClick={() => handleLeaveTable(table._id)}
-                          className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-2 rounded"
-                        >
-                          Quitter
-                        </button>
-                        {table.players.find(p => p._id === user?._id)?._id === table.hostId && table.status === 'waiting' && (
-                          <button
-                            onClick={() => socket?.emit('start_game', { tableId: table._id })}
-                            className="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-2 rounded"
-                          >
-                            Démarrer
-                          </button>
-                        )}
-                      </>
-                    ) : getAvailableSeats(table) > 0 ? (
+                  <div className="flex gap-2 flex-col">
+                    <button
+                      onClick={() => navigate(`/table/${table._id}`)}
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded"
+                    >
+                      {isUserInTable(table) ? 'Voir la table' : `Rejoindre (${getAvailableSeats(table)} places)`}
+                    </button>
+                    {isUserHost(table) && (
                       <button
-                        onClick={() => handleJoinTable(table._id)}
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteTable(table._id);
+                        }}
+                        className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-2 rounded"
                       >
-                        Rejoindre ({getAvailableSeats(table)} places)
-                      </button>
-                    ) : (
-                      <button disabled className="w-full bg-gray-600 text-gray-400 py-2 rounded">
-                        Table pleine
+                        Supprimer
                       </button>
                     )}
                   </div>

@@ -1,5 +1,7 @@
 import React from 'react';
 import tableGameImg from '../assets/cards/tableGame.png';
+import playerInImg from '../assets/cards/playerIn.png';
+import playerOutImg from '../assets/cards/playerOut.png';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
@@ -56,30 +58,58 @@ const TablePage: React.FC = () => {
   }, [tableId]);
 
   React.useEffect(() => {
-    if (!socket || !tableId || !user?._id) return;
+    if (!socket || !tableId) return;
 
-    const handleTableUpdated = (updatedTable: GameTable) => {
-      if (updatedTable._id === tableId) {
-        setTable(updatedTable);
+    const handleTableUpdated = (updatedTable: any) => {
+      console.log('Table mise à jour reçue:', updatedTable);
+      // Recharger les données de la table
+      const fetchTable = async () => {
+        try {
+          const response = await api.get(`/game/tables/${tableId}`);
+          if (response.data?.success) {
+            setTable(response.data.data);
+          }
+        } catch (e: any) {
+          console.error('Erreur rechargement table:', e);
+        }
+      };
+      fetchTable();
+    };
+
+    const handleGameStarted = ({ tableCode }: { tableCode: string }) => {
+      if (table?.code === tableCode) {
+        navigate(`/game/${tableCode}`);
       }
     };
 
-    const handleGameStarted = ({ tableId: startedTableId }: { tableId: string }) => {
-      if (startedTableId === tableId) {
-        navigate(`/game/${tableId}`);
+    const handleTableDeleted = ({ tableId: deletedTableId }: { tableId: string }) => {
+      if (deletedTableId === tableId) {
+        alert('La table a été supprimée par l\'hôte');
+        navigate('/lobby');
       }
     };
 
     // Observer la table spécifique
-    socket.emit('watch_table', { tableId });
+    if (table?.code) {
+      socket.emit('join', table.code);
+    }
     socket.on('table_updated', handleTableUpdated);
+    socket.on('player_joined_table', handleTableUpdated);
+    socket.on('player_left_table', handleTableUpdated);
     socket.on('game_started', handleGameStarted);
+    socket.on('table_deleted', handleTableDeleted);
 
     return () => {
+      if (table?.code) {
+        socket.emit('leave', table.code);
+      }
       socket.off('table_updated', handleTableUpdated);
-      socket.off('game_started');
+      socket.off('player_joined_table', handleTableUpdated);
+      socket.off('player_left_table', handleTableUpdated);
+      socket.off('game_started', handleGameStarted);
+      socket.off('table_deleted', handleTableDeleted);
     };
-  }, [socket, tableId, user?._id, navigate]);
+  }, [socket, tableId, table?.code, navigate]);
 
   if (loading) {
     return (
@@ -131,23 +161,51 @@ const TablePage: React.FC = () => {
   const joinTable = async () => {
     if (!user?._id) return;
     try {
-      socket?.emit('join_table', { tableId, userId: user._id });
+      const response = await api.post(`/game/tables/${tableId}/join`, { socketId: socket?.id });
+      if (response.data?.success) {
+        setTable(response.data.data);
+      }
     } catch (e: any) {
-      setError(e.message || 'Erreur lors de la connexion à la table');
+      setError(e.error || e.message || 'Erreur lors de la connexion à la table');
     }
   };
 
   const leaveTable = async () => {
     if (!user?._id) return;
     try {
-      socket?.emit('leave_table', { tableId, userId: user._id });
+      const response = await api.post(`/game/tables/${tableId}/leave`);
+      if (response.data?.success) {
+        navigate('/lobby');
+      }
     } catch (e: any) {
-      setError(e.message || 'Erreur lors du départ de la table');
+      setError(e.error || e.message || 'Erreur lors du départ de la table');
     }
   };
 
-  const startGame = () => {
-    socket?.emit('start_game', { tableId });
+  const startGame = async () => {
+    if (!user?._id) return;
+    try {
+      const response = await api.post(`/game/tables/${tableId}/start`);
+      if (response.data?.success) {
+        navigate(`/game/${table.code}`);
+      }
+    } catch (e: any) {
+      setError(e.error || e.message || 'Erreur lors du démarrage');
+    }
+  };
+
+  const deleteTable = async () => {
+    if (!user?._id || !isHost) return;
+    if (!confirm('Êtes-vous sûr de vouloir supprimer cette table ?')) return;
+    
+    try {
+      const response = await api.delete(`/game/tables/${tableId}`);
+      if (response.data?.success) {
+        navigate('/lobby');
+      }
+    } catch (e: any) {
+      setError(e.error || e.message || 'Erreur lors de la suppression');
+    }
   };
 
   return (
@@ -175,26 +233,43 @@ const TablePage: React.FC = () => {
           {/* Table Display */}
           <div className="bg-white/10 backdrop-blur rounded-xl p-8 border border-white/20 mb-8">
             <div className="flex justify-center mb-6">
-              <img src={tableGameImg} alt="Table de jeu" className="w-48 h-32 object-contain" />
+              <img src={tableGameImg} alt="Table de jeu" className="w-64 h-40 object-contain" />
             </div>
 
-            {/* Sièges */}
-            <div className={`grid gap-4 ${table.maxPlayers === 2 ? 'grid-cols-2' : table.maxPlayers === 3 ? 'grid-cols-3' : 'grid-cols-2 grid-rows-2'}`}>
+            {/* Sièges visuels avec images cliquables */}
+            <div className={`flex justify-center items-center gap-8 ${table.maxPlayers === 4 ? 'grid grid-cols-2 gap-12' : 'flex-row'}`}>
               {Array.from({ length: table.maxPlayers }).map((_, i) => {
-                const player = table.players.find(p => p.position === i + 1);
+                const position = i + 1;
+                const player = table.players.find(p => p.position === position);
+                const isCurrentUser = player?._id === user?._id;
+                
                 return (
-                  <div
-                    key={i}
-                    className={`relative w-16 h-16 rounded-full border-2 flex items-center justify-center transition-all ${
-                      player ? 'border-green-400 bg-green-500/30' : 'border-gray-600 bg-gray-800/50'
-                    }`}
-                  >
+                  <div key={i} className="flex flex-col items-center gap-2">
+                    <button
+                      onClick={() => {
+                        if (!player && !isUserInTable) {
+                          joinTable();
+                        } else if (isCurrentUser) {
+                          leaveTable();
+                        }
+                      }}
+                      disabled={player && !isCurrentUser}
+                      className={`relative transition-transform hover:scale-105 ${
+                        player && !isCurrentUser ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                      }`}
+                    >
+                      <img 
+                        src={player ? playerInImg : playerOutImg} 
+                        alt={player ? 'Siège occupé' : 'Siège libre'} 
+                        className="w-24 h-24 object-contain"
+                      />
+                    </button>
                     {player ? (
-                      <span className="text-sm font-bold text-white">
-                        {player.firstName[0]}{player.lastName[0]}
+                      <span className="text-white font-semibold text-sm mt-1">
+                        {player.firstName} {player.lastName}
                       </span>
                     ) : (
-                      <span className="text-lg text-gray-400">?</span>
+                      <span className="text-gray-400 text-sm">Place {position}</span>
                     )}
                   </div>
                 );
@@ -216,33 +291,22 @@ const TablePage: React.FC = () => {
           </div>
 
           {/* Actions */}
-          <div className="text-center">
-            {isUserInTable ? (
-              <div className="flex gap-4 justify-center">
-                <button
-                  onClick={leaveTable}
-                  className="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-xl"
-                >
-                  Quitter la table
-                </button>
-                {isHost && table.status === 'waiting' && (
-                  <button
-                    onClick={startGame}
-                    className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-xl"
-                  >
-                    Démarrer le jeu
-                  </button>
-                )}
-              </div>
-            ) : availableSeats > 0 ? (
+          <div className="text-center flex gap-4 justify-center">
+            {isUserInTable && isHost && table.status === 'waiting' && table.players.length >= 2 && (
               <button
-                onClick={joinTable}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-xl"
+                onClick={startGame}
+                className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-xl shadow-lg"
               >
-                Rejoindre la table
+                Démarrer le jeu
               </button>
-            ) : (
-              <p className="text-gray-400">Table pleine</p>
+            )}
+            {isHost && (
+              <button
+                onClick={deleteTable}
+                className="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-8 rounded-xl shadow-lg"
+              >
+                Supprimer la table
+              </button>
             )}
           </div>
 
