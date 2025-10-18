@@ -130,20 +130,22 @@ const LobbyPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-indigo-900 relative overflow-hidden">
-      {/* Particules flottantes */}
-      <div className="absolute inset-0 overflow-hidden">
-        {[...Array(20)].map((_, i) => (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 relative overflow-hidden">
+      {/* Animated background particles */}
+      <div className="absolute inset-0">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(139,92,246,0.15),transparent_50%)]"></div>
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_80%,rgba(59,130,246,0.15),transparent_50%)]"></div>
+        {[...Array(40)].map((_, i) => (
           <div
             key={i}
-            className="absolute rounded-full animate-float opacity-20"
+            className="absolute rounded-full bg-white opacity-10"
             style={{
               left: `${Math.random() * 100}%`,
               top: `${Math.random() * 100}%`,
               width: `${2 + Math.random() * 4}px`,
               height: `${2 + Math.random() * 4}px`,
-              background: `radial-gradient(circle, rgba(${120 + Math.random() * 135}, ${119 + Math.random() * 136}, ${198 + Math.random() * 57}, 0.8), transparent)`,
-              animationDelay: `${Math.random() * 8}s`,
+              animation: `float ${5 + Math.random() * 10}s ease-in-out infinite`,
+              animationDelay: `${Math.random() * 5}s`,
             }}
           />
         ))}
@@ -153,10 +155,14 @@ const LobbyPage: React.FC = () => {
         <div className="max-w-7xl mx-auto">
           {/* Header */}
           <div className="text-center mb-8">
-            <h1 className="text-5xl font-bold text-white mb-4">
-              Salon Global - Memory Master
-            </h1>
-            <p className="text-xl text-gray-300">
+            <div className="inline-block bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 p-1 rounded-2xl shadow-2xl mb-4">
+              <div className="bg-slate-900 px-8 py-3 rounded-xl">
+                <h1 className="text-4xl font-black bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent">
+                  🎮 Memory Master
+                </h1>
+              </div>
+            </div>
+            <p className="text-lg text-gray-300 font-medium">
               Créez ou rejoignez une table pour jouer !
             </p>
           </div>
@@ -170,16 +176,19 @@ const LobbyPage: React.FC = () => {
 
           {/* Création de table */}
           <div className="mb-8 text-center">
-            <h2 className="text-2xl font-semibold text-white mb-4">Créer une nouvelle table</h2>
+            <h2 className="text-2xl font-bold text-white mb-4">✨ Créer une table</h2>
             <div className="flex justify-center gap-4">
               {[2, 3, 4].map(num => (
                 <button
                   key={num}
                   onClick={() => handleCreateTable(num as 2|3|4)}
                   disabled={creatingTable === num}
-                  className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-gray-600 text-white font-bold py-3 px-6 rounded-xl transition-all duration-300 hover:scale-105"
+                  className="group relative bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 disabled:from-gray-600 text-white font-black py-3 px-8 rounded-xl shadow-[0_8px_25px_rgba(16,185,129,0.4)] hover:shadow-[0_12px_35px_rgba(16,185,129,0.6)] transition-all duration-300 hover:scale-105"
                 >
-                  {creatingTable === num ? 'Création...' : `${num} joueurs`}
+                  <span className="relative z-10">
+                    {creatingTable === num ? '⏳ Création...' : `👥 ${num} joueurs`}
+                  </span>
+                  <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-emerald-400 to-teal-500 opacity-0 group-hover:opacity-20 blur-lg transition-opacity"></div>
                 </button>
               ))}
             </div>
@@ -187,13 +196,13 @@ const LobbyPage: React.FC = () => {
 
           {/* Liste des tables */}
           <div className="mb-8">
-            <h2 className="text-3xl font-semibold text-white mb-6">Tables Actives</h2>
+            <h2 className="text-2xl font-bold text-white mb-6">🎯 Tables Actives</h2>
             {(isTablesLoading || isTablesFetching) && <div className="text-gray-300">Chargement des tables...</div>}
             {tablesError && <div className="text-red-300">Erreur de chargement des tables: {tablesError.message}</div>}
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {tables.map((table) => (
-                <div key={table._id} className="bg-white/10 backdrop-blur rounded-xl p-6 border border-white/20">
+                <div key={table._id} className="relative bg-gradient-to-br from-slate-800/90 via-purple-900/50 to-slate-800/90 backdrop-blur-xl rounded-2xl p-5 border-2 border-purple-500/30 shadow-[0_10px_40px_rgba(139,92,246,0.3)] hover:shadow-[0_15px_50px_rgba(139,92,246,0.5)] transition-all duration-300 hover:scale-[1.02]">
                   <div className="relative mb-4">
                     <img src={salonImg} alt="Table" className="w-full h-32 object-cover rounded" />
                     <div className="absolute top-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded">
@@ -260,11 +269,10 @@ const LobbyPage: React.FC = () => {
 
       <style>{`
         @keyframes float {
-          0%, 100% { transform: translateY(0px); }
-          50% { transform: translateY(-10px); }
-        }
-        .animate-float {
-          animation: float 6s ease-in-out infinite;
+          0%, 100% { transform: translateY(0px) translateX(0px); }
+          25% { transform: translateY(-20px) translateX(10px); }
+          50% { transform: translateY(-10px) translateX(-10px); }
+          75% { transform: translateY(-30px) translateX(5px); }
         }
       `}</style>
     </div>
