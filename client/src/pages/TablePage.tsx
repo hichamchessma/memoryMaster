@@ -57,6 +57,27 @@ const TablePage: React.FC = () => {
     fetchTable();
   }, [tableId]);
 
+  // Polling automatique pour garantir la synchronisation
+  React.useEffect(() => {
+    if (!tableId) return;
+
+    const fetchTableData = async () => {
+      try {
+        const response = await api.get(`/game/tables/${tableId}`);
+        if (response.data?.success) {
+          setTable(response.data.data);
+        }
+      } catch (e: any) {
+        console.error('Erreur rechargement table:', e);
+      }
+    };
+
+    // Polling toutes les 2 secondes
+    const interval = setInterval(fetchTableData, 2000);
+
+    return () => clearInterval(interval);
+  }, [tableId]);
+
   React.useEffect(() => {
     if (!socket || !tableId) return;
 
@@ -157,6 +178,7 @@ const TablePage: React.FC = () => {
   const isUserInTable = table.players.some(p => p._id === user?._id);
   const availableSeats = table.maxPlayers - table.players.length;
   const isHost = table.hostId === user?._id;
+  const canDelete = true; // Tout le monde est admin pour les tests
 
   const joinTable = async () => {
     if (!user?._id) return;
@@ -209,18 +231,72 @@ const TablePage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-indigo-900 relative overflow-hidden">
-      {/* Background effects */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_50%,rgba(120,119,198,0.3),transparent_50%)]" />
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 relative overflow-hidden">
+      {/* Animated background particles */}
+      <div className="absolute inset-0">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(139,92,246,0.15),transparent_50%)]"></div>
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_80%,rgba(59,130,246,0.15),transparent_50%)]"></div>
+        {[...Array(30)].map((_, i) => (
+          <div
+            key={i}
+            className="absolute rounded-full bg-white opacity-10"
+            style={{
+              left: `${Math.random() * 100}%`,
+              top: `${Math.random() * 100}%`,
+              width: `${2 + Math.random() * 4}px`,
+              height: `${2 + Math.random() * 4}px`,
+              animation: `float ${5 + Math.random() * 10}s ease-in-out infinite`,
+              animationDelay: `${Math.random() * 5}s`,
+            }}
+          />
+        ))}
+      </div>
+      
+      {/* Animations CSS */}
+      <style>{`
+        @keyframes pulse-slow {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.8; }
+        }
+        @keyframes spin-slow {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        @keyframes float {
+          0%, 100% { transform: translateY(0px) translateX(0px); }
+          25% { transform: translateY(-20px) translateX(10px); }
+          50% { transform: translateY(-10px) translateX(-10px); }
+          75% { transform: translateY(-30px) translateX(5px); }
+        }
+        .animate-pulse-slow {
+          animation: pulse-slow 2s ease-in-out infinite;
+        }
+        .animate-spin-slow {
+          animation: spin-slow 3s linear infinite;
+        }
+      `}</style>
 
       <div className="relative z-10 p-6">
         <div className="max-w-4xl mx-auto">
           {/* Header */}
-          <div className="text-center mb-8">
-            <h1 className="text-4xl font-bold text-white mb-2">
-              Table {table.maxPlayers} joueurs
-            </h1>
-            <p className="text-xl text-gray-300">Code: {table.code}</p>
+          <div className="text-center mb-12">
+            <div className="inline-block bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 p-1 rounded-2xl mb-4 shadow-2xl">
+              <div className="bg-slate-900 px-8 py-4 rounded-xl">
+                <h1 className="text-5xl font-black bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent mb-2">
+                  Table {table.maxPlayers} Joueurs
+                </h1>
+                <div className="flex items-center justify-center gap-3">
+                  <span className="text-sm text-gray-400 font-semibold">CODE DE LA TABLE</span>
+                  <span className="text-3xl font-mono font-bold text-yellow-400 tracking-wider">{table.code}</span>
+                  <button 
+                    onClick={() => navigator.clipboard.writeText(table.code)}
+                    className="ml-2 px-3 py-1 bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 rounded-lg text-xs font-bold transition-all"
+                  >
+                    COPIER
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Erreur */}
@@ -231,9 +307,15 @@ const TablePage: React.FC = () => {
           )}
 
           {/* Table Display */}
-          <div className="bg-white/10 backdrop-blur rounded-xl p-8 border border-white/20 mb-8">
-            <div className="flex justify-center mb-6">
-              <img src={tableGameImg} alt="Table de jeu" className="w-64 h-40 object-contain" />
+          <div className="relative bg-gradient-to-br from-slate-800/90 via-purple-900/50 to-slate-800/90 backdrop-blur-xl rounded-3xl p-10 border-2 border-purple-500/30 mb-8 shadow-[0_20px_60px_rgba(139,92,246,0.4)]">
+            {/* Glow effect */}
+            <div className="absolute inset-0 rounded-3xl bg-gradient-to-r from-purple-600/20 via-pink-600/20 to-blue-600/20 blur-2xl -z-10"></div>
+            
+            <div className="flex justify-center mb-8">
+              <div className="relative">
+                <div className="absolute inset-0 bg-gradient-to-r from-green-400 to-emerald-500 rounded-3xl blur-xl opacity-50"></div>
+                <img src={tableGameImg} alt="Table de jeu" className="relative w-80 h-48 object-contain drop-shadow-2xl" />
+              </div>
             </div>
 
             {/* Sièges visuels avec images cliquables */}
@@ -254,58 +336,106 @@ const TablePage: React.FC = () => {
                         }
                       }}
                       disabled={player && !isCurrentUser}
-                      className={`relative transition-transform hover:scale-105 ${
-                        player && !isCurrentUser ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                      className={`relative transition-all duration-300 ${
+                        isCurrentUser 
+                          ? 'scale-110 animate-pulse-slow' 
+                          : player && !isCurrentUser 
+                            ? 'cursor-not-allowed opacity-60' 
+                            : 'cursor-pointer hover:scale-105'
                       }`}
                     >
-                      <img 
-                        src={player ? playerInImg : playerOutImg} 
-                        alt={player ? 'Siège occupé' : 'Siège libre'} 
-                        className="w-24 h-24 object-contain"
-                      />
+                      {/* Effet lumineux pour le joueur actif */}
+                      {isCurrentUser && (
+                        <>
+                          <div className="absolute inset-0 rounded-full bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-400 blur-2xl opacity-75 animate-pulse"></div>
+                          <div className="absolute -inset-3 rounded-full border-4 border-yellow-400 animate-spin-slow"></div>
+                          <div className="absolute -inset-1 rounded-full border-2 border-yellow-300 opacity-50"></div>
+                        </>
+                      )}
+                      
+                      {/* Conteneur circulaire pour l'image */}
+                      <div className={`relative z-10 w-32 h-32 rounded-full overflow-hidden border-4 ${
+                        isCurrentUser 
+                          ? 'border-yellow-400 shadow-[0_0_30px_rgba(251,191,36,0.8)]' 
+                          : player 
+                            ? 'border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.5)]' 
+                            : 'border-gray-600 shadow-[0_0_10px_rgba(75,85,99,0.3)]'
+                      } transition-all duration-300`}>
+                        <img 
+                          src={player ? playerInImg : playerOutImg} 
+                          alt={player ? 'Siège occupé' : 'Siège libre'} 
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
                     </button>
                     {player ? (
-                      <span className="text-white font-semibold text-sm mt-1">
-                        {player.firstName} {player.lastName}
-                      </span>
+                      <div className="flex flex-col items-center gap-1">
+                        <span className={`font-semibold text-sm mt-1 ${
+                          isCurrentUser 
+                            ? 'text-yellow-400 font-bold text-base' 
+                            : 'text-white'
+                        }`}>
+                          {player.firstName} {player.lastName}
+                        </span>
+                        {isCurrentUser && (
+                          <span className="bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-400 text-black text-xs px-3 py-1 rounded-full font-black shadow-lg animate-pulse">
+                            ⭐ VOUS ⭐
+                          </span>
+                        )}
+                      </div>
                     ) : (
-                      <span className="text-gray-400 text-sm">Place {position}</span>
+                      <span className="text-gray-400 text-sm font-medium">Place {position}</span>
                     )}
                   </div>
                 );
               })}
             </div>
 
-            <div className="text-center mt-6">
-              <p className="text-lg text-gray-300">
-                Joueurs: {table.players.length}/{table.maxPlayers}
-              </p>
+            <div className="text-center mt-10 space-y-3">
+              <div className="inline-flex items-center gap-3 bg-slate-800/80 px-6 py-3 rounded-2xl border border-purple-500/30">
+                <span className="text-2xl font-bold text-white">
+                  {table.players.length}/{table.maxPlayers}
+                </span>
+                <span className="text-gray-400 font-medium">JOUEURS</span>
+              </div>
               {availableSeats > 0 ? (
-                <p className="text-green-400 font-semibold">
-                  {availableSeats} place{availableSeats > 1 ? 's' : ''} disponible{availableSeats > 1 ? 's' : ''}
-                </p>
+                <div className="inline-flex items-center gap-2 bg-green-500/20 px-6 py-2 rounded-xl border border-green-500/30">
+                  <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
+                  <p className="text-green-400 font-bold">
+                    {availableSeats} place{availableSeats > 1 ? 's' : ''} disponible{availableSeats > 1 ? 's' : ''}
+                  </p>
+                </div>
               ) : (
-                <p className="text-red-400 font-semibold">Table complète</p>
+                <div className="inline-flex items-center gap-2 bg-red-500/20 px-6 py-2 rounded-xl border border-red-500/30">
+                  <div className="w-2 h-2 rounded-full bg-red-400"></div>
+                  <p className="text-red-400 font-bold">TABLE COMPLÈTE</p>
+                </div>
               )}
             </div>
           </div>
 
           {/* Actions */}
-          <div className="text-center flex gap-4 justify-center">
+          <div className="text-center flex gap-4 justify-center flex-wrap">
             {isUserInTable && isHost && table.status === 'waiting' && table.players.length >= 2 && (
               <button
                 onClick={startGame}
-                className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-xl shadow-lg"
+                className="group relative bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-black py-4 px-10 rounded-2xl shadow-[0_10px_30px_rgba(34,197,94,0.4)] hover:shadow-[0_15px_40px_rgba(34,197,94,0.6)] transform hover:scale-105 transition-all duration-300"
               >
-                Démarrer le jeu
+                <span className="relative z-10 flex items-center gap-2">
+                  🎮 DÉMARRER LE JEU
+                </span>
+                <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-green-400 to-emerald-500 opacity-0 group-hover:opacity-20 blur-xl transition-opacity"></div>
               </button>
             )}
-            {isHost && (
+            {canDelete && (
               <button
                 onClick={deleteTable}
-                className="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-8 rounded-xl shadow-lg"
+                className="group relative bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white font-black py-4 px-10 rounded-2xl shadow-[0_10px_30px_rgba(239,68,68,0.4)] hover:shadow-[0_15px_40px_rgba(239,68,68,0.6)] transform hover:scale-105 transition-all duration-300"
               >
-                Supprimer la table
+                <span className="relative z-10 flex items-center gap-2">
+                  🗑️ SUPPRIMER
+                </span>
+                <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-red-400 to-rose-500 opacity-0 group-hover:opacity-20 blur-xl transition-opacity"></div>
               </button>
             )}
           </div>
@@ -314,9 +444,11 @@ const TablePage: React.FC = () => {
           <div className="text-center mt-8">
             <button
               onClick={() => navigate('/lobby')}
-              className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-6 rounded-xl"
+              className="group relative bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold py-3 px-8 rounded-xl shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300"
             >
-              Retour au salon
+              <span className="flex items-center gap-2">
+                ← Retour au salon
+              </span>
             </button>
           </div>
         </div>

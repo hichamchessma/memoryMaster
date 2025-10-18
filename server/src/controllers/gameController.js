@@ -1277,6 +1277,7 @@ exports.listTables = async (req, res, next) => {
       maxPlayers: game.maxPlayers,
       cardsPerPlayer: game.cardsPerPlayer,
       playersCount: game.players.length,
+      hostId: game.host ? game.host._id : null,
       host: game.host ? {
         _id: game.host._id,
         firstName: game.host.firstName,
@@ -1323,21 +1324,29 @@ exports.getTable = async (req, res, next) => {
       });
     }
 
-    // Préparer la réponse
-    const gameData = game.toObject();
-
-    // Nettoyer les données sensibles
-    delete gameData.__v;
-    delete gameData.deck;
-    delete gameData.discardPile;
-
-    gameData.players.forEach(player => {
-      delete player.socketId;
-    });
+    // Préparer la réponse avec les données formatées
+    const response = {
+      _id: game._id,
+      code: game.code,
+      maxPlayers: game.maxPlayers,
+      cardsPerPlayer: game.cardsPerPlayer,
+      status: game.status,
+      hostId: game.host._id,
+      createdAt: game.createdAt,
+      players: game.players.map(p => ({
+        _id: p.user._id,
+        firstName: p.user.firstName,
+        lastName: p.user.lastName,
+        elo: p.user.elo,
+        position: p.position,
+        isReady: p.isReady,
+        isHost: p.isHost
+      }))
+    };
 
     res.json({
       success: true,
-      data: gameData  // Frontend attend "data" et non "game"
+      data: response
     });
   } catch (error) {
     console.error('Erreur lors de la récupération de la table:', error);
@@ -1469,11 +1478,12 @@ exports.joinTable = async (req, res, next) => {
   }
 };
 
-// Supprimer une table (seulement l'hôte)
+// Supprimer une table (hôte ou admin)
 exports.deleteTable = async (req, res, next) => {
   try {
     const { tableId } = req.params;
     const userId = req.user.id;
+    const userRole = req.user.role;
 
     const game = await Game.findById(tableId);
     if (!game) {
@@ -1483,11 +1493,14 @@ exports.deleteTable = async (req, res, next) => {
       });
     }
 
-    // Vérifier que l'utilisateur est l'hôte
-    if (game.host.toString() !== userId) {
+    // Vérifier que l'utilisateur est l'hôte OU admin
+    const isHost = game.host.toString() === userId;
+    const isAdmin = userRole === 'admin';
+    
+    if (!isHost && !isAdmin) {
       return res.status(403).json({
         success: false,
-        message: 'Seul l\'hôte peut supprimer la table'
+        message: 'Seul l\'hôte ou un admin peut supprimer la table'
       });
     }
 
