@@ -186,6 +186,25 @@ const TablePage: React.FC = () => {
       const response = await api.post(`/game/tables/${tableId}/join`, { socketId: socket?.id });
       if (response.data?.success) {
         setTable(response.data.data);
+        
+        // Rediriger vers la page appropriée selon le nombre de joueurs
+        if (response.data.data.maxPlayers === 2) {
+          navigate('/game/2players', { 
+            state: { 
+              tableId: response.data.data._id,
+              tableCode: response.data.data.code,
+              players: response.data.data.players,
+              currentUserId: user._id
+            } 
+          });
+        }
+        // TODO: Ajouter les redirections pour 3 et 4 joueurs
+        // else if (response.data.data.maxPlayers === 3) {
+        //   navigate('/game/3players', { state: {...} });
+        // }
+        // else if (response.data.data.maxPlayers === 4) {
+        //   navigate('/game/4players', { state: {...} });
+        // }
       }
     } catch (e: any) {
       setError(e.error || e.message || 'Erreur lors de la connexion à la table');

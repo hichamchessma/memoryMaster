@@ -11,6 +11,7 @@ import Layout from './components/layout/Layout';
 
 // Page Components
 import TrainingPage from './pages/TrainingPage';
+import TwoPlayersGamePage from './pages/TwoPlayersGamePage';
 import { Navigate } from 'react-router-dom';
 import HomePage from './pages/HomePage';
 import DashboardPage from './pages/DashboardPage';
@@ -49,6 +50,7 @@ function App() {
                   <Route path="/login" element={<Navigate to="/" replace />} />
                   <Route path="/register" element={<Navigate to="/" replace />} />
                   <Route path="/training" element={<TrainingPage />} />
+                  <Route path="/game/2players" element={<TwoPlayersGamePage />} />
 
                   {/* Protected Routes */}
                   <Route element={<ProtectedRoute />}>
