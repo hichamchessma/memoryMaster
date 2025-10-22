@@ -1430,6 +1430,7 @@ exports.joinTable = async (req, res, next) => {
 
     // Préparer la réponse
     const response = {
+      _id: game._id.toString(),
       code: game.code,
       maxPlayers: game.maxPlayers,
       cardsPerPlayer: game.cardsPerPlayer,
@@ -1443,7 +1444,7 @@ exports.joinTable = async (req, res, next) => {
       players: await Promise.all(game.players.map(async (p) => {
         const playerUser = await User.findById(p.user);
         return {
-          _id: p.user,
+          _id: p.user.toString(),
           firstName: playerUser.firstName,
           lastName: playerUser.lastName,
           elo: playerUser.elo,
@@ -1464,10 +1465,21 @@ exports.joinTable = async (req, res, next) => {
     try {
       const io = req.app.get('io');
       if (io) {
-        // Notifier les joueurs de la table
-        io.to(game.code).emit('table_updated', response);
+        console.log(`📡 Emitting playerJoined to room: table_${game._id}`);
+        console.log(`📡 Players in table:`, response.players);
+        
+        // Notifier les joueurs de la table (room spécifique)
+        io.to(`table_${game._id}`).emit('playerJoined', { table: response });
+        
+        // Notifier aussi via le code de la table (MÊME FORMAT)
+        io.to(game.code).emit('table_updated', { table: response });
+        
         // Notifier tous les clients du lobby
         io.emit('player_joined_table', { tableId: game._id, code: game.code });
+        
+        console.log(`✅ Events emitted successfully`);
+      } else {
+        console.log(`⚠️ Socket.IO instance not found!`);
       }
     } catch (e) {
       console.error('Erreur émission socket joinTable:', e);

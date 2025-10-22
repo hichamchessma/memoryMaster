@@ -8,6 +8,7 @@ import FlyingCard, { type DealAnimState } from '../components/training/FlyingCar
 import MultiplayerTopBanner from '../components/training/MultiplayerTopBanner';
 import ScoreboardModal from '../components/training/ScoreboardModal';
 import { getCardImage, getCardValue, getRankLabel, isJoker } from '../utils/cards';
+import { useSocket } from '../context/SocketContext';
 
 // Style pour mettre en évidence le joueur actif
 const activePlayerStyle = {
@@ -52,6 +53,7 @@ function getCardScore(value: number): number {
 const TwoPlayersGamePage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { socket } = useSocket();
   const deckRef = React.useRef<HTMLDivElement>(null);
   const player1HandRef = React.useRef<HTMLDivElement>(null);
   const player2HandRef = React.useRef<HTMLDivElement>(null);
@@ -65,8 +67,13 @@ const TwoPlayersGamePage: React.FC = () => {
   } | null;
 
   // États pour les informations des joueurs réels
-  const [player1Info, setPlayer1Info] = React.useState<{name: string; isReal: boolean} | null>(null);
-  const [player2Info, setPlayer2Info] = React.useState<{name: string; isReal: boolean} | null>(null);
+  // myPlayerInfo = le joueur actuel (toujours affiché en bas)
+  // opponentInfo = l'adversaire (toujours affiché en haut)
+  const [myPlayerInfo, setMyPlayerInfo] = React.useState<{name: string; isReal: boolean} | null>(null);
+  const [opponentInfo, setOpponentInfo] = React.useState<{name: string; isReal: boolean} | null>(null);
+  
+  // État pour stocker les joueurs actuels de la table
+  const [tablePlayers, setTablePlayers] = React.useState<Array<{_id: string; firstName: string; lastName: string; position: number}>>(tableData?.players || []);
 
   // État pour le deck et la distribution
   const [isDealing, setIsDealing] = React.useState(false);
@@ -157,30 +164,95 @@ const TwoPlayersGamePage: React.FC = () => {
 
   // Initialiser les informations des joueurs depuis tableData
   React.useEffect(() => {
-    if (tableData?.players && tableData?.currentUserId) {
-      const currentPlayer = tableData.players.find(p => p._id === tableData.currentUserId);
-      const otherPlayer = tableData.players.find(p => p._id !== tableData.currentUserId);
+    const updatePlayerInfo = (players: Array<{_id: string; firstName: string; lastName: string; position: number}>) => {
+      if (!tableData?.currentUserId) return;
+      
+      // Le joueur actuel est toujours affiché en bas (myPlayerInfo)
+      const currentPlayer = players.find(p => p._id === tableData.currentUserId);
+      // L'adversaire est toujours affiché en haut (opponentInfo)
+      const otherPlayer = players.find(p => p._id !== tableData.currentUserId);
       
       if (currentPlayer) {
-        setPlayer1Info({
+        setMyPlayerInfo({
           name: `${currentPlayer.firstName} ${currentPlayer.lastName}`,
           isReal: true
         });
       }
       
       if (otherPlayer) {
-        setPlayer2Info({
+        setOpponentInfo({
           name: `${otherPlayer.firstName} ${otherPlayer.lastName}`,
           isReal: true
         });
       } else {
-        setPlayer2Info({
+        setOpponentInfo({
           name: 'En attente...',
           isReal: false
         });
       }
+    };
+
+    if (tableData?.players) {
+      updatePlayerInfo(tableData.players);
     }
   }, [tableData]);
+
+  // Écouter les mises à jour de la table via WebSocket
+  React.useEffect(() => {
+    if (!socket || !tableData?.tableId) return;
+
+    console.log('🔌 Joining table room:', tableData.tableId);
+    console.log('🔌 Current user ID:', tableData.currentUserId);
+    console.log('🔌 Socket connected:', socket.connected);
+    console.log('🔌 Socket ID:', socket.id);
+    
+    socket.emit('joinTableRoom', tableData.tableId);
+
+    // Écouter quand un joueur rejoint la table
+    const handlePlayerJoined = (data: any) => {
+      console.log('👤 Player joined event received!', data);
+      console.log('👤 Players in table:', data.table?.players);
+      
+      if (data.table && data.table.players) {
+        setTablePlayers(data.table.players);
+        
+        // Mettre à jour les infos des joueurs
+        const currentPlayer = data.table.players.find((p: any) => p._id === tableData.currentUserId);
+        const otherPlayer = data.table.players.find((p: any) => p._id !== tableData.currentUserId);
+        
+        console.log('👤 Current player found:', currentPlayer);
+        console.log('👤 Other player found:', otherPlayer);
+        
+        if (currentPlayer) {
+          setMyPlayerInfo({
+            name: `${currentPlayer.firstName} ${currentPlayer.lastName}`,
+            isReal: true
+          });
+        }
+        
+        if (otherPlayer) {
+          setOpponentInfo({
+            name: `${otherPlayer.firstName} ${otherPlayer.lastName}`,
+            isReal: true
+          });
+          console.log('✅ Opponent info updated:', `${otherPlayer.firstName} ${otherPlayer.lastName}`);
+        } else {
+          console.log('⚠️ No opponent found yet');
+        }
+      }
+    };
+
+    socket.on('playerJoined', handlePlayerJoined);
+    
+    // Écouter aussi table_updated (événement alternatif)
+    socket.on('table_updated', handlePlayerJoined);
+
+    return () => {
+      socket.off('playerJoined', handlePlayerJoined);
+      socket.off('table_updated', handlePlayerJoined);
+      socket.emit('leaveTableRoom', tableData.tableId);
+    };
+  }, [socket, tableData?.tableId, tableData?.currentUserId]);
 
   // Gérer l'animation de la carte en cours de distribution
   React.useEffect(() => {
@@ -1630,7 +1702,7 @@ const TwoPlayersGamePage: React.FC = () => {
           <div className="relative z-10 px-8 py-6 rounded-2xl bg-yellow-400 text-gray-900 border-4 border-white shadow-2xl text-center">
             <div className="text-5xl mb-2">🏆</div>
             <div className="text-2xl font-extrabold">
-              {winner === 'player1' ? (player1Info?.name || 'Joueur 1') : (player2Info?.name || 'Joueur 2')} a gagné !
+              {winner === 'player1' ? (myPlayerInfo?.name || 'Moi') : (opponentInfo?.name || 'Adversaire')} a gagné !
             </div>
           </div>
         </div>
@@ -1755,8 +1827,8 @@ const TwoPlayersGamePage: React.FC = () => {
         currentPlayer={currentPlayer} 
         timeLeft={timeLeft}
         tableCode={tableData?.tableCode}
-        player1Name={player1Info?.name || 'Joueur 1'}
-        player2Name={player2Info?.name || 'Joueur 2'}
+        player1Name={myPlayerInfo?.name || 'Moi'}
+        player2Name={opponentInfo?.name || 'Adversaire'}
       />
       {/* Modal Scoreboard (consultable à tout moment et après victoire) */}
       <ScoreboardModal
@@ -1772,7 +1844,7 @@ const TwoPlayersGamePage: React.FC = () => {
           <div style={isPlayerActive('player1') ? activePlayerStyle : inactivePlayerStyle}>
             <PlayerZone 
               position="top" 
-              playerName={player1Info?.name || 'Joueur 1'} 
+              playerName={opponentInfo?.name || 'Adversaire'} 
               cardsDealt={cardsDealt} 
               cards={player1Cards}
               onCardClick={(index) => handleCardClick('top', index)}
@@ -2023,7 +2095,7 @@ const TwoPlayersGamePage: React.FC = () => {
           <div style={isPlayerActive('player2') ? activePlayerStyle : inactivePlayerStyle}>
             <PlayerZone 
               position="bottom" 
-              playerName={player2Info?.name || 'Joueur 2'} 
+              playerName={myPlayerInfo?.name || 'Moi'} 
               cardsDealt={cardsDealt} 
               cards={player2Cards}
               onCardClick={(index) => handleCardClick('bottom', index)}

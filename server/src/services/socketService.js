@@ -178,6 +178,19 @@ exports.setupSocket = (io) => {
       }
     });
 
+    // Rejoindre une room de table
+    socket.on('joinTableRoom', (tableId) => {
+      console.log(`Socket ${socket.id} joining table room: ${tableId}`);
+      socket.join(`table_${tableId}`);
+      console.log(`Socket ${socket.id} joined room: table_${tableId}`);
+    });
+
+    // Quitter une room de table
+    socket.on('leaveTableRoom', (tableId) => {
+      console.log(`Socket ${socket.id} leaving table room: ${tableId}`);
+      socket.leave(`table_${tableId}`);
+    });
+
     // Autres événements de jeu à implémenter...
   });
 };
