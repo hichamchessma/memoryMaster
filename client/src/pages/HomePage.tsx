@@ -10,6 +10,7 @@ const HomePage = () => {
   const [currentFeature, setCurrentFeature] = useState(0);
   const googleBtnRef = useRef<HTMLDivElement | null>(null);
   const apiBase = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000/api';
+  const [testLinks, setTestLinks] = useState<{ali: string; hicham: string} | null>(null);
 
   const features = [
     "🧠 Mémoire & Stratégie",
@@ -115,26 +116,13 @@ const HomePage = () => {
       
       console.log('🧪 Test session created:', data);
       
-      // Ouvrir 2 onglets avec Ali et Hicham
+      // Créer les URLs
       const baseUrl = window.location.origin;
-      
-      // Onglet 1 : Ali
       const aliUrl = `${baseUrl}/game/2players?token=${data.data.ali.token}&tableId=${data.data.tableId}&userId=${data.data.ali.userId}`;
-      console.log('🧪 Opening Ali tab:', aliUrl);
-      const aliTab = window.open(aliUrl, '_blank');
-      if (!aliTab) {
-        alert('⚠️ Bloqueur de popups détecté ! Autorisez les popups pour ce site.');
-      }
+      const hichamUrl = `${baseUrl}/game/2players?token=${data.data.hicham.token}&tableId=${data.data.tableId}&userId=${data.data.hicham.userId}`;
       
-      // Onglet 2 : Hicham (avec un petit délai)
-      setTimeout(() => {
-        const hichamUrl = `${baseUrl}/game/2players?token=${data.data.hicham.token}&tableId=${data.data.tableId}&userId=${data.data.hicham.userId}`;
-        console.log('🧪 Opening Hicham tab:', hichamUrl);
-        const hichamTab = window.open(hichamUrl, '_blank');
-        if (!hichamTab) {
-          alert('⚠️ Bloqueur de popups détecté ! Autorisez les popups pour ce site.');
-        }
-      }, 1000);
+      // Stocker les liens pour affichage
+      setTestLinks({ ali: aliUrl, hicham: hichamUrl });
       
     } catch (e: any) {
       setError(e.message || 'Erreur lors de la création de la session de test');
@@ -371,6 +359,81 @@ const HomePage = () => {
           © {new Date().getFullYear()} MemoryMaster. Tous droits réservés.
         </div>
       </div>
+
+      {/* Modale des liens de test */}
+      {testLinks && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={() => setTestLinks(null)}>
+          <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-8 max-w-2xl w-full mx-4 border-2 border-yellow-500 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="text-center mb-6">
+              <div className="text-5xl mb-3">🧪</div>
+              <h2 className="text-3xl font-bold text-white mb-2">Session de Test Créée !</h2>
+              <p className="text-gray-300">Ouvre ces 2 liens dans des onglets séparés</p>
+            </div>
+
+            <div className="space-y-4">
+              {/* Lien Ali */}
+              <div className="bg-blue-600/20 border-2 border-blue-500 rounded-xl p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-blue-300 font-bold text-lg">👤 Joueur 1 : Ali</span>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(testLinks.ali);
+                      alert('✅ Lien copié !');
+                    }}
+                    className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-lg text-sm"
+                  >
+                    📋 Copier
+                  </button>
+                </div>
+                <a
+                  href={testLinks.ali}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block text-blue-200 hover:text-blue-100 text-sm break-all underline"
+                >
+                  {testLinks.ali}
+                </a>
+              </div>
+
+              {/* Lien Hicham */}
+              <div className="bg-green-600/20 border-2 border-green-500 rounded-xl p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-green-300 font-bold text-lg">👤 Joueur 2 : Hicham</span>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(testLinks.hicham);
+                      alert('✅ Lien copié !');
+                    }}
+                    className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded-lg text-sm"
+                  >
+                    📋 Copier
+                  </button>
+                </div>
+                <a
+                  href={testLinks.hicham}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block text-green-200 hover:text-green-100 text-sm break-all underline"
+                >
+                  {testLinks.hicham}
+                </a>
+              </div>
+            </div>
+
+            <div className="mt-6 text-center">
+              <p className="text-gray-400 text-sm mb-4">
+                💡 <strong>Astuce :</strong> Clique sur chaque lien pour ouvrir dans un nouvel onglet
+              </p>
+              <button
+                onClick={() => setTestLinks(null)}
+                className="bg-gray-700 hover:bg-gray-600 text-white px-6 py-2 rounded-lg font-bold"
+              >
+                Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         @keyframes fadein-left {

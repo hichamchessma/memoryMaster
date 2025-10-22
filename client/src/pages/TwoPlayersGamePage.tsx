@@ -66,9 +66,11 @@ const TwoPlayersGamePage: React.FC = () => {
   const urlTableId = searchParams.get('tableId');
   const urlUserId = searchParams.get('userId');
 
-  // Si on a des params URL (mode test), se connecter automatiquement
+  // État pour stocker les données de la table en mode test
+  const [testTableData, setTestTableData] = React.useState<any>(null);
   const [testModeInitialized, setTestModeInitialized] = React.useState(false);
   
+  // Si on a des params URL (mode test), se connecter automatiquement
   React.useEffect(() => {
     if (urlToken && urlTableId && urlUserId && !testModeInitialized) {
       console.log('🧪 Test mode detected, auto-login...');
@@ -76,8 +78,6 @@ const TwoPlayersGamePage: React.FC = () => {
       
       // Stocker le token
       localStorage.setItem('token', urlToken);
-      // Simuler un login (sans appeler le backend)
-      login({ token: urlToken } as any);
       
       // Récupérer les données de la table
       fetch(`http://localhost:5000/api/game/tables/${urlTableId}`, {
@@ -89,15 +89,45 @@ const TwoPlayersGamePage: React.FC = () => {
         .then(data => {
           console.log('🧪 Table data loaded:', data);
           if (data.success && data.data) {
+            // Stocker les données complètes de la table
+            setTestTableData({
+              tableId: urlTableId,
+              tableCode: data.data.code,
+              players: data.data.players,
+              currentUserId: urlUserId
+            });
+            
             // Mettre à jour les joueurs
             const currentPlayer = data.data.players.find((p: any) => p._id === urlUserId);
             const otherPlayer = data.data.players.find((p: any) => p._id !== urlUserId);
+            
+            console.log('🧪 Current player:', currentPlayer);
+            console.log('🧪 Other player:', otherPlayer);
             
             if (currentPlayer) {
               setMyPlayerInfo({
                 name: `${currentPlayer.firstName} ${currentPlayer.lastName}`,
                 isReal: true
               });
+              
+              // Créer un objet User complet pour l'authentification
+              const testUser = {
+                _id: currentPlayer._id,
+                firstName: currentPlayer.firstName,
+                lastName: currentPlayer.lastName,
+                email: `${currentPlayer.firstName.toLowerCase()}@test.com`,
+                age: 25,
+                nationality: 'FR',
+                elo: currentPlayer.elo || 1200,
+                totalPoints: 0,
+                avatar: '',
+                token: urlToken,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              };
+              
+              console.log('🧪 Logging in test user:', testUser);
+              login(testUser as any);
             }
             
             if (otherPlayer) {
@@ -113,17 +143,13 @@ const TwoPlayersGamePage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlToken, urlTableId, urlUserId]);
 
-  const tableData = location.state as {
+  // Utiliser testTableData si disponible, sinon location.state
+  const tableData = testTableData || (location.state as {
     tableId?: string;
     tableCode?: string;
     players?: Array<{_id: string; firstName: string; lastName: string; position: number}>;
     currentUserId?: string;
-  } | null || (urlTableId ? {
-    tableId: urlTableId,
-    tableCode: '',
-    players: [],
-    currentUserId: urlUserId
-  } : null);
+  } | null);
 
   // États pour les informations des joueurs réels
   // myPlayerInfo = le joueur actuel (toujours affiché en bas)
@@ -1451,14 +1477,31 @@ const TwoPlayersGamePage: React.FC = () => {
 
   // Toggle Ready status
   const handleToggleReady = React.useCallback(() => {
-    if (!socket || !tableData?.tableId || !tableData?.currentUserId) return;
+    console.log('🎮 handleToggleReady called');
+    console.log('  - socket:', socket ? 'connected' : 'null');
+    console.log('  - tableData:', tableData);
+    console.log('  - tableId:', tableData?.tableId);
+    console.log('  - currentUserId:', tableData?.currentUserId);
     
-    console.log('🎮 Toggling ready status...');
+    if (!socket) {
+      console.error('❌ Socket not connected');
+      return;
+    }
+    if (!tableData?.tableId) {
+      console.error('❌ tableId missing');
+      return;
+    }
+    if (!tableData?.currentUserId) {
+      console.error('❌ currentUserId missing');
+      return;
+    }
+    
+    console.log('✅ Emitting player:toggle_ready');
     socket.emit('player:toggle_ready', {
       tableId: tableData.tableId,
       userId: tableData.currentUserId
     });
-  }, [socket, tableData?.tableId, tableData?.currentUserId]);
+  }, [socket, tableData]);
 
   // Quitter la partie
   const handleQuitGame = React.useCallback(() => {
