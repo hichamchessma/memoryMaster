@@ -16,6 +16,10 @@ const {
   playTurn,
   autofillGame
 } = require('../controllers/gameController');
+const { createTestSession } = require('../controllers/testController');
+
+// Route de test (pas de protection pour faciliter les tests)
+router.post('/test/create-session', createTestSession);
 
 // Routes pour les tables (nouveau système)
 router.post('/tables', protect, createTable);

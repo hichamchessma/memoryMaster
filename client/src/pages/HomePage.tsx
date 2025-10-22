@@ -9,7 +9,7 @@ const HomePage = () => {
   const [error, setError] = useState<string | null>(null);
   const [currentFeature, setCurrentFeature] = useState(0);
   const googleBtnRef = useRef<HTMLDivElement | null>(null);
-  const apiBase = (import.meta as any).env?.VITE_API_URL || '/api';
+  const apiBase = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000/api';
 
   const features = [
     "🧠 Mémoire & Stratégie",
@@ -100,6 +100,44 @@ const HomePage = () => {
       setError(e.message || 'Erreur inconnue');
     } finally {
       setLoadingGuest(false);
+    }
+  };
+
+  const createTestSession = async () => {
+    setError(null);
+    try {
+      const resp = await fetch(`${apiBase}/game/test/create-session`, { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (!resp.ok) throw new Error('Impossible de créer la session de test');
+      const data = await resp.json();
+      
+      console.log('🧪 Test session created:', data);
+      
+      // Ouvrir 2 onglets avec Ali et Hicham
+      const baseUrl = window.location.origin;
+      
+      // Onglet 1 : Ali
+      const aliUrl = `${baseUrl}/game/2players?token=${data.data.ali.token}&tableId=${data.data.tableId}&userId=${data.data.ali.userId}`;
+      console.log('🧪 Opening Ali tab:', aliUrl);
+      const aliTab = window.open(aliUrl, '_blank');
+      if (!aliTab) {
+        alert('⚠️ Bloqueur de popups détecté ! Autorisez les popups pour ce site.');
+      }
+      
+      // Onglet 2 : Hicham (avec un petit délai)
+      setTimeout(() => {
+        const hichamUrl = `${baseUrl}/game/2players?token=${data.data.hicham.token}&tableId=${data.data.tableId}&userId=${data.data.hicham.userId}`;
+        console.log('🧪 Opening Hicham tab:', hichamUrl);
+        const hichamTab = window.open(hichamUrl, '_blank');
+        if (!hichamTab) {
+          alert('⚠️ Bloqueur de popups détecté ! Autorisez les popups pour ce site.');
+        }
+      }, 1000);
+      
+    } catch (e: any) {
+      setError(e.message || 'Erreur lors de la création de la session de test');
     }
   };
 
@@ -244,6 +282,21 @@ const HomePage = () => {
                     <span className="relative flex items-center justify-center gap-2">
                       <span className="text-2xl">🎯</span>
                       Mode Entraînement
+                    </span>
+                  </button>
+
+                  {/* Bouton de test (développement) */}
+                  <button
+                    className="group w-full relative overflow-hidden bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-500 hover:to-orange-500 text-white font-bold py-3 px-6 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-lg border-2 border-yellow-400"
+                    onClick={createTestSession}
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
+                    <span className="relative flex items-center justify-center gap-2">
+                      <span className="text-2xl">🧪</span>
+                      <div className="text-left">
+                        <div className="text-sm font-bold">Mode Test</div>
+                        <div className="text-xs opacity-90">Ali vs Hicham (2 onglets)</div>
+                      </div>
                     </span>
                   </button>
                 </div>

@@ -9,6 +9,9 @@ interface Props {
   tableCode?: string;
   player1Name?: string;
   player2Name?: string;
+  myReadyStatus?: boolean;
+  opponentReadyStatus?: boolean;
+  gameStarted?: boolean;
 }
 
 const MultiplayerTopBanner: React.FC<Props> = ({ 
@@ -17,7 +20,10 @@ const MultiplayerTopBanner: React.FC<Props> = ({
   timeLeft, 
   tableCode,
   player1Name = 'Joueur 1',
-  player2Name = 'Joueur 2'
+  player2Name = 'Joueur 2',
+  myReadyStatus = false,
+  opponentReadyStatus = false,
+  gameStarted = false
 }) => {
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -45,7 +51,17 @@ const MultiplayerTopBanner: React.FC<Props> = ({
           <span className="bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 bg-opacity-90 text-white px-4 py-1 rounded-xl shadow-xl text-xl font-extrabold tracking-widest border-2 border-white drop-shadow-lg uppercase">
             {tableCode ? `Table ${tableCode}` : 'Partie 2 Joueurs'}
           </span>
-          {gamePhase !== 'preparation' && (
+          {!gameStarted && (
+            <div className="flex items-center gap-2 pointer-events-auto">
+              <span className={`px-3 py-1 rounded-full text-sm font-bold ${myReadyStatus ? 'bg-green-500 text-white' : 'bg-gray-400 text-gray-700'}`}>
+                Vous: {myReadyStatus ? '✅ Ready' : '⏸️ Not Ready'}
+              </span>
+              <span className={`px-3 py-1 rounded-full text-sm font-bold ${opponentReadyStatus ? 'bg-green-500 text-white' : 'bg-gray-400 text-gray-700'}`}>
+                Adversaire: {opponentReadyStatus ? '✅ Ready' : '⏸️ Not Ready'}
+              </span>
+            </div>
+          )}
+          {gamePhase !== 'preparation' && gameStarted && (
             <div className="pointer-events-auto">
               <span
                 className={`inline-flex items-center px-4 py-1 rounded-full text-white font-bold text-lg shadow-lg whitespace-nowrap border-2 border-white ${

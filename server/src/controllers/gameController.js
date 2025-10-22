@@ -1449,8 +1449,8 @@ exports.joinTable = async (req, res, next) => {
           lastName: playerUser.lastName,
           elo: playerUser.elo,
           position: p.position,
-          isReady: p.isReady,
-          isHost: p.isHost
+          isReady: p.isReady || false,
+          isHost: p.isHost || false
         };
       }))
     };

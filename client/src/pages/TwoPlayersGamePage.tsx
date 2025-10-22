@@ -9,6 +9,7 @@ import MultiplayerTopBanner from '../components/training/MultiplayerTopBanner';
 import ScoreboardModal from '../components/training/ScoreboardModal';
 import { getCardImage, getCardValue, getRankLabel, isJoker } from '../utils/cards';
 import { useSocket } from '../context/SocketContext';
+import { useAuth } from '../context/AuthContext';
 
 // Style pour mettre en évidence le joueur actif
 const activePlayerStyle = {
@@ -54,17 +55,75 @@ const TwoPlayersGamePage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { socket } = useSocket();
+  const { login } = useAuth();
   const deckRef = React.useRef<HTMLDivElement>(null);
   const player1HandRef = React.useRef<HTMLDivElement>(null);
   const player2HandRef = React.useRef<HTMLDivElement>(null);
 
-  // Récupérer les données de la table
+  // Récupérer les données de la table (depuis location.state OU depuis URL params pour le mode test)
+  const searchParams = new URLSearchParams(location.search);
+  const urlToken = searchParams.get('token');
+  const urlTableId = searchParams.get('tableId');
+  const urlUserId = searchParams.get('userId');
+
+  // Si on a des params URL (mode test), se connecter automatiquement
+  const [testModeInitialized, setTestModeInitialized] = React.useState(false);
+  
+  React.useEffect(() => {
+    if (urlToken && urlTableId && urlUserId && !testModeInitialized) {
+      console.log('🧪 Test mode detected, auto-login...');
+      setTestModeInitialized(true);
+      
+      // Stocker le token
+      localStorage.setItem('token', urlToken);
+      // Simuler un login (sans appeler le backend)
+      login({ token: urlToken } as any);
+      
+      // Récupérer les données de la table
+      fetch(`http://localhost:5000/api/game/tables/${urlTableId}`, {
+        headers: {
+          'Authorization': `Bearer ${urlToken}`
+        }
+      })
+        .then(res => res.json())
+        .then(data => {
+          console.log('🧪 Table data loaded:', data);
+          if (data.success && data.data) {
+            // Mettre à jour les joueurs
+            const currentPlayer = data.data.players.find((p: any) => p._id === urlUserId);
+            const otherPlayer = data.data.players.find((p: any) => p._id !== urlUserId);
+            
+            if (currentPlayer) {
+              setMyPlayerInfo({
+                name: `${currentPlayer.firstName} ${currentPlayer.lastName}`,
+                isReal: true
+              });
+            }
+            
+            if (otherPlayer) {
+              setOpponentInfo({
+                name: `${otherPlayer.firstName} ${otherPlayer.lastName}`,
+                isReal: true
+              });
+            }
+          }
+        })
+        .catch(err => console.error('❌ Error loading table:', err));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlToken, urlTableId, urlUserId]);
+
   const tableData = location.state as {
     tableId?: string;
     tableCode?: string;
     players?: Array<{_id: string; firstName: string; lastName: string; position: number}>;
     currentUserId?: string;
-  } | null;
+  } | null || (urlTableId ? {
+    tableId: urlTableId,
+    tableCode: '',
+    players: [],
+    currentUserId: urlUserId
+  } : null);
 
   // États pour les informations des joueurs réels
   // myPlayerInfo = le joueur actuel (toujours affiché en bas)
@@ -73,7 +132,13 @@ const TwoPlayersGamePage: React.FC = () => {
   const [opponentInfo, setOpponentInfo] = React.useState<{name: string; isReal: boolean} | null>(null);
   
   // État pour stocker les joueurs actuels de la table
-  const [tablePlayers, setTablePlayers] = React.useState<Array<{_id: string; firstName: string; lastName: string; position: number}>>(tableData?.players || []);
+  const [tablePlayers, setTablePlayers] = React.useState<Array<{_id: string; firstName: string; lastName: string; position: number; isReady?: boolean}>>(tableData?.players || []);
+  
+  // États pour le système Ready
+  const [myReadyStatus, setMyReadyStatus] = React.useState(false);
+  const [opponentReadyStatus, setOpponentReadyStatus] = React.useState(false);
+  const [gameStarted, setGameStarted] = React.useState(false);
+  const [showQuitConfirm, setShowQuitConfirm] = React.useState(false);
 
   // État pour le deck et la distribution
   const [isDealing, setIsDealing] = React.useState(false);
@@ -247,12 +312,46 @@ const TwoPlayersGamePage: React.FC = () => {
     // Écouter aussi table_updated (événement alternatif)
     socket.on('table_updated', handlePlayerJoined);
 
+    // Écouter les changements de statut Ready
+    const handleReadyChanged = (data: any) => {
+      console.log('🎮 Ready status changed:', data);
+      
+      if (data.userId === tableData.currentUserId) {
+        setMyReadyStatus(data.isReady);
+      } else {
+        setOpponentReadyStatus(data.isReady);
+      }
+    };
+
+    // Écouter le démarrage automatique de la partie
+    const handleAutoStart = (data: any) => {
+      console.log('🚀 Game auto-starting:', data);
+      setGameStarted(true);
+      // Démarrer la partie (distribution des cartes, etc.)
+      handleStartNewGame(true);
+    };
+
+    // Écouter quand un joueur quitte
+    const handlePlayerQuit = (data: any) => {
+      console.log('🚪 Player quit:', data);
+      alert(data.message);
+      // Rediriger vers le dashboard
+      navigate('/dashboard');
+    };
+
+    socket.on('player:ready_changed', handleReadyChanged);
+    socket.on('game:auto_start', handleAutoStart);
+    socket.on('game:player_quit', handlePlayerQuit);
+
     return () => {
       socket.off('playerJoined', handlePlayerJoined);
       socket.off('table_updated', handlePlayerJoined);
+      socket.off('player:ready_changed', handleReadyChanged);
+      socket.off('game:auto_start', handleAutoStart);
+      socket.off('game:player_quit', handlePlayerQuit);
       socket.emit('leaveTableRoom', tableData.tableId);
     };
-  }, [socket, tableData?.tableId, tableData?.currentUserId]);
+  }, [socket, tableData?.tableId, tableData?.currentUserId, navigate]);
 
   // Gérer l'animation de la carte en cours de distribution
   React.useEffect(() => {
@@ -1350,6 +1449,29 @@ const TwoPlayersGamePage: React.FC = () => {
     }
   };
 
+  // Toggle Ready status
+  const handleToggleReady = React.useCallback(() => {
+    if (!socket || !tableData?.tableId || !tableData?.currentUserId) return;
+    
+    console.log('🎮 Toggling ready status...');
+    socket.emit('player:toggle_ready', {
+      tableId: tableData.tableId,
+      userId: tableData.currentUserId
+    });
+  }, [socket, tableData?.tableId, tableData?.currentUserId]);
+
+  // Quitter la partie
+  const handleQuitGame = React.useCallback(() => {
+    if (!socket || !tableData?.tableId || !tableData?.currentUserId) return;
+    
+    console.log('🚪 Quitting game...');
+    socket.emit('player:quit_game', {
+      tableId: tableData.tableId,
+      userId: tableData.currentUserId
+    });
+    setShowQuitConfirm(false);
+  }, [socket, tableData?.tableId, tableData?.currentUserId]);
+
   // Lance la distribution stylée
   const handleStartNewGame = async (resetScores: boolean = true) => {
     if (isDealing) return; // Éviter les clics multiples
@@ -1709,15 +1831,57 @@ const TwoPlayersGamePage: React.FC = () => {
       )}
       {/* Overlay de préparation */}
       <PrepOverlay show={showPrepOverlay} />
-      {/* Bouton Start a new game en haut à gauche */}
-      <button
-        className="absolute top-3 left-3 z-30 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow-lg px-4 py-2 flex items-center justify-center text-base font-bold border-2 border-white focus:outline-none focus:ring-2 focus:ring-green-400 disabled:opacity-60 disabled:cursor-not-allowed"
-        title="Start a new game"
-        onClick={() => handleStartNewGame(true)}
-        disabled={isDealing}
-      >
-        <span className="mr-2">🆕</span> Start a new game
-      </button>
+      {/* Bouton Ready/Not Ready ou Quit en haut à gauche */}
+      {!gameStarted ? (
+        <button
+          className={`absolute top-3 left-3 z-30 rounded-lg shadow-lg px-4 py-2 flex items-center justify-center text-base font-bold border-2 border-white focus:outline-none focus:ring-2 ${
+            myReadyStatus 
+              ? 'bg-orange-600 hover:bg-orange-700 focus:ring-orange-400' 
+              : 'bg-green-600 hover:bg-green-700 focus:ring-green-400'
+          } text-white`}
+          title={myReadyStatus ? "Cliquez pour annuler" : "Cliquez quand vous êtes prêt"}
+          onClick={handleToggleReady}
+        >
+          <span className="mr-2">{myReadyStatus ? '⏸️' : '✅'}</span> 
+          {myReadyStatus ? 'Not Ready' : 'Ready'}
+        </button>
+      ) : (
+        <button
+          className="absolute top-3 left-3 z-30 bg-red-600 hover:bg-red-700 text-white rounded-lg shadow-lg px-4 py-2 flex items-center justify-center text-base font-bold border-2 border-white focus:outline-none focus:ring-2 focus:ring-red-400"
+          title="Quitter la partie"
+          onClick={() => setShowQuitConfirm(true)}
+        >
+          <span className="mr-2">🚪</span> Quit
+        </button>
+      )}
+      
+      {/* Modal de confirmation Quit */}
+      {showQuitConfirm && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/70" onClick={() => setShowQuitConfirm(false)} />
+          <div className="relative z-10 px-8 py-6 rounded-2xl bg-red-600 text-white border-4 border-white shadow-2xl text-center max-w-md">
+            <div className="text-5xl mb-4">⚠️</div>
+            <div className="text-2xl font-extrabold mb-4">Quitter la partie ?</div>
+            <div className="text-base mb-6">
+              Vous allez perdre automatiquement et votre adversaire gagnera par forfait.
+            </div>
+            <div className="flex gap-4 justify-center">
+              <button
+                onClick={handleQuitGame}
+                className="bg-white text-red-600 px-6 py-2 rounded-lg font-bold hover:bg-gray-100"
+              >
+                Oui, quitter
+              </button>
+              <button
+                onClick={() => setShowQuitConfirm(false)}
+                className="bg-gray-800 text-white px-6 py-2 rounded-lg font-bold hover:bg-gray-700"
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Boutons en haut à droite */}
       <div className="absolute top-3 right-3 z-30 flex space-x-2">
         <button
@@ -1829,6 +1993,9 @@ const TwoPlayersGamePage: React.FC = () => {
         tableCode={tableData?.tableCode}
         player1Name={myPlayerInfo?.name || 'Moi'}
         player2Name={opponentInfo?.name || 'Adversaire'}
+        myReadyStatus={myReadyStatus}
+        opponentReadyStatus={opponentReadyStatus}
+        gameStarted={gameStarted}
       />
       {/* Modal Scoreboard (consultable à tout moment et après victoire) */}
       <ScoreboardModal

@@ -191,6 +191,88 @@ exports.setupSocket = (io) => {
       socket.leave(`table_${tableId}`);
     });
 
+    // Toggle Ready status
+    socket.on('player:toggle_ready', async ({ tableId, userId }) => {
+      try {
+        const Game = require('../models/Game');
+        const game = await Game.findById(tableId);
+        
+        if (!game) {
+          return socket.emit('error', { message: 'Table non trouvée' });
+        }
+
+        const player = game.players.find(p => p.user.toString() === userId);
+        if (!player) {
+          return socket.emit('error', { message: 'Joueur non trouvé' });
+        }
+
+        // Toggle ready status
+        player.isReady = !player.isReady;
+        await game.save();
+
+        console.log(`🎮 Player ${userId} ready status: ${player.isReady}`);
+
+        // Émettre l'état mis à jour
+        io.to(`table_${tableId}`).emit('player:ready_changed', {
+          userId,
+          isReady: player.isReady,
+          allReady: game.players.every(p => p.isReady)
+        });
+
+        // Si tous les joueurs sont ready, démarrer la partie automatiquement
+        if (game.players.length === game.maxPlayers && game.players.every(p => p.isReady)) {
+          console.log(`🚀 All players ready! Starting game...`);
+          game.status = 'playing';
+          await game.save();
+          
+          io.to(`table_${tableId}`).emit('game:auto_start', {
+            message: 'Tous les joueurs sont prêts ! La partie commence...'
+          });
+        }
+      } catch (error) {
+        console.error('Erreur toggle ready:', error);
+        socket.emit('error', { message: 'Erreur lors du changement de statut' });
+      }
+    });
+
+    // Quitter la partie en cours
+    socket.on('player:quit_game', async ({ tableId, userId }) => {
+      try {
+        const Game = require('../models/Game');
+        const game = await Game.findById(tableId);
+        
+        if (!game) {
+          return socket.emit('error', { message: 'Table non trouvée' });
+        }
+
+        const quittingPlayer = game.players.find(p => p.user.toString() === userId);
+        if (!quittingPlayer) {
+          return socket.emit('error', { message: 'Joueur non trouvé' });
+        }
+
+        console.log(`🚪 Player ${userId} quit the game`);
+
+        // Marquer le joueur comme éliminé
+        quittingPlayer.isEliminated = true;
+        
+        // L'autre joueur gagne automatiquement
+        const winner = game.players.find(p => p.user.toString() !== userId);
+        
+        game.status = 'finished';
+        await game.save();
+
+        // Notifier tous les joueurs
+        io.to(`table_${tableId}`).emit('game:player_quit', {
+          quitterId: userId,
+          winnerId: winner.user.toString(),
+          message: `${quittingPlayer.username} a quitté. ${winner.username} gagne par forfait !`
+        });
+      } catch (error) {
+        console.error('Erreur quit game:', error);
+        socket.emit('error', { message: 'Erreur lors de la déconnexion' });
+      }
+    });
+
     // Autres événements de jeu à implémenter...
   });
 };
