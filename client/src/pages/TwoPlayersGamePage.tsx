@@ -385,7 +385,7 @@ const TwoPlayersGamePage: React.FC = () => {
       const myCards: CardState[] = data.myCards.map((card: any) => ({
         id: card.id,
         value: -1, // Vide au début (animation de distribution)
-        isFlipped: false, // Face visible mais vide
+        isFlipped: false, // DOS visible (face cachée)
         updated: Date.now()
       }));
       
@@ -393,7 +393,7 @@ const TwoPlayersGamePage: React.FC = () => {
       const opponentCards: CardState[] = data.opponentCards.map((card: any) => ({
         id: card.id,
         value: -1, // Vide au début (animation de distribution)
-        isFlipped: false, // Face visible mais vide
+        isFlipped: false, // DOS visible (face cachée)
         updated: Date.now()
       }));
       
@@ -401,6 +401,9 @@ const TwoPlayersGamePage: React.FC = () => {
       console.log('🃏 Opponent cards:', opponentCards);
       
       // Mettre à jour les cartes des joueurs (VIDES au début)
+      console.log('🃏 Setting initial cards (should be flipped=true, face cachée)');
+      console.log('  myCards[0].isFlipped:', myCards[0]?.isFlipped);
+      console.log('  opponentCards[0].isFlipped:', opponentCards[0]?.isFlipped);
       setPlayer2Cards(myCards); // Le joueur actuel (en bas)
       setPlayer1Cards(opponentCards); // L'adversaire (en haut)
       
@@ -420,7 +423,7 @@ const TwoPlayersGamePage: React.FC = () => {
               newCards[item.index] = {
                 ...newCards[item.index],
                 value: item.card.value,
-                isFlipped: false // Face visible pendant la mémorisation
+                isFlipped: false // Face cachée pendant la distribution
               };
               return newCards;
             });
@@ -430,7 +433,7 @@ const TwoPlayersGamePage: React.FC = () => {
               newCards[item.index] = {
                 ...newCards[item.index],
                 value: item.card.value,
-                isFlipped: false // Face visible pendant la mémorisation
+                isFlipped: false // Face cachée pendant la distribution
               };
               return newCards;
             });
@@ -439,22 +442,27 @@ const TwoPlayersGamePage: React.FC = () => {
           // Après la dernière carte, démarrer la phase de mémorisation
           if (idx === allCards.length - 1) {
             setTimeout(() => {
+              // Changer la phase de jeu
+              setGamePhase('before_round');
+              setCurrentPlayer('player1');
+              setIsPlayerTurn(false);
+              
               // Afficher "Préparez-vous !" pendant 2 secondes
               setShowPrepOverlay(true);
               
               setTimeout(() => {
                 // Cacher l'overlay après 2 secondes
                 setShowPrepOverlay(false);
-          
-          // PHASE 2 : Phase de mémorisation (30 secondes)
-          // Les cartes restent FACE CACHÉE
-          // Le joueur peut cliquer sur 2 cartes maximum pour les voir
-          setIsMemorizationPhase(true);
-          setMemorizedCardsCount(0);
-          setMemorizedCardIndexes([]);
-          setTimeLeft(30);
-          
-          console.log('🧠 Memorization phase started - Click on 2 of YOUR cards to memorize');
+                
+                // PHASE 2 : Phase de mémorisation (10 secondes)
+                // Les cartes restent FACE CACHÉE
+                // Le joueur peut cliquer sur 2 cartes maximum pour les voir
+                setIsMemorizationPhase(true);
+                setMemorizedCardsCount(0);
+                setMemorizedCardIndexes([]);
+                setTimeLeft(10);
+                
+                console.log('🧠 Memorization phase started - Click on 2 of YOUR cards to memorize');
           
           // Timer de mémorisation
           const timer = setInterval(() => {
@@ -464,7 +472,7 @@ const TwoPlayersGamePage: React.FC = () => {
                 // PHASE 3 : Fin de la mémorisation
                 setIsMemorizationPhase(false);
                 // Retourner toutes les cartes FACE CACHÉE (au cas où certaines seraient ouvertes)
-                setPlayer2Cards(cards => cards.map(c => ({ ...c, isFlipped: true })));
+                setPlayer2Cards(cards => cards.map(c => ({ ...c, isFlipped: false })));
                 setMemorizedCardsCount(0);
                 setMemorizedCardIndexes([]);
                 console.log('✅ Memorization phase ended');
@@ -987,7 +995,7 @@ const TwoPlayersGamePage: React.FC = () => {
         console.log(`🔄 Flipping card ${index} back`);
         setPlayer2Cards(prev => {
           const newCards = [...prev];
-          newCards[index] = { ...newCards[index], isFlipped: true };
+          newCards[index] = { ...newCards[index], isFlipped: false };
           return newCards;
         });
         setMemorizedCardIndexes(prev => prev.filter(i => i !== index));
@@ -999,7 +1007,7 @@ const TwoPlayersGamePage: React.FC = () => {
       console.log(`👁️ Memorizing card ${index}`);
       setPlayer2Cards(prev => {
         const newCards = [...prev];
-        newCards[index] = { ...newCards[index], isFlipped: false };
+        newCards[index] = { ...newCards[index], isFlipped: true };
         return newCards;
       });
       setMemorizedCardIndexes(prev => [...prev, index]);
@@ -2473,7 +2481,7 @@ const TwoPlayersGamePage: React.FC = () => {
               cardsDealt={cardsDealt} 
               cards={player2Cards}
               onCardClick={(index) => handleCardClick('bottom', index)}
-              highlight={(selectingCardToReplace && currentPlayer === 'player2') || isKingPowerActive || (isQueenPowerActive && currentPlayer === 'player1') || (isJackPowerActive && currentPlayer === 'player2')}
+              highlight={isMemorizationPhase || (selectingCardToReplace && currentPlayer === 'player2') || isKingPowerActive || (isQueenPowerActive && currentPlayer === 'player1') || (isJackPowerActive && currentPlayer === 'player2')}
             />
             <div className="mt-2 flex items-center justify-center gap-2">
               <button
