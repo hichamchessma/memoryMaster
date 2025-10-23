@@ -46,6 +46,7 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
     const socketInstance = io(SOCKET_URL, {
       auth: {
         token: user.token,
+        userId: user._id,
       },
       autoConnect: true,
       reconnection: true,

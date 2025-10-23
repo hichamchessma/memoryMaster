@@ -121,8 +121,39 @@ const HomePage = () => {
       const aliUrl = `${baseUrl}/game/2players?token=${data.data.ali.token}&tableId=${data.data.tableId}&userId=${data.data.ali.userId}`;
       const hichamUrl = `${baseUrl}/game/2players?token=${data.data.hicham.token}&tableId=${data.data.tableId}&userId=${data.data.hicham.userId}`;
       
-      // Stocker les liens pour affichage
-      setTestLinks({ ali: aliUrl, hicham: hichamUrl });
+      // Obtenir les dimensions de l'écran
+      const screenWidth = window.screen.availWidth;
+      const screenHeight = window.screen.availHeight;
+      const halfWidth = Math.floor(screenWidth / 2);
+      
+      // Ouvrir Ali à gauche
+      const aliWindow = window.open(
+        aliUrl,
+        'Ali_Test',
+        `width=${halfWidth},height=${screenHeight},left=0,top=0`
+      );
+      
+      if (!aliWindow) {
+        console.error('❌ Failed to open Ali window - popup blocked');
+        // Fallback: afficher les liens
+        setTestLinks({ ali: aliUrl, hicham: hichamUrl });
+        return;
+      }
+      
+      // Ouvrir Hicham à droite (avec un petit délai)
+      setTimeout(() => {
+        const hichamWindow = window.open(
+          hichamUrl,
+          'Hicham_Test',
+          `width=${halfWidth},height=${screenHeight},left=${halfWidth},top=0`
+        );
+        
+        if (!hichamWindow) {
+          console.error('❌ Failed to open Hicham window - popup blocked');
+          // Fallback: afficher les liens
+          setTestLinks({ ali: aliUrl, hicham: hichamUrl });
+        }
+      }, 100);
       
     } catch (e: any) {
       setError(e.message || 'Erreur lors de la création de la session de test');

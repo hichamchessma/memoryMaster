@@ -5,6 +5,80 @@ const { calculateCardPoints } = require('../utils/gameUtils');
 // Stocker les connexions actives
 const activeConnections = new Map();
 
+/**
+ * Générer un deck de 52 cartes + 6 jokers
+ * @returns {Array<number>} Tableau de valeurs de cartes (0-51 pour cartes normales, 104-115 pour jokers)
+ */
+function generateDeck() {
+  const deck = [];
+  
+  // 52 cartes normales (0-51)
+  for (let i = 0; i < 52; i++) {
+    deck.push(i);
+  }
+  
+  // 6 jokers (104-109 = Joker type 1, 110-115 = Joker type 2)
+  for (let i = 104; i < 110; i++) {
+    deck.push(i);
+  }
+  for (let i = 110; i < 116; i++) {
+    deck.push(i);
+  }
+  
+  return deck;
+}
+
+/**
+ * Mélanger un tableau (Fisher-Yates shuffle)
+ */
+function shuffleDeck(deck) {
+  const shuffled = [...deck];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
+/**
+ * Distribuer les cartes aux joueurs
+ * @param {Array} players - Liste des joueurs
+ * @param {number} cardsPerPlayer - Nombre de cartes par joueur
+ * @returns {Object} { playerCards, deckRemaining }
+ */
+function dealCards(players, cardsPerPlayer) {
+  const deck = shuffleDeck(generateDeck());
+  const playerCards = {};
+  let cardIndex = 0;
+  
+  // Distribuer les cartes à chaque joueur
+  players.forEach(player => {
+    const cards = [];
+    for (let i = 0; i < cardsPerPlayer; i++) {
+      cards.push({
+        id: `card-${player.user}-${i}`,
+        value: deck[cardIndex],
+        isFlipped: false,
+        isVisible: false,
+        position: i
+      });
+      cardIndex++;
+    }
+    playerCards[player.user.toString()] = cards;
+  });
+  
+  // Cartes restantes dans le deck (convertir en objets)
+  const deckRemaining = deck.slice(cardIndex).map((value, index) => ({
+    id: `deck-card-${index}`,
+    value: value,
+    isFlipped: false,
+    isVisible: false,
+    position: index
+  }));
+  
+  return { playerCards, deckRemaining };
+}
+
 // Configurer les gestionnaires d'événements Socket.IO
 exports.setupSocket = (io) => {
   io.on('connection', (socket) => {
@@ -194,15 +268,25 @@ exports.setupSocket = (io) => {
     // Toggle Ready status
     socket.on('player:toggle_ready', async ({ tableId, userId }) => {
       try {
+        console.log(`📥 Received player:toggle_ready - tableId: ${tableId}, userId: ${userId}`);
+        
         const Game = require('../models/Game');
         const game = await Game.findById(tableId);
         
         if (!game) {
+          console.error(`❌ Table not found: ${tableId}`);
           return socket.emit('error', { message: 'Table non trouvée' });
         }
 
+        console.log(`📊 Game found - Players: ${game.players.length}/${game.maxPlayers}`);
+        console.log(`📊 Current ready status:`, game.players.map(p => ({ 
+          userId: p.user.toString(), 
+          isReady: p.isReady 
+        })));
+
         const player = game.players.find(p => p.user.toString() === userId);
         if (!player) {
+          console.error(`❌ Player not found: ${userId}`);
           return socket.emit('error', { message: 'Joueur non trouvé' });
         }
 
@@ -211,6 +295,10 @@ exports.setupSocket = (io) => {
         await game.save();
 
         console.log(`🎮 Player ${userId} ready status: ${player.isReady}`);
+        console.log(`📊 Updated ready status:`, game.players.map(p => ({ 
+          userId: p.user.toString(), 
+          isReady: p.isReady 
+        })));
 
         // Émettre l'état mis à jour
         io.to(`table_${tableId}`).emit('player:ready_changed', {
@@ -219,14 +307,73 @@ exports.setupSocket = (io) => {
           allReady: game.players.every(p => p.isReady)
         });
 
+        // Vérifier les conditions de démarrage
+        const allReady = game.players.every(p => p.isReady);
+        const enoughPlayers = game.players.length === game.maxPlayers;
+        console.log(`🔍 Check start conditions:`);
+        console.log(`   - Players: ${game.players.length}/${game.maxPlayers} (${enoughPlayers ? '✅' : '❌'})`);
+        console.log(`   - All ready: ${allReady ? '✅' : '❌'}`);
+
         // Si tous les joueurs sont ready, démarrer la partie automatiquement
-        if (game.players.length === game.maxPlayers && game.players.every(p => p.isReady)) {
+        if (enoughPlayers && allReady) {
           console.log(`🚀 All players ready! Starting game...`);
-          game.status = 'playing';
-          await game.save();
           
+          // Distribuer les cartes
+          const { playerCards, deckRemaining } = dealCards(game.players, game.cardsPerPlayer);
+          
+          console.log(`🃏 Cards dealt:`, Object.keys(playerCards).map(userId => `${userId}: ${playerCards[userId].length} cards`));
+          
+          // NE PAS sauvegarder dans la base de données pour l'instant
+          // On envoie directement les cartes aux joueurs
+          // game.players.forEach(player => {
+          //   const userId = player.user.toString();
+          //   player.cards = playerCards[userId];
+          // });
+          // game.status = 'playing';
+          // game.currentTurn = 0;
+          // game.deck = deckRemaining;
+          // game.discardPile = [];
+          // await game.save();
+          
+          // Envoyer les cartes à chaque joueur individuellement
+          console.log('📤 Sending cards to players...');
+          game.players.forEach(player => {
+            const userId = player.user.toString();
+            console.log(`  - Looking for socket for userId: ${userId}`);
+            
+            const playerSocket = Array.from(io.sockets.sockets.values()).find(
+              s => s.handshake.auth?.userId === userId
+            );
+            
+            if (playerSocket) {
+              console.log(`  ✅ Socket found: ${playerSocket.id}`);
+              
+              // Trouver les cartes de l'adversaire
+              const opponentPlayer = game.players.find(p => p.user.toString() !== userId);
+              const opponentCards = opponentPlayer ? playerCards[opponentPlayer.user.toString()] : [];
+              
+              console.log(`  📊 myCards: ${playerCards[userId].length} cards`);
+              console.log(`  📊 opponentCards: ${opponentCards.length} cards`);
+              
+              const payload = {
+                myCards: playerCards[userId],
+                opponentCards: opponentCards,
+                deckCount: deckRemaining.length,
+                currentTurn: game.currentTurn
+              };
+              
+              console.log(`  📤 Emitting game:cards_dealt to ${playerSocket.id}`);
+              playerSocket.emit('game:cards_dealt', payload);
+            } else {
+              console.error(`  ❌ No socket found for userId: ${userId}`);
+            }
+          });
+          
+          // Notifier tous les joueurs que la partie commence
           io.to(`table_${tableId}`).emit('game:auto_start', {
-            message: 'Tous les joueurs sont prêts ! La partie commence...'
+            message: 'Tous les joueurs sont prêts ! La partie commence...',
+            cardsPerPlayer: game.cardsPerPlayer,
+            deckCount: deckRemaining.length
           });
         }
       } catch (error) {

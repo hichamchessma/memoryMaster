@@ -209,6 +209,10 @@ const TwoPlayersGamePage: React.FC = () => {
   const [memorizationTimerStarted, setMemorizationTimerStarted] = React.useState(false);
   // Garde contre démarrage multiple (StrictMode)
   const memorizationStartedRef = React.useRef(false);
+  // Phase de mémorisation : compter les cartes cliquées
+  const [isMemorizationPhase, setIsMemorizationPhase] = React.useState(false);
+  const [memorizedCardsCount, setMemorizedCardsCount] = React.useState(0);
+  const [memorizedCardIndexes, setMemorizedCardIndexes] = React.useState<number[]>([]);
   // Zone à laisser visible pendant la pénalité
   const [penaltyPlayer, setPenaltyPlayer] = React.useState<'player1' | 'player2' | null>(null);
   // Animation sifflet arbitre juste avant l'assombrissement
@@ -288,9 +292,13 @@ const TwoPlayersGamePage: React.FC = () => {
     }
   }, [tableData]);
 
+  // Garde pour éviter de rejoindre plusieurs fois
+  const hasJoinedRoom = React.useRef(false);
+
   // Écouter les mises à jour de la table via WebSocket
   React.useEffect(() => {
     if (!socket || !tableData?.tableId) return;
+    if (hasJoinedRoom.current) return; // Ne pas rejoindre si déjà fait
 
     console.log('🔌 Joining table room:', tableData.tableId);
     console.log('🔌 Current user ID:', tableData.currentUserId);
@@ -298,6 +306,7 @@ const TwoPlayersGamePage: React.FC = () => {
     console.log('🔌 Socket ID:', socket.id);
     
     socket.emit('joinTableRoom', tableData.tableId);
+    hasJoinedRoom.current = true;
 
     // Écouter quand un joueur rejoint la table
     const handlePlayerJoined = (data: any) => {
@@ -353,8 +362,122 @@ const TwoPlayersGamePage: React.FC = () => {
     const handleAutoStart = (data: any) => {
       console.log('🚀 Game auto-starting:', data);
       setGameStarted(true);
-      // Démarrer la partie (distribution des cartes, etc.)
-      handleStartNewGame(true);
+    };
+
+    // Écouter la distribution des cartes
+    const handleCardsDealt = (data: any) => {
+      console.log('🃏 Cards dealt received:', data);
+      
+      if (!data.myCards) {
+        console.error('❌ No myCards in data');
+        return;
+      }
+      
+      if (!data.opponentCards) {
+        console.error('❌ No opponentCards in data');
+        return;
+      }
+      
+      // Convertir les cartes reçues au format local
+      // PHASE 1 : Toutes les cartes sont FACE CACHÉE
+      // isFlipped: false = face visible, isFlipped: true = dos visible (face cachée)
+      // On veut DOS visible au début, donc isFlipped: true
+      const myCards: CardState[] = data.myCards.map((card: any) => ({
+        id: card.id,
+        value: -1, // Vide au début (animation de distribution)
+        isFlipped: false, // Face visible mais vide
+        updated: Date.now()
+      }));
+      
+      // Convertir les cartes adverses avec les VRAIES valeurs
+      const opponentCards: CardState[] = data.opponentCards.map((card: any) => ({
+        id: card.id,
+        value: -1, // Vide au début (animation de distribution)
+        isFlipped: false, // Face visible mais vide
+        updated: Date.now()
+      }));
+      
+      console.log('🃏 My cards:', myCards);
+      console.log('🃏 Opponent cards:', opponentCards);
+      
+      // Mettre à jour les cartes des joueurs (VIDES au début)
+      setPlayer2Cards(myCards); // Le joueur actuel (en bas)
+      setPlayer1Cards(opponentCards); // L'adversaire (en haut)
+      
+      // Animation de distribution des cartes (comme dans TrainingPage)
+      const DEAL_DELAY = 400;
+      const allCards = [
+        ...data.myCards.map((card: any, i: number) => ({ card, player: 'bottom', index: i })),
+        ...data.opponentCards.map((card: any, i: number) => ({ card, player: 'top', index: i }))
+      ];
+      
+      // Distribuer les cartes une par une avec animation
+      allCards.forEach((item, idx) => {
+        setTimeout(() => {
+          if (item.player === 'bottom') {
+            setPlayer2Cards(prev => {
+              const newCards = [...prev];
+              newCards[item.index] = {
+                ...newCards[item.index],
+                value: item.card.value,
+                isFlipped: false // Face visible pendant la mémorisation
+              };
+              return newCards;
+            });
+          } else {
+            setPlayer1Cards(prev => {
+              const newCards = [...prev];
+              newCards[item.index] = {
+                ...newCards[item.index],
+                value: item.card.value,
+                isFlipped: false // Face visible pendant la mémorisation
+              };
+              return newCards;
+            });
+          }
+          
+          // Après la dernière carte, démarrer la phase de mémorisation
+          if (idx === allCards.length - 1) {
+            setTimeout(() => {
+              // Afficher "Préparez-vous !" pendant 2 secondes
+              setShowPrepOverlay(true);
+              
+              setTimeout(() => {
+                // Cacher l'overlay après 2 secondes
+                setShowPrepOverlay(false);
+          
+          // PHASE 2 : Phase de mémorisation (30 secondes)
+          // Les cartes restent FACE CACHÉE
+          // Le joueur peut cliquer sur 2 cartes maximum pour les voir
+          setIsMemorizationPhase(true);
+          setMemorizedCardsCount(0);
+          setMemorizedCardIndexes([]);
+          setTimeLeft(30);
+          
+          console.log('🧠 Memorization phase started - Click on 2 of YOUR cards to memorize');
+          
+          // Timer de mémorisation
+          const timer = setInterval(() => {
+            setTimeLeft((prev: number) => {
+              if (prev <= 1) {
+                clearInterval(timer);
+                // PHASE 3 : Fin de la mémorisation
+                setIsMemorizationPhase(false);
+                // Retourner toutes les cartes FACE CACHÉE (au cas où certaines seraient ouvertes)
+                setPlayer2Cards(cards => cards.map(c => ({ ...c, isFlipped: true })));
+                setMemorizedCardsCount(0);
+                setMemorizedCardIndexes([]);
+                console.log('✅ Memorization phase ended');
+                return 0;
+              }
+              return prev - 1;
+            });
+          }, 1000);
+              }, 2000); // Cacher l'overlay après 2 secondes
+            }, 500); // Délai après la dernière carte
+          }
+        }, idx * DEAL_DELAY); // Délai entre chaque carte
+      });
     };
 
     // Écouter quand un joueur quitte
@@ -367,6 +490,7 @@ const TwoPlayersGamePage: React.FC = () => {
 
     socket.on('player:ready_changed', handleReadyChanged);
     socket.on('game:auto_start', handleAutoStart);
+    socket.on('game:cards_dealt', handleCardsDealt);
     socket.on('game:player_quit', handlePlayerQuit);
 
     return () => {
@@ -374,6 +498,7 @@ const TwoPlayersGamePage: React.FC = () => {
       socket.off('table_updated', handlePlayerJoined);
       socket.off('player:ready_changed', handleReadyChanged);
       socket.off('game:auto_start', handleAutoStart);
+      socket.off('game:cards_dealt', handleCardsDealt);
       socket.off('game:player_quit', handlePlayerQuit);
       socket.emit('leaveTableRoom', tableData.tableId);
     };
@@ -848,6 +973,45 @@ const TwoPlayersGamePage: React.FC = () => {
     
     const playerKey = player === 'top' ? 'player1' : 'player2';
     const playerCards = player === 'top' ? player1Cards : player2Cards;
+    
+    // PHASE DE MÉMORISATION : Cliquer sur 2 cartes maximum (seulement SES cartes = bottom)
+    if (isMemorizationPhase && player === 'bottom') {
+      // Si déjà 2 cartes mémorisées, ne rien faire
+      if (memorizedCardsCount >= 2) {
+        console.log('⚠️ Already memorized 2 cards');
+        return;
+      }
+      
+      // Si cette carte est déjà mémorisée, la retourner
+      if (memorizedCardIndexes.includes(index)) {
+        console.log(`🔄 Flipping card ${index} back`);
+        setPlayer2Cards(prev => {
+          const newCards = [...prev];
+          newCards[index] = { ...newCards[index], isFlipped: true };
+          return newCards;
+        });
+        setMemorizedCardIndexes(prev => prev.filter(i => i !== index));
+        setMemorizedCardsCount(prev => prev - 1);
+        return;
+      }
+      
+      // Retourner la carte pour la voir
+      console.log(`👁️ Memorizing card ${index}`);
+      setPlayer2Cards(prev => {
+        const newCards = [...prev];
+        newCards[index] = { ...newCards[index], isFlipped: false };
+        return newCards;
+      });
+      setMemorizedCardIndexes(prev => [...prev, index]);
+      setMemorizedCardsCount(prev => prev + 1);
+      return;
+    }
+    
+    // Ne pas permettre de cliquer sur les cartes adverses pendant la mémorisation
+    if (isMemorizationPhase && player === 'top') {
+      console.log('⚠️ Cannot click opponent cards during memorization');
+      return;
+    }
     
     // Mode Powerful: défausser immédiatement la carte cliquée (si non vide)
     if (isPowerfulMode) {

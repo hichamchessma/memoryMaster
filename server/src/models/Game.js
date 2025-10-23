@@ -5,12 +5,12 @@ const cardSchema = new mongoose.Schema({
   id: {
     type: String,
     default: () => uuidv4(),
-    required: true
+    required: false
   },
   value: {
-    type: String,
-    required: true,
-    enum: ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'JOKER']
+    type: Number,
+    required: true
+    // Pas d'enum - accepte n'importe quel nombre (0-51 pour cartes normales, 104-115 pour jokers)
   },
   isFlipped: {
     type: Boolean,
@@ -22,7 +22,7 @@ const cardSchema = new mongoose.Schema({
   },
   position: {
     type: Number,
-    required: true
+    required: false
   },
   ownerId: {
     type: mongoose.Schema.Types.ObjectId,
