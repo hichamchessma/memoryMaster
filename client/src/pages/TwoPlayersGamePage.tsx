@@ -107,7 +107,8 @@ const TwoPlayersGamePage: React.FC = () => {
             if (currentPlayer) {
               setMyPlayerInfo({
                 name: `${currentPlayer.firstName} ${currentPlayer.lastName}`,
-                isReal: true
+                isReal: true,
+                userId: currentPlayer._id
               });
               
               // Créer un objet User complet pour l'authentification
@@ -133,7 +134,8 @@ const TwoPlayersGamePage: React.FC = () => {
             if (otherPlayer) {
               setOpponentInfo({
                 name: `${otherPlayer.firstName} ${otherPlayer.lastName}`,
-                isReal: true
+                isReal: true,
+                userId: otherPlayer._id
               });
             }
           }
@@ -154,8 +156,8 @@ const TwoPlayersGamePage: React.FC = () => {
   // États pour les informations des joueurs réels
   // myPlayerInfo = le joueur actuel (toujours affiché en bas)
   // opponentInfo = l'adversaire (toujours affiché en haut)
-  const [myPlayerInfo, setMyPlayerInfo] = React.useState<{name: string; isReal: boolean} | null>(null);
-  const [opponentInfo, setOpponentInfo] = React.useState<{name: string; isReal: boolean} | null>(null);
+  const [myPlayerInfo, setMyPlayerInfo] = React.useState<{name: string; isReal: boolean; userId: string} | null>(null);
+  const [opponentInfo, setOpponentInfo] = React.useState<{name: string; isReal: boolean; userId: string} | null>(null);
   
   // État pour stocker les joueurs actuels de la table
   const [tablePlayers, setTablePlayers] = React.useState<Array<{_id: string; firstName: string; lastName: string; position: number; isReady?: boolean}>>(tableData?.players || []);
@@ -270,19 +272,22 @@ const TwoPlayersGamePage: React.FC = () => {
       if (currentPlayer) {
         setMyPlayerInfo({
           name: `${currentPlayer.firstName} ${currentPlayer.lastName}`,
-          isReal: true
+          isReal: true,
+          userId: currentPlayer._id
         });
       }
       
       if (otherPlayer) {
         setOpponentInfo({
           name: `${otherPlayer.firstName} ${otherPlayer.lastName}`,
-          isReal: true
+          isReal: true,
+          userId: otherPlayer._id
         });
       } else {
         setOpponentInfo({
           name: 'En attente...',
-          isReal: false
+          isReal: false,
+          userId: ''
         });
       }
     };
@@ -326,14 +331,16 @@ const TwoPlayersGamePage: React.FC = () => {
         if (currentPlayer) {
           setMyPlayerInfo({
             name: `${currentPlayer.firstName} ${currentPlayer.lastName}`,
-            isReal: true
+            isReal: true,
+            userId: currentPlayer._id
           });
         }
         
         if (otherPlayer) {
           setOpponentInfo({
             name: `${otherPlayer.firstName} ${otherPlayer.lastName}`,
-            isReal: true
+            isReal: true,
+            userId: otherPlayer._id
           });
           console.log('✅ Opponent info updated:', `${otherPlayer.firstName} ${otherPlayer.lastName}`);
         } else {
@@ -469,13 +476,27 @@ const TwoPlayersGamePage: React.FC = () => {
             setTimeLeft((prev: number) => {
               if (prev <= 1) {
                 clearInterval(timer);
+                console.log('✅ Memorization phase ended - Starting game');
+                
                 // PHASE 3 : Fin de la mémorisation
                 setIsMemorizationPhase(false);
-                // Retourner toutes les cartes FACE CACHÉE (au cas où certaines seraient ouvertes)
+                
+                // Retourner toutes les cartes FACE CACHÉE
+                setPlayer1Cards(cards => cards.map(c => ({ ...c, isFlipped: false })));
                 setPlayer2Cards(cards => cards.map(c => ({ ...c, isFlipped: false })));
                 setMemorizedCardsCount(0);
                 setMemorizedCardIndexes([]);
-                console.log('✅ Memorization phase ended');
+                
+                // PHASE 4 : Début du jeu - Tour du joueur 1
+                setGamePhase('player1_turn');
+                setCurrentPlayer('player1');
+                
+                // Déterminer qui est le joueur 1 (celui qui commence)
+                // Pour l'instant, on suppose que c'est l'adversaire (en haut)
+                // TODO: Le serveur devrait décider qui commence
+                setIsPlayerTurn(false); // Ce n'est pas notre tour au début
+                
+                console.log('🎮 Game started - Player 1 turn');
                 return 0;
               }
               return prev - 1;
@@ -496,10 +517,66 @@ const TwoPlayersGamePage: React.FC = () => {
       navigate('/dashboard');
     };
 
+    // Écouter les changements de tour
+    const handleTurnChanged = (data: any) => {
+      console.log('🔄 Turn changed:', data);
+      const { currentPlayerId } = data;
+      
+      // Déterminer si c'est notre tour
+      const isMyTurn = currentPlayerId === myPlayerInfo?.userId;
+      setIsPlayerTurn(isMyTurn);
+      
+      // Mettre à jour la phase de jeu
+      if (isMyTurn) {
+        setGamePhase('player2_turn'); // Nous sommes player2 (en bas)
+        setCurrentPlayer('player2');
+        console.log('✅ It\'s MY turn!');
+      } else {
+        setGamePhase('player1_turn'); // L'adversaire est player1 (en haut)
+        setCurrentPlayer('player1');
+        console.log('⏳ Waiting for opponent...');
+      }
+      
+      // Réinitialiser le timer à 30 secondes pour chaque tour
+      setTimeLeft(30);
+      
+      // Démarrer le timer du tour
+      const turnTimer = setInterval(() => {
+        setTimeLeft((prev: number) => {
+          if (prev <= 1) {
+            clearInterval(turnTimer);
+            console.log('⏰ Time\'s up for this turn!');
+            // TODO: Passer au joueur suivant automatiquement
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    };
+
+    // Écouter quand un joueur pioche une carte
+    const handleCardDrawn = (data: any) => {
+      console.log('🎴 Card drawn:', data);
+      const { playerId, card } = data;
+      
+      // Si c'est nous qui avons pioché, on voit la carte
+      if (playerId === myPlayerInfo?.userId) {
+        console.log('👁️ I drew:', card);
+        setDrawnCard(card);
+        setSelectingCardToReplace(true);
+      } else {
+        // Sinon, on voit juste qu'il a pioché (carte face cachée)
+        console.log('👀 Opponent drew a card (face down)');
+        // TODO: Afficher une animation de pioche
+      }
+    };
+
     socket.on('player:ready_changed', handleReadyChanged);
     socket.on('game:auto_start', handleAutoStart);
     socket.on('game:cards_dealt', handleCardsDealt);
     socket.on('game:player_quit', handlePlayerQuit);
+    socket.on('game:turn_changed', handleTurnChanged);
+    socket.on('game:card_drawn', handleCardDrawn);
 
     return () => {
       socket.off('playerJoined', handlePlayerJoined);
@@ -508,6 +585,8 @@ const TwoPlayersGamePage: React.FC = () => {
       socket.off('game:auto_start', handleAutoStart);
       socket.off('game:cards_dealt', handleCardsDealt);
       socket.off('game:player_quit', handlePlayerQuit);
+      socket.off('game:turn_changed', handleTurnChanged);
+      socket.off('game:card_drawn', handleCardDrawn);
       socket.emit('leaveTableRoom', tableData.tableId);
     };
   }, [socket, tableData?.tableId, tableData?.currentUserId, navigate]);

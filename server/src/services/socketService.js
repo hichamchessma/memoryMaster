@@ -375,6 +375,24 @@ exports.setupSocket = (io) => {
             cardsPerPlayer: game.cardsPerPlayer,
             deckCount: deckRemaining.length
           });
+          
+          // Après 12 secondes (distribution + mémorisation), démarrer le premier tour
+          // Distribution: 8 cartes * 400ms = 3.2s
+          // Overlay "Préparez-vous": 2s
+          // Phase de mémorisation: 10s
+          // Total: ~15s (on met 16s pour être sûr)
+          setTimeout(() => {
+            const firstPlayerId = game.players[0].user.toString();
+            const firstPlayer = game.players[0];
+            
+            console.log(`🎮 Starting first turn for player: ${firstPlayerId}`);
+            
+            // Émettre l'événement de changement de tour
+            io.to(`table_${tableId}`).emit('game:turn_changed', {
+              currentPlayerId: firstPlayerId,
+              currentPlayerName: `${firstPlayer.firstName} ${firstPlayer.lastName}`
+            });
+          }, 16000);
         }
       } catch (error) {
         console.error('Erreur toggle ready:', error);
