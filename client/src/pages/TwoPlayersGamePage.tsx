@@ -582,15 +582,30 @@ const TwoPlayersGamePage: React.FC = () => {
     // Écouter quand l'adversaire pioche (on voit juste l'animation)
     const handleOpponentDrewCard = (data: any) => {
       console.log('👀 Opponent drew a card (face down):', data);
-      const { playerId } = data;
       
-      // Afficher une animation de pioche côté adversaire
-      // L'adversaire voit juste qu'une carte a été piochée (face cachée)
-      // On peut ajouter un effet visuel temporaire sur le deck
-      setIsDeckGlowing(true);
-      setTimeout(() => {
-        setIsDeckGlowing(false);
-      }, 1000);
+      // Animation de carte qui vole du deck vers la main de l'adversaire (face cachée)
+      const deck = deckRef.current;
+      // L'adversaire est toujours en haut (player1 visuel)
+      const opponentHand = player1HandRef.current;
+      
+      if (deck && opponentHand) {
+        const deckRect = deck.getBoundingClientRect();
+        const handRect = opponentHand.getBoundingClientRect();
+        
+        // Animation: deck → main adversaire
+        setReplaceInAnim({
+          from: { x: deckRect.left + deckRect.width/2, y: deckRect.top + deckRect.height/2 },
+          to: { x: handRect.left + handRect.width/2, y: handRect.top + handRect.height/2 },
+          toPlayer: amIPlayer1 ? 'bottom' : 'top',
+          index: 0,
+          cardValue: -1 // Face cachée
+        });
+        
+        // Nettoyer après l'animation
+        setTimeout(() => {
+          setReplaceInAnim(null);
+        }, 1000);
+      }
       
       console.log(`✅ Opponent drew a card - Animation shown`);
     };
@@ -603,10 +618,46 @@ const TwoPlayersGamePage: React.FC = () => {
       console.log(`  → Updating discard pile with card: ${card}`);
       console.log(`  → Current discardPile before update:`, discardPile);
       
-      // Mettre à jour la défausse (visible par tous)
-      setDiscardPile(card);
+      // Animation de défausse
+      const discard = discardRef.current;
+      let sourceHand: HTMLDivElement | null = null;
       
-      console.log(`  ✅ setDiscardPile(${card}) called`);
+      // Déterminer d'où vient la carte
+      // Moi = toujours en bas (player2 visuel), Adversaire = toujours en haut (player1 visuel)
+      if (playerId === tableData?.currentUserId) {
+        // C'est moi qui défausse (en bas)
+        sourceHand = player2HandRef.current;
+      } else {
+        // C'est l'adversaire qui défausse (en haut)
+        sourceHand = player1HandRef.current;
+      }
+      
+      if (discard && sourceHand) {
+        const discardRect = discard.getBoundingClientRect();
+        const handRect = sourceHand.getBoundingClientRect();
+        
+        // Animation: main → défausse
+        setReplaceOutAnim({
+          from: { x: handRect.left + handRect.width/2, y: handRect.top + handRect.height/2 },
+          to: { x: discardRect.left + discardRect.width/2, y: discardRect.top + discardRect.height/2 },
+          toPlayer: 'top',
+          index: 0,
+          cardValue: card
+        });
+        setReplaceOutImage(getCardImage(card));
+        
+        // Mettre à jour la défausse après l'animation
+        setTimeout(() => {
+          setDiscardPile(card);
+          setReplaceOutAnim(null);
+          setReplaceOutImage(null);
+          console.log(`  ✅ setDiscardPile(${card}) called after animation`);
+        }, 1000);
+      } else {
+        // Pas d'animation, mise à jour directe
+        setDiscardPile(card);
+        console.log(`  ✅ setDiscardPile(${card}) called (no animation)`);
+      }
       
       // Afficher un message si c'est une défausse automatique
       if (autoDiscard) {

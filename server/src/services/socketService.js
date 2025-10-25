@@ -723,33 +723,42 @@ exports.setupSocket = (io) => {
         
         console.log(`  ✅ Player found: ${player.user.firstName} ${player.user.lastName}`);
         
-        let discardedCard;
+        let discardedCardValue;
+        let discardedCardObject;
         
         // Si cardIndex === -1, c'est la carte piochée qu'on défausse directement
         if (cardIndex === -1) {
-          discardedCard = card;
-          console.log(`  → Discarding drawn card directly: ${discardedCard}`);
+          discardedCardValue = card;
+          console.log(`  → Discarding drawn card directly: ${discardedCardValue}`);
+          // Créer un objet carte pour la défausse
+          discardedCardObject = {
+            value: discardedCardValue,
+            isFlipped: true,
+            isVisible: true,
+            isDiscarded: true
+          };
         } else {
           // Sinon, c'est une carte de la main
           if (!player.cards[cardIndex]) {
             return socket.emit('error', { message: 'Carte invalide' });
           }
-          discardedCard = player.cards[cardIndex];
+          discardedCardObject = player.cards[cardIndex];
+          discardedCardValue = discardedCardObject.value;
           player.cards.splice(cardIndex, 1);
-          console.log(`  → Discarding card from hand at index ${cardIndex}: ${discardedCard}`);
+          console.log(`  → Discarding card from hand at index ${cardIndex}: ${discardedCardValue}`);
         }
         
         // Ajouter à la défausse
-        game.discardPile.push(discardedCard);
+        game.discardPile.push(discardedCardObject);
         
         await game.save();
         
-        console.log(`✅ Card discarded: ${discardedCard}`);
+        console.log(`✅ Card discarded: ${discardedCardValue}`);
         
         // Notifier TOUS les joueurs (la défausse est visible par tous)
         io.to(`table_${tableId}`).emit('game:card_discarded', {
           playerId: userId,
-          card: discardedCard,
+          card: discardedCardValue,
           cardIndex
         });
         
