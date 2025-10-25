@@ -572,7 +572,8 @@ exports.setupSocket = (io) => {
             startMemorizationTimer(io, tableId, 2);
           }, 5500);
           
-          // Après la mémorisation (5.5s + 2s = 7.5s), démarrer le premier tour
+          // Après la mémorisation (5.5s + 2s + 0.5s = 8s), démarrer le premier tour
+          // Le délai de 0.5s permet aux clients de finir de traiter la fin de la mémorisation
           setTimeout(async () => {
             // Recharger le jeu avec les infos des joueurs
             const gameWithPlayers = await Game.findById(tableId).populate('players.user');
@@ -591,7 +592,7 @@ exports.setupSocket = (io) => {
               currentPlayerId: firstPlayerId,
               currentPlayerName: `${firstPlayerUser.firstName} ${firstPlayerUser.lastName}`
             });
-          }, 7500);
+          }, 8000);
         }
       } catch (error) {
         console.error('Erreur toggle ready:', error);

@@ -395,10 +395,16 @@ const TwoPlayersGamePage: React.FC = () => {
       console.log('🃏 Cards dealt received:', data);
       console.log('  myCards:', data.myCards);
       console.log('  opponentCards:', data.opponentCards);
-      console.log('  amIPlayer1:', data.amIPlayer1);
+      console.log('  amIPlayer1 (from server):', data.amIPlayer1);
+      console.log('  amIPlayer1 (current state):', amIPlayer1);
       
-      // Sauvegarder si je suis player1 ou player2
-      setAmIPlayer1(data.amIPlayer1);
+      // Sauvegarder si je suis player1 ou player2 (UNE SEULE FOIS)
+      if (amIPlayer1 === null) {
+        console.log('✅ Setting amIPlayer1 for the FIRST time:', data.amIPlayer1);
+        setAmIPlayer1(data.amIPlayer1);
+      } else {
+        console.log('⚠️ amIPlayer1 already set, ignoring new value');
+      }
       
       // Créer les cartes avec isFlipped=false (face cachée)
       const myCards = data.myCards.map((card: any) => ({
@@ -503,41 +509,45 @@ const TwoPlayersGamePage: React.FC = () => {
       
       // Déterminer si c'est notre tour
       const isMyTurn = currentPlayerId === myUserId;
+      console.log(`  ✅ isMyTurn = ${isMyTurn} (${currentPlayerId} === ${myUserId})`);
       setIsPlayerTurn(isMyTurn);
       
-      // Mettre à jour la phase de jeu EN FONCTION DE QUI JE SUIS
-      // Si amIPlayer1 est null, on attend qu'il soit défini
-      if (amIPlayer1 === null) {
-        console.log('⚠️ amIPlayer1 is null, waiting for cards_dealt...');
-        // On met à jour quand même isPlayerTurn pour la logique
+      // NOUVELLE LOGIQUE: Utiliser les IDs des joueurs pour déterminer qui est player1/player2
+      // IMPORTANT: Utiliser tablePlayers (mis à jour par le serveur) et non tableData.players (statique)
+      const players = tablePlayers.length > 0 ? tablePlayers : (tableData?.players || []);
+      const player1Id = players[0]?._id;
+      const player2Id = players[1]?._id;
+      
+      console.log(`📊 DEBUG handleTurnChanged:`);
+      console.log(`  → currentPlayerId: ${currentPlayerId}`);
+      console.log(`  → player1Id: ${player1Id}`);
+      console.log(`  → player2Id: ${player2Id}`);
+      console.log(`  → players:`, players);
+      console.log(`  → Comparison: currentPlayerId === player1Id? ${currentPlayerId === player1Id}`);
+      console.log(`  → Comparison: currentPlayerId === player2Id? ${currentPlayerId === player2Id}`);
+      
+      // Déterminer quelle phase selon qui joue
+      let newPhase: GamePhase;
+      if (currentPlayerId === player1Id) {
+        newPhase = 'player1_turn';
+        setGamePhase('player1_turn');
+        setCurrentPlayer('player1');
+        console.log(`✅ Player 1's turn (${currentPlayerName}) - gamePhase: player1_turn`);
+      } else if (currentPlayerId === player2Id) {
+        newPhase = 'player2_turn';
+        setGamePhase('player2_turn');
+        setCurrentPlayer('player2');
+        console.log(`✅ Player 2's turn (${currentPlayerName}) - gamePhase: player2_turn`);
+      } else {
+        console.error('⚠️ Unknown player ID:', currentPlayerId);
+        console.error('  → This should NEVER happen!');
         return;
       }
       
-      let newPhase: GamePhase;
       if (isMyTurn) {
-        // C'est MON tour
-        if (amIPlayer1) {
-          newPhase = 'player1_turn';
-          setGamePhase('player1_turn');
-          setCurrentPlayer('player1');
-        } else {
-          newPhase = 'player2_turn';
-          setGamePhase('player2_turn');
-          setCurrentPlayer('player2');
-        }
-        console.log(`✅ It's MY turn! (${currentPlayerName}) - Setting gamePhase to ${newPhase}`);
+        console.log(`✅ It's MY turn! (${currentPlayerName})`);
       } else {
-        // C'est le tour de l'adversaire
-        if (amIPlayer1) {
-          newPhase = 'player2_turn';
-          setGamePhase('player2_turn');
-          setCurrentPlayer('player2');
-        } else {
-          newPhase = 'player1_turn';
-          setGamePhase('player1_turn');
-          setCurrentPlayer('player1');
-        }
-        console.log(`⏳ Waiting for opponent... (${currentPlayerName}) - Setting gamePhase to ${newPhase}`);
+        console.log(`⏳ Waiting for opponent... (${currentPlayerName})`);
       }
       
       // Nettoyer l'ancien timer s'il existe (le serveur gère maintenant les timers)
@@ -572,16 +582,31 @@ const TwoPlayersGamePage: React.FC = () => {
     // Écouter quand l'adversaire pioche (on voit juste l'animation)
     const handleOpponentDrewCard = (data: any) => {
       console.log('👀 Opponent drew a card (face down):', data);
-      // TODO: Afficher une animation de pioche côté adversaire
+      const { playerId } = data;
+      
+      // Afficher une animation de pioche côté adversaire
+      // L'adversaire voit juste qu'une carte a été piochée (face cachée)
+      // On peut ajouter un effet visuel temporaire sur le deck
+      setIsDeckGlowing(true);
+      setTimeout(() => {
+        setIsDeckGlowing(false);
+      }, 1000);
+      
+      console.log(`✅ Opponent drew a card - Animation shown`);
     };
     
     // Écouter quand une carte est défaussée
     const handleCardDiscarded = (data: any) => {
-      console.log('🗑️ Card discarded:', data);
+      console.log('🗑️ Card discarded event received:', data);
       const { playerId, card, cardIndex, autoDiscard } = data;
+      
+      console.log(`  → Updating discard pile with card: ${card}`);
+      console.log(`  → Current discardPile before update:`, discardPile);
       
       // Mettre à jour la défausse (visible par tous)
       setDiscardPile(card);
+      
+      console.log(`  ✅ setDiscardPile(${card}) called`);
       
       // Afficher un message si c'est une défausse automatique
       if (autoDiscard) {
@@ -1915,7 +1940,7 @@ const TwoPlayersGamePage: React.FC = () => {
       tableId: tableData.tableId,
       userId: tableData.currentUserId
     });
-  }, [socket, tableData]);
+  }, [socket, tableData?.tableId, tableData?.currentUserId]);
 
   // Quitter la partie
   const handleQuitGame = React.useCallback(() => {
@@ -2090,9 +2115,40 @@ const TwoPlayersGamePage: React.FC = () => {
   }, []);
 
   // Fonction utilitaire pour déterminer si c'est le tour d'un joueur
+  // ATTENTION: player1/player2 font référence à la POSITION VISUELLE (haut/bas)
+  // Mais gamePhase fait référence aux JOUEURS RÉELS (Ali/Hicham)
   const isPlayerActive = (player: 'player1' | 'player2') => {
-    return (player === 'player1' && gamePhase === 'player1_turn') || 
-           (player === 'player2' && gamePhase === 'player2_turn');
+    // Pendant la phase de mémorisation (before_round), c'est le tour du premier joueur
+    if (gamePhase === 'before_round') {
+      return player === 'player1';
+    }
+    
+    // Si amIPlayer1 est null, on ne peut pas déterminer
+    if (amIPlayer1 === null) return false;
+    
+    // Mapper la position visuelle au joueur réel
+    // Si je suis player1 (Ali):
+    //   - player1 (haut) = moi (Ali) → gamePhase devrait être 'player1_turn'
+    //   - player2 (bas) = adversaire (Hicham) → gamePhase devrait être 'player2_turn'
+    // Si je suis player2 (Hicham):
+    //   - player1 (haut) = adversaire (Ali) → gamePhase devrait être 'player1_turn'
+    //   - player2 (bas) = moi (Hicham) → gamePhase devrait être 'player2_turn'
+    
+    if (amIPlayer1) {
+      // Je suis Ali (player1 réel), affiché en bas
+      // player1 (position haut) = adversaire Hicham (player2 réel)
+      // player2 (position bas) = moi Ali (player1 réel)
+      if (player === 'player1') return gamePhase === 'player2_turn'; // Haut = Hicham
+      if (player === 'player2') return gamePhase === 'player1_turn'; // Bas = Ali
+    } else {
+      // Je suis Hicham (player2 réel), affiché en bas
+      // player1 (position haut) = adversaire Ali (player1 réel)
+      // player2 (position bas) = moi Hicham (player2 réel)
+      if (player === 'player1') return gamePhase === 'player1_turn'; // Haut = Ali
+      if (player === 'player2') return gamePhase === 'player2_turn'; // Bas = Hicham
+    }
+    
+    return false;
   };
 
   // Effet pour gérer l'animation de la carte piochée
@@ -2525,7 +2581,7 @@ const TwoPlayersGamePage: React.FC = () => {
                 
                 socket.emit('game:draw_card', {
                   tableId: tableData?.tableId,
-                  userId: myPlayerInfo?.userId,
+                  userId: tableData?.currentUserId,
                   fromDeck: true
                 });
               }
@@ -2602,14 +2658,20 @@ const TwoPlayersGamePage: React.FC = () => {
                         onClick={async () => {
                           if (drawnCard && socket) {
                             console.log('🗑️ Discarding drawn card directly...');
+                            console.log('  → tableId:', tableData?.tableId);
+                            console.log('  → userId:', tableData?.currentUserId);
+                            console.log('  → cardIndex: -1');
+                            console.log('  → card:', drawnCard.value);
                             
                             // Émettre l'événement WebSocket pour défausser
                             socket.emit('game:discard_card', {
                               tableId: tableData?.tableId,
-                              userId: myPlayerInfo?.userId,
+                              userId: tableData?.currentUserId,
                               cardIndex: -1, // -1 = carte piochée (pas encore dans la main)
                               card: drawnCard.value
                             });
+                            
+                            console.log('✅ game:discard_card emitted');
                             
                             // Nettoyer l'état local
                             setDrawnCard(null);
