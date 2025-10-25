@@ -563,15 +563,16 @@ exports.setupSocket = (io) => {
             deckCount: deckRemaining.length
           });
           
-          // Démarrer le timer de mémorisation après la distribution (4.5s)
+          // Démarrer le timer de mémorisation après la distribution ET l'overlay
           // Distribution: 8 cartes * 400ms = 3.2s
+          // Délai après dernière carte: 0.5s
           // Overlay "Préparez-vous": 2s
-          // Total: ~5.2s (on met 4.5s pour être sûr)
+          // Total: 3.2s + 0.5s + 2s = 5.7s (on met 5.5s pour être sûr)
           setTimeout(() => {
             startMemorizationTimer(io, tableId, 2);
-          }, 4500);
+          }, 5500);
           
-          // Après la mémorisation (4.5s + 2s = 6.5s), démarrer le premier tour
+          // Après la mémorisation (5.5s + 2s = 7.5s), démarrer le premier tour
           setTimeout(async () => {
             // Recharger le jeu avec les infos des joueurs
             const gameWithPlayers = await Game.findById(tableId).populate('players.user');
@@ -590,7 +591,7 @@ exports.setupSocket = (io) => {
               currentPlayerId: firstPlayerId,
               currentPlayerName: `${firstPlayerUser.firstName} ${firstPlayerUser.lastName}`
             });
-          }, 6500);
+          }, 7500);
         }
       } catch (error) {
         console.error('Erreur toggle ready:', error);
@@ -702,13 +703,24 @@ exports.setupSocket = (io) => {
         
         const game = await Game.findById(tableId).populate('players.user');
         if (!game) {
+          console.error(`❌ Game not found: ${tableId}`);
           return socket.emit('error', { message: 'Partie non trouvée' });
         }
         
-        const player = game.players.find(p => p.user.toString() === userId);
+        console.log(`  📊 Game players:`, game.players.map(p => ({ 
+          userId: p.user._id.toString(), 
+          name: `${p.user.firstName} ${p.user.lastName}` 
+        })));
+        console.log(`  🔍 Looking for userId: ${userId}`);
+        
+        const player = game.players.find(p => p.user._id.toString() === userId);
         if (!player) {
+          console.error(`❌ Player not found! userId: ${userId}`);
+          console.error(`   Available players:`, game.players.map(p => p.user._id.toString()));
           return socket.emit('error', { message: 'Joueur non trouvé' });
         }
+        
+        console.log(`  ✅ Player found: ${player.user.firstName} ${player.user.lastName}`);
         
         let discardedCard;
         
@@ -773,7 +785,7 @@ exports.setupSocket = (io) => {
           return socket.emit('error', { message: 'Partie non trouvée' });
         }
         
-        const player = game.players.find(p => p.user.toString() === userId);
+        const player = game.players.find(p => p.user._id.toString() === userId);
         if (!player) {
           return socket.emit('error', { message: 'Joueur non trouvé' });
         }

@@ -211,6 +211,7 @@ const TwoPlayersGamePage: React.FC = () => {
   } | null>(null);
   // Overlay de préparation (style "fighting")
   const [showPrepOverlay, setShowPrepOverlay] = React.useState(false);
+  const [showMemorizationEndOverlay, setShowMemorizationEndOverlay] = React.useState(false);
   const [memorizationTimerStarted, setMemorizationTimerStarted] = React.useState(false);
   // Garde contre démarrage multiple (StrictMode)
   const memorizationStartedRef = React.useRef(false);
@@ -459,14 +460,9 @@ const TwoPlayersGamePage: React.FC = () => {
             });
           }
           
-          // Après la dernière carte, démarrer la phase de mémorisation
+          // Après la dernière carte, afficher l'overlay de préparation
           if (idx === allCards.length - 1) {
             setTimeout(() => {
-              // Changer la phase de jeu
-              setGamePhase('before_round');
-              setCurrentPlayer('player1');
-              setIsPlayerTurn(false);
-              
               // Afficher "Préparez-vous !" pendant 2 secondes
               setShowPrepOverlay(true);
               
@@ -474,47 +470,12 @@ const TwoPlayersGamePage: React.FC = () => {
                 // Cacher l'overlay après 2 secondes
                 setShowPrepOverlay(false);
                 
-                // PHASE 2 : Phase de mémorisation (2 secondes)
-                // Les cartes restent FACE CACHÉE
-                // Le joueur peut cliquer sur 2 cartes maximum pour les voir
+                // Activer la phase de mémorisation (le serveur gère le timer)
                 setIsMemorizationPhase(true);
                 setMemorizedCardsCount(0);
                 setMemorizedCardIndexes([]);
-                setTimeLeft(2);
                 
                 console.log('🧠 Memorization phase started - Click on 2 of YOUR cards to memorize');
-          
-          // Timer de mémorisation
-          const timer = setInterval(() => {
-            setTimeLeft((prev: number) => {
-              if (prev <= 1) {
-                clearInterval(timer);
-                console.log('✅ Memorization phase ended - Starting game');
-                
-                // PHASE 3 : Fin de la mémorisation
-                setIsMemorizationPhase(false);
-                
-                // Retourner toutes les cartes FACE CACHÉE
-                setPlayer1Cards(cards => cards.map(c => ({ ...c, isFlipped: false })));
-                setPlayer2Cards(cards => cards.map(c => ({ ...c, isFlipped: false })));
-                setMemorizedCardsCount(0);
-                setMemorizedCardIndexes([]);
-                
-                // PHASE 4 : Début du jeu - Tour du joueur 1
-                setGamePhase('player1_turn');
-                setCurrentPlayer('player1');
-                
-                // Déterminer qui est le joueur 1 (celui qui commence)
-                // Pour l'instant, on suppose que c'est l'adversaire (en haut)
-                // TODO: Le serveur devrait décider qui commence
-                setIsPlayerTurn(false); // Ce n'est pas notre tour au début
-                
-                console.log('🎮 Game started - Player 1 turn');
-                return 0;
-              }
-              return prev - 1;
-            });
-          }, 1000);
               }, 2000); // Cacher l'overlay après 2 secondes
             }, 500); // Délai après la dernière carte
           }
@@ -552,26 +513,31 @@ const TwoPlayersGamePage: React.FC = () => {
         return;
       }
       
+      let newPhase: GamePhase;
       if (isMyTurn) {
         // C'est MON tour
         if (amIPlayer1) {
+          newPhase = 'player1_turn';
           setGamePhase('player1_turn');
           setCurrentPlayer('player1');
         } else {
+          newPhase = 'player2_turn';
           setGamePhase('player2_turn');
           setCurrentPlayer('player2');
         }
-        console.log(`✅ It's MY turn! (${currentPlayerName})`);
+        console.log(`✅ It's MY turn! (${currentPlayerName}) - Setting gamePhase to ${newPhase}`);
       } else {
         // C'est le tour de l'adversaire
         if (amIPlayer1) {
+          newPhase = 'player2_turn';
           setGamePhase('player2_turn');
           setCurrentPlayer('player2');
         } else {
+          newPhase = 'player1_turn';
           setGamePhase('player1_turn');
           setCurrentPlayer('player1');
         }
-        console.log(`⏳ Waiting for opponent... (${currentPlayerName})`);
+        console.log(`⏳ Waiting for opponent... (${currentPlayerName}) - Setting gamePhase to ${newPhase}`);
       }
       
       // Nettoyer l'ancien timer s'il existe (le serveur gère maintenant les timers)
@@ -583,7 +549,7 @@ const TwoPlayersGamePage: React.FC = () => {
       // Le timer est maintenant géré par le serveur via game:timer_update
       // On ne démarre plus de timer local ici
       
-      console.log(`✅ Turn changed handled - Phase: ${isMyTurn ? 'MY_TURN' : 'OPPONENT_TURN'}`);
+      console.log(`✅ Turn changed handled - gamePhase: ${newPhase}, isMyTurn: ${isMyTurn}`);
     };
 
     // Écouter quand un joueur pioche une carte
@@ -705,6 +671,22 @@ const TwoPlayersGamePage: React.FC = () => {
       if (phase === 'memorization') {
         console.log(`  → Setting timeLeft to ${memo} (memorization)`);
         setTimeLeft(memo);
+        
+        // Si la mémorisation se termine, retourner toutes les cartes face cachée
+        if (memo === 0) {
+          console.log('✅ Memorization phase ended - Starting game');
+          setIsMemorizationPhase(false);
+          setPlayer1Cards(cards => cards.map(c => ({ ...c, isFlipped: false })));
+          setPlayer2Cards(cards => cards.map(c => ({ ...c, isFlipped: false })));
+          setMemorizedCardsCount(0);
+          setMemorizedCardIndexes([]);
+          
+          // Afficher "Mémorisation terminée" pendant 1.5s
+          setShowMemorizationEndOverlay(true);
+          setTimeout(() => {
+            setShowMemorizationEndOverlay(false);
+          }, 1500);
+        }
       } else if (phase === 'game') {
         console.log(`  → Setting timeLeft to ${game} (game), isPlayerTurn: ${isPlayerTurnRef.current}`);
         setTimeLeft(game);
@@ -805,9 +787,8 @@ const TwoPlayersGamePage: React.FC = () => {
     setCardsDealt(0);
     setCurrentPlayer('player1');
     setIsPlayerTurn(false);
-    setTimeLeft(15);
-    // Ne pas initialiser à 15s, on affichera uniquement
-    // les 5s de mémorisation puis 7s par joueur
+    setTimeLeft(0);
+    // Le timer sera mis à jour par le serveur via game:timer_update
     setGamePhase('preparation');
     setCardsFlipped({
       player1: { count: 0, indexes: [] },
@@ -2307,6 +2288,14 @@ const TwoPlayersGamePage: React.FC = () => {
       )}
       {/* Overlay de préparation */}
       <PrepOverlay show={showPrepOverlay} />
+      {/* Overlay "Mémorisation terminée" */}
+      {showMemorizationEndOverlay && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
+          <div className="px-8 py-4 rounded-2xl bg-green-600/90 text-white text-2xl font-extrabold uppercase shadow-2xl border-4 border-white animate-pulse">
+            ✅ Mémorisation terminée !
+          </div>
+        </div>
+      )}
       {/* Bouton Ready/Not Ready ou Quit en haut à gauche */}
       {!gameStarted ? (
         <button
@@ -2469,6 +2458,7 @@ const TwoPlayersGamePage: React.FC = () => {
         myReadyStatus={myReadyStatus}
         opponentReadyStatus={opponentReadyStatus}
         gameStarted={gameStarted}
+        isMemorizationPhase={isMemorizationPhase}
       />
       {/* Modal Scoreboard (consultable à tout moment et après victoire) */}
       <ScoreboardModal
