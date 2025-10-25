@@ -253,9 +253,16 @@ exports.setupSocket = (io) => {
     });
 
     // Rejoindre une room de table
-    socket.on('joinTableRoom', (tableId) => {
-      console.log(`Socket ${socket.id} joining table room: ${tableId}`);
+    socket.on('joinTableRoom', async ({ tableId, userId }) => {
+      console.log(`Socket ${socket.id} joining table room: ${tableId}, userId: ${userId}`);
       socket.join(`table_${tableId}`);
+      
+      // Stocker le mapping userId → socket pour les événements de jeu
+      if (userId) {
+        activeConnections.set(userId, socket);
+        console.log(`  ✅ Mapped userId ${userId} to socket ${socket.id}`);
+      }
+      
       console.log(`Socket ${socket.id} joined room: table_${tableId}`);
     });
 
@@ -323,17 +330,18 @@ exports.setupSocket = (io) => {
           
           console.log(`🃏 Cards dealt:`, Object.keys(playerCards).map(userId => `${userId}: ${playerCards[userId].length} cards`));
           
-          // NE PAS sauvegarder dans la base de données pour l'instant
-          // On envoie directement les cartes aux joueurs
-          // game.players.forEach(player => {
-          //   const userId = player.user.toString();
-          //   player.cards = playerCards[userId];
-          // });
-          // game.status = 'playing';
-          // game.currentTurn = 0;
-          // game.deck = deckRemaining;
-          // game.discardPile = [];
-          // await game.save();
+          // Sauvegarder les cartes et le deck dans la base de données
+          game.players.forEach(player => {
+            const userId = player.user.toString();
+            player.cards = playerCards[userId];
+          });
+          game.status = 'playing';
+          game.currentTurn = 0;
+          game.deck = deckRemaining;
+          game.discardPile = [];
+          await game.save();
+          
+          console.log(`💾 Game state saved - Deck: ${game.deck.length} cards, Discard: ${game.discardPile.length} cards`);
           
           // Envoyer les cartes à chaque joueur individuellement
           console.log('📤 Sending cards to players...');
@@ -352,14 +360,19 @@ exports.setupSocket = (io) => {
               const opponentPlayer = game.players.find(p => p.user.toString() !== userId);
               const opponentCards = opponentPlayer ? playerCards[opponentPlayer.user.toString()] : [];
               
+              // Déterminer si ce joueur est player1 (premier dans la liste)
+              const amIPlayer1 = game.players[0].user.toString() === userId;
+              
               console.log(`  📊 myCards: ${playerCards[userId].length} cards`);
               console.log(`  📊 opponentCards: ${opponentCards.length} cards`);
+              console.log(`  📊 amIPlayer1: ${amIPlayer1}`);
               
               const payload = {
                 myCards: playerCards[userId],
                 opponentCards: opponentCards,
                 deckCount: deckRemaining.length,
-                currentTurn: game.currentTurn
+                currentTurn: game.currentTurn,
+                amIPlayer1: amIPlayer1
               };
               
               console.log(`  📤 Emitting game:cards_dealt to ${playerSocket.id}`);
@@ -376,23 +389,27 @@ exports.setupSocket = (io) => {
             deckCount: deckRemaining.length
           });
           
-          // Après 12 secondes (distribution + mémorisation), démarrer le premier tour
+          // Après 7 secondes (distribution + mémorisation), démarrer le premier tour
           // Distribution: 8 cartes * 400ms = 3.2s
           // Overlay "Préparez-vous": 2s
-          // Phase de mémorisation: 10s
-          // Total: ~15s (on met 16s pour être sûr)
-          setTimeout(() => {
-            const firstPlayerId = game.players[0].user.toString();
-            const firstPlayer = game.players[0];
+          // Phase de mémorisation: 2s
+          // Total: ~7s (on met 8s pour être sûr)
+          setTimeout(async () => {
+            // Recharger le jeu avec les infos des joueurs
+            const gameWithPlayers = await Game.findById(tableId).populate('players.user');
+            if (!gameWithPlayers) return;
             
-            console.log(`🎮 Starting first turn for player: ${firstPlayerId}`);
+            const firstPlayerId = gameWithPlayers.players[0].user._id.toString();
+            const firstPlayerUser = gameWithPlayers.players[0].user;
+            
+            console.log(`🎮 Starting first turn for player: ${firstPlayerId} (${firstPlayerUser.firstName} ${firstPlayerUser.lastName})`);
             
             // Émettre l'événement de changement de tour
             io.to(`table_${tableId}`).emit('game:turn_changed', {
               currentPlayerId: firstPlayerId,
-              currentPlayerName: `${firstPlayer.firstName} ${firstPlayer.lastName}`
+              currentPlayerName: `${firstPlayerUser.firstName} ${firstPlayerUser.lastName}`
             });
-          }, 16000);
+          }, 8000);
         }
       } catch (error) {
         console.error('Erreur toggle ready:', error);
@@ -438,7 +455,176 @@ exports.setupSocket = (io) => {
       }
     });
 
-    // Autres événements de jeu à implémenter...
+    // Piocher une carte du deck
+    socket.on('game:draw_card', async ({ tableId, userId, fromDeck }) => {
+      try {
+        console.log(`🎴 Player ${userId} drawing card from ${fromDeck ? 'deck' : 'discard'}`);
+        
+        const game = await Game.findById(tableId);
+        if (!game) {
+          console.error('❌ Game not found:', tableId);
+          return socket.emit('error', { message: 'Partie non trouvée' });
+        }
+        
+        console.log(`  📊 Game state - Deck: ${game.deck?.length || 0} cards, Discard: ${game.discardPile?.length || 0} cards`);
+        
+        let drawnCard;
+        
+        if (fromDeck) {
+          // Piocher du deck
+          if (!game.deck || game.deck.length === 0) {
+            console.error('❌ Deck is empty or undefined');
+            return socket.emit('error', { message: 'Le deck est vide' });
+          }
+          drawnCard = game.deck.pop();
+          console.log(`  ✅ Drew card: ${drawnCard}, Remaining deck: ${game.deck.length}`);
+        } else {
+          // Piocher de la défausse
+          if (!game.discardPile || game.discardPile.length === 0) {
+            console.error('❌ Discard pile is empty or undefined');
+            return socket.emit('error', { message: 'La défausse est vide' });
+          }
+          drawnCard = game.discardPile.pop();
+          console.log(`  ✅ Drew card from discard: ${drawnCard}`);
+        }
+        
+        await game.save();
+        
+        console.log(`✅ Card drawn and saved: ${drawnCard}`);
+        
+        // Notifier le joueur qui a pioché (il voit la carte)
+        socket.emit('game:card_drawn', {
+          playerId: userId,
+          card: drawnCard,
+          fromDeck
+        });
+        
+        // Notifier les autres joueurs (ils voient juste qu'une carte a été piochée, face cachée)
+        socket.to(`table_${tableId}`).emit('game:opponent_drew_card', {
+          playerId: userId,
+          fromDeck
+        });
+        
+      } catch (error) {
+        console.error('Erreur draw card:', error);
+        socket.emit('error', { message: 'Erreur lors du piochage' });
+      }
+    });
+    
+    // Défausser une carte
+    socket.on('game:discard_card', async ({ tableId, userId, cardIndex, card }) => {
+      try {
+        console.log(`🗑️ Player ${userId} discarding card at index ${cardIndex}`);
+        
+        const game = await Game.findById(tableId).populate('players.user');
+        if (!game) {
+          return socket.emit('error', { message: 'Partie non trouvée' });
+        }
+        
+        const player = game.players.find(p => p.user.toString() === userId);
+        if (!player) {
+          return socket.emit('error', { message: 'Joueur non trouvé' });
+        }
+        
+        let discardedCard;
+        
+        // Si cardIndex === -1, c'est la carte piochée qu'on défausse directement
+        if (cardIndex === -1) {
+          discardedCard = card;
+          console.log(`  → Discarding drawn card directly: ${discardedCard}`);
+        } else {
+          // Sinon, c'est une carte de la main
+          if (!player.cards[cardIndex]) {
+            return socket.emit('error', { message: 'Carte invalide' });
+          }
+          discardedCard = player.cards[cardIndex];
+          player.cards.splice(cardIndex, 1);
+          console.log(`  → Discarding card from hand at index ${cardIndex}: ${discardedCard}`);
+        }
+        
+        // Ajouter à la défausse
+        game.discardPile.push(discardedCard);
+        
+        await game.save();
+        
+        console.log(`✅ Card discarded: ${discardedCard}`);
+        
+        // Notifier TOUS les joueurs (la défausse est visible par tous)
+        io.to(`table_${tableId}`).emit('game:card_discarded', {
+          playerId: userId,
+          card: discardedCard,
+          cardIndex
+        });
+        
+        // Passer au joueur suivant
+        const currentPlayerIndex = game.players.findIndex(p => p.user._id.toString() === userId);
+        const nextPlayerIndex = (currentPlayerIndex + 1) % game.players.length;
+        const nextPlayer = game.players[nextPlayerIndex];
+        const nextPlayerUser = nextPlayer.user;
+        
+        console.log(`🔄 Next turn: ${nextPlayerUser._id} (${nextPlayerUser.firstName} ${nextPlayerUser.lastName})`);
+        
+        // Émettre le changement de tour
+        io.to(`table_${tableId}`).emit('game:turn_changed', {
+          currentPlayerId: nextPlayerUser._id.toString(),
+          currentPlayerName: `${nextPlayerUser.firstName} ${nextPlayerUser.lastName}`
+        });
+        
+      } catch (error) {
+        console.error('Erreur discard card:', error);
+        socket.emit('error', { message: 'Erreur lors de la défausse' });
+      }
+    });
+    
+    // Remplacer une carte de sa main
+    socket.on('game:replace_card', async ({ tableId, userId, cardIndex, newCard }) => {
+      try {
+        console.log(`🔄 Player ${userId} replacing card at index ${cardIndex}`);
+        
+        const game = await Game.findById(tableId).populate('players.user');
+        if (!game) {
+          return socket.emit('error', { message: 'Partie non trouvée' });
+        }
+        
+        const player = game.players.find(p => p.user.toString() === userId);
+        if (!player) {
+          return socket.emit('error', { message: 'Joueur non trouvé' });
+        }
+        
+        // Retirer l'ancienne carte et l'ajouter à la défausse
+        const oldCard = player.cards[cardIndex];
+        player.cards[cardIndex] = newCard;
+        game.discardPile.push(oldCard);
+        
+        await game.save();
+        
+        console.log(`✅ Card replaced: ${oldCard} -> ${newCard}`);
+        
+        // Notifier tous les joueurs
+        io.to(`table_${tableId}`).emit('game:card_replaced', {
+          playerId: userId,
+          cardIndex,
+          discardedCard: oldCard
+        });
+        
+        // Passer au joueur suivant
+        const currentPlayerIndex = game.players.findIndex(p => p.user._id.toString() === userId);
+        const nextPlayerIndex = (currentPlayerIndex + 1) % game.players.length;
+        const nextPlayer = game.players[nextPlayerIndex];
+        const nextPlayerUser = nextPlayer.user;
+        
+        console.log(`🔄 Next turn: ${nextPlayerUser._id} (${nextPlayerUser.firstName} ${nextPlayerUser.lastName})`);
+        
+        io.to(`table_${tableId}`).emit('game:turn_changed', {
+          currentPlayerId: nextPlayerUser._id.toString(),
+          currentPlayerName: `${nextPlayerUser.firstName} ${nextPlayerUser.lastName}`
+        });
+        
+      } catch (error) {
+        console.error('Erreur replace card:', error);
+        socket.emit('error', { message: 'Erreur lors du remplacement' });
+      }
+    });
   });
 };
 

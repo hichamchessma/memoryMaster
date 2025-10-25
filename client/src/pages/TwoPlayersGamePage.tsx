@@ -159,6 +159,9 @@ const TwoPlayersGamePage: React.FC = () => {
   const [myPlayerInfo, setMyPlayerInfo] = React.useState<{name: string; isReal: boolean; userId: string} | null>(null);
   const [opponentInfo, setOpponentInfo] = React.useState<{name: string; isReal: boolean; userId: string} | null>(null);
   
+  // Déterminer si je suis player1 (en haut) ou player2 (en bas)
+  const [amIPlayer1, setAmIPlayer1] = React.useState<boolean | null>(null);
+  
   // État pour stocker les joueurs actuels de la table
   const [tablePlayers, setTablePlayers] = React.useState<Array<{_id: string; firstName: string; lastName: string; position: number; isReady?: boolean}>>(tableData?.players || []);
   
@@ -310,7 +313,10 @@ const TwoPlayersGamePage: React.FC = () => {
     console.log('🔌 Socket connected:', socket.connected);
     console.log('🔌 Socket ID:', socket.id);
     
-    socket.emit('joinTableRoom', tableData.tableId);
+    socket.emit('joinTableRoom', { 
+      tableId: tableData.tableId,
+      userId: tableData.currentUserId 
+    });
     hasJoinedRoom.current = true;
 
     // Écouter quand un joueur rejoint la table
@@ -385,34 +391,41 @@ const TwoPlayersGamePage: React.FC = () => {
         return;
       }
       
-      // Convertir les cartes reçues au format local
-      // PHASE 1 : Toutes les cartes sont FACE CACHÉE
-      // isFlipped: false = face visible, isFlipped: true = dos visible (face cachée)
-      // On veut DOS visible au début, donc isFlipped: true
-      const myCards: CardState[] = data.myCards.map((card: any) => ({
-        id: card.id,
-        value: -1, // Vide au début (animation de distribution)
-        isFlipped: false, // DOS visible (face cachée)
-        updated: Date.now()
+      console.log('🃏 Cards dealt received:', data);
+      console.log('  myCards:', data.myCards);
+      console.log('  opponentCards:', data.opponentCards);
+      console.log('  amIPlayer1:', data.amIPlayer1);
+      
+      // Sauvegarder si je suis player1 ou player2
+      setAmIPlayer1(data.amIPlayer1);
+      
+      // Créer les cartes avec isFlipped=false (face cachée)
+      const myCards = data.myCards.map((card: any) => ({
+        value: card.value,
+        isFlipped: false,
+        id: Math.random()
       }));
       
-      // Convertir les cartes adverses avec les VRAIES valeurs
-      const opponentCards: CardState[] = data.opponentCards.map((card: any) => ({
-        id: card.id,
-        value: -1, // Vide au début (animation de distribution)
-        isFlipped: false, // DOS visible (face cachée)
-        updated: Date.now()
+      const opponentCards = data.opponentCards.map((card: any) => ({
+        value: -1, // Face cachée pour l'adversaire
+        isFlipped: false,
+        id: Math.random()
       }));
       
-      console.log('🃏 My cards:', myCards);
-      console.log('🃏 Opponent cards:', opponentCards);
-      
-      // Mettre à jour les cartes des joueurs (VIDES au début)
-      console.log('🃏 Setting initial cards (should be flipped=true, face cachée)');
+      // Mettre à jour les cartes des joueurs selon la position
+      console.log('🃏 Setting initial cards');
       console.log('  myCards[0].isFlipped:', myCards[0]?.isFlipped);
       console.log('  opponentCards[0].isFlipped:', opponentCards[0]?.isFlipped);
-      setPlayer2Cards(myCards); // Le joueur actuel (en bas)
-      setPlayer1Cards(opponentCards); // L'adversaire (en haut)
+      
+      if (data.amIPlayer1) {
+        // Je suis player1 (en haut), l'adversaire est player2 (en bas)
+        setPlayer1Cards(myCards);
+        setPlayer2Cards(opponentCards);
+      } else {
+        // Je suis player2 (en bas), l'adversaire est player1 (en haut)
+        setPlayer2Cards(myCards);
+        setPlayer1Cards(opponentCards);
+      }
       
       // Animation de distribution des cartes (comme dans TrainingPage)
       const DEAL_DELAY = 400;
@@ -461,13 +474,13 @@ const TwoPlayersGamePage: React.FC = () => {
                 // Cacher l'overlay après 2 secondes
                 setShowPrepOverlay(false);
                 
-                // PHASE 2 : Phase de mémorisation (10 secondes)
+                // PHASE 2 : Phase de mémorisation (2 secondes)
                 // Les cartes restent FACE CACHÉE
                 // Le joueur peut cliquer sur 2 cartes maximum pour les voir
                 setIsMemorizationPhase(true);
                 setMemorizedCardsCount(0);
                 setMemorizedCardIndexes([]);
-                setTimeLeft(10);
+                setTimeLeft(2);
                 
                 console.log('🧠 Memorization phase started - Click on 2 of YOUR cards to memorize');
           
@@ -520,31 +533,57 @@ const TwoPlayersGamePage: React.FC = () => {
     // Écouter les changements de tour
     const handleTurnChanged = (data: any) => {
       console.log('🔄 Turn changed:', data);
-      const { currentPlayerId } = data;
+      const { currentPlayerId, currentPlayerName } = data;
+      
+      // Utiliser tableData.currentUserId pour comparer
+      const myUserId = tableData?.currentUserId;
+      console.log(`  🆔 My userId: ${myUserId}, Current turn userId: ${currentPlayerId}`);
+      console.log(`  🎮 Am I player1? ${amIPlayer1}`);
       
       // Déterminer si c'est notre tour
-      const isMyTurn = currentPlayerId === myPlayerInfo?.userId;
+      const isMyTurn = currentPlayerId === myUserId;
       setIsPlayerTurn(isMyTurn);
       
-      // Mettre à jour la phase de jeu
+      // Mettre à jour la phase de jeu EN FONCTION DE QUI JE SUIS
       if (isMyTurn) {
-        setGamePhase('player2_turn'); // Nous sommes player2 (en bas)
-        setCurrentPlayer('player2');
-        console.log('✅ It\'s MY turn!');
+        // C'est MON tour
+        if (amIPlayer1) {
+          setGamePhase('player1_turn');
+          setCurrentPlayer('player1');
+        } else {
+          setGamePhase('player2_turn');
+          setCurrentPlayer('player2');
+        }
+        console.log(`✅ It's MY turn! (${currentPlayerName})`);
       } else {
-        setGamePhase('player1_turn'); // L'adversaire est player1 (en haut)
-        setCurrentPlayer('player1');
-        console.log('⏳ Waiting for opponent...');
+        // C'est le tour de l'adversaire
+        if (amIPlayer1) {
+          setGamePhase('player2_turn');
+          setCurrentPlayer('player2');
+        } else {
+          setGamePhase('player1_turn');
+          setCurrentPlayer('player1');
+        }
+        console.log(`⏳ Waiting for opponent... (${currentPlayerName})`);
       }
       
-      // Réinitialiser le timer à 30 secondes pour chaque tour
-      setTimeLeft(30);
+      // Nettoyer l'ancien timer s'il existe
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      
+      // Réinitialiser le timer à 5 secondes pour chaque tour
+      setTimeLeft(5);
       
       // Démarrer le timer du tour
-      const turnTimer = setInterval(() => {
+      timerRef.current = setInterval(() => {
         setTimeLeft((prev: number) => {
           if (prev <= 1) {
-            clearInterval(turnTimer);
+            if (timerRef.current) {
+              clearInterval(timerRef.current);
+              timerRef.current = null;
+            }
             console.log('⏰ Time\'s up for this turn!');
             // TODO: Passer au joueur suivant automatiquement
             return 0;
@@ -570,6 +609,49 @@ const TwoPlayersGamePage: React.FC = () => {
         // TODO: Afficher une animation de pioche
       }
     };
+    
+    // Écouter quand l'adversaire pioche (on voit juste l'animation)
+    const handleOpponentDrewCard = (data: any) => {
+      console.log('👀 Opponent drew a card (face down):', data);
+      // TODO: Afficher une animation de pioche côté adversaire
+    };
+    
+    // Écouter quand une carte est défaussée
+    const handleCardDiscarded = (data: any) => {
+      console.log('🗑️ Card discarded:', data);
+      const { playerId, card, cardIndex } = data;
+      
+      // Mettre à jour la défausse (visible par tous)
+      setDiscardPile(card);
+      
+      // Si c'est l'adversaire qui a défaussé, mettre à jour ses cartes
+      if (playerId !== myPlayerInfo?.userId) {
+        setPlayer1Cards(prev => {
+          const newCards = [...prev];
+          newCards.splice(cardIndex, 1);
+          return newCards;
+        });
+      } else {
+        // Si c'est nous, mettre à jour nos cartes
+        setPlayer2Cards(prev => {
+          const newCards = [...prev];
+          newCards.splice(cardIndex, 1);
+          return newCards;
+        });
+      }
+    };
+    
+    // Écouter quand une carte est remplacée
+    const handleCardReplaced = (data: any) => {
+      console.log('🔄 Card replaced:', data);
+      const { playerId, cardIndex, discardedCard } = data;
+      
+      // Mettre à jour la défausse
+      setDiscardPile(discardedCard);
+      
+      // Si c'est l'adversaire, on ne voit pas sa nouvelle carte (reste face cachée)
+      // Pas besoin de mettre à jour, la carte reste face cachée
+    };
 
     socket.on('player:ready_changed', handleReadyChanged);
     socket.on('game:auto_start', handleAutoStart);
@@ -577,6 +659,9 @@ const TwoPlayersGamePage: React.FC = () => {
     socket.on('game:player_quit', handlePlayerQuit);
     socket.on('game:turn_changed', handleTurnChanged);
     socket.on('game:card_drawn', handleCardDrawn);
+    socket.on('game:opponent_drew_card', handleOpponentDrewCard);
+    socket.on('game:card_discarded', handleCardDiscarded);
+    socket.on('game:card_replaced', handleCardReplaced);
 
     return () => {
       socket.off('playerJoined', handlePlayerJoined);
@@ -587,6 +672,9 @@ const TwoPlayersGamePage: React.FC = () => {
       socket.off('game:player_quit', handlePlayerQuit);
       socket.off('game:turn_changed', handleTurnChanged);
       socket.off('game:card_drawn', handleCardDrawn);
+      socket.off('game:opponent_drew_card', handleOpponentDrewCard);
+      socket.off('game:card_discarded', handleCardDiscarded);
+      socket.off('game:card_replaced', handleCardReplaced);
       socket.emit('leaveTableRoom', tableData.tableId);
     };
   }, [socket, tableData?.tableId, tableData?.currentUserId, navigate]);
@@ -2343,52 +2431,22 @@ const TwoPlayersGamePage: React.FC = () => {
             onClick={async () => {
               // Ne rien faire si ce n'est pas le tour du joueur ou si une action est en cours
               // Bloquer également pendant la phase de mémorisation
-              if (!isPlayerTurn || showCardActions || selectingCardToReplace || drawnCard || gamePhase === 'before_round' || memorizationTimerStarted) return;
+              if (!isPlayerTurn || showCardActions || selectingCardToReplace || drawnCard || gamePhase === 'before_round' || memorizationTimerStarted) {
+                console.log('⛔ Cannot draw: not your turn or action in progress');
+                return;
+              }
               
-              // Piocher une carte du deck
-              if (deck.length > 0) {
-                const newDeck = [...deck];
-                // Si une pioche forcée est sélectionnée, tenter de trouver une carte correspondante
-                let cardValue: number | undefined;
-                if (forcedNextDraw) {
-                  const findIndexByRank = (rank: number) => newDeck.findIndex(v => !isJoker(v) && getCardValue(v) === rank);
-                  const findIndexJoker = (type: 1|2) => newDeck.findIndex(v => (type===1 ? (v>=104 && v<=109) : (v>=110 && v<=115)));
-                  let idx = -1;
-                  if (forcedNextDraw.kind === 'rank') {
-                    idx = findIndexByRank(forcedNextDraw.rank);
-                  } else {
-                    idx = findIndexJoker(forcedNextDraw.type);
-                  }
-                  if (idx !== -1) {
-                    cardValue = newDeck.splice(idx, 1)[0];
-                  }
-                }
-                if (cardValue === undefined) {
-                  cardValue = newDeck.pop();
-                }
-                setDeck(newDeck);
+              // Émettre l'événement WebSocket pour piocher du deck (UNE SEULE FOIS)
+              console.log('🎴 Drawing card from deck...');
+              if (socket) {
+                // Désactiver temporairement pour éviter le spam
+                setShowCardActions(true); // Bloque les clics suivants
                 
-                if (cardValue !== undefined) {
-                  // Démarrer l'animation de pioche
-                  const deckRect = deckRef.current?.getBoundingClientRect();
-                  if (deckRect) {
-                    setDrawnCard({ 
-                      value: cardValue, 
-                      isFlipped: false 
-                    });
-                    // Consommer la pioche forcée après usage
-                    if (forcedNextDraw) {
-                      setForcedNextDraw(null);
-                    }
-                  }
-                  
-                  // Mettre en pause le minuteur pendant que le joueur prend sa décision
-                  if (timerRef.current) {
-                    clearInterval(timerRef.current);
-                  }
-                }
-              } else {
-                console.log('Le deck est vide');
+                socket.emit('game:draw_card', {
+                  tableId: tableData?.tableId,
+                  userId: myPlayerInfo?.userId,
+                  fromDeck: true
+                });
               }
             }}
             >
@@ -2461,31 +2519,20 @@ const TwoPlayersGamePage: React.FC = () => {
                     {drawnCard && ![10,11,12].includes(getCardValue(drawnCard.value)) && (
                       <button
                         onClick={async () => {
-                          if (drawnCard) {
-                            // Animation: deck -> défausse (1s)
-                            const deckRect = deckRef.current?.getBoundingClientRect();
-                            const discardRect = discardRef.current?.getBoundingClientRect();
-                            if (deckRect && discardRect) {
-                              const deckCenter = { x: deckRect.left + deckRect.width / 2, y: deckRect.top + deckRect.height / 2 };
-                              const discardCenter = { x: discardRect.left + discardRect.width / 2, y: discardRect.top + discardRect.height / 2 };
-                              setReplaceOutImage(getCardImage(drawnCard.value));
-                              setReplaceOutAnim({ from: deckCenter, to: discardCenter, toPlayer: currentPlayer === 'player1' ? 'top' : 'bottom', index: -1, cardValue: drawnCard.value });
-                              await new Promise(resolve => setTimeout(resolve, 1000));
-                              setReplaceOutAnim(null);
-                              setReplaceOutImage(null);
-                            }
-
-                            setDiscardPile(drawnCard.value);
-                            // Si défausse rapide active, afficher une bannière 1s
-                            if (quickDiscardActive) {
-                              const rank = getRankLabel(drawnCard.value);
-                              const who = currentPlayer === 'player1' ? 'Joueur 1' : 'Joueur 2';
-                              setQuickDiscardFlash(`${who} a jeté ${rank}`);
-                              setTimeout(() => setQuickDiscardFlash(null), 1000);
-                            }
+                          if (drawnCard && socket) {
+                            console.log('🗑️ Discarding drawn card directly...');
+                            
+                            // Émettre l'événement WebSocket pour défausser
+                            socket.emit('game:discard_card', {
+                              tableId: tableData?.tableId,
+                              userId: myPlayerInfo?.userId,
+                              cardIndex: -1, // -1 = carte piochée (pas encore dans la main)
+                              card: drawnCard.value
+                            });
+                            
+                            // Nettoyer l'état local
                             setDrawnCard(null);
                             setShowCardActions(false);
-                            handleTurnEnd(currentPlayer);
                           }
                         }}
                         className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg text-sm font-semibold shadow"
