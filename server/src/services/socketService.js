@@ -850,7 +850,13 @@ exports.setupSocket = (io) => {
         }
         
         // Défausser automatiquement la carte piochée
-        game.discardPile.push(drawnCard);
+        const discardedCardObject = {
+          value: drawnCard,
+          isFlipped: true,
+          isVisible: true,
+          isDiscarded: true
+        };
+        game.discardPile.push(discardedCardObject);
         await game.save();
         
         console.log(`✅ Card auto-discarded: ${drawnCard}`);
@@ -919,6 +925,110 @@ exports.setupSocket = (io) => {
       } catch (error) {
         console.error('Erreur turn timeout:', error);
         socket.emit('error', { message: 'Erreur lors du changement de tour' });
+      }
+    });
+    
+    // Gérer la défausse rapide (clic sur une carte de même valeur)
+    socket.on('game:quick_discard', async ({ tableId, userId, cardIndex, card }) => {
+      try {
+        console.log(`⚡ Quick discard - userId: ${userId}, cardIndex: ${cardIndex}, card: ${card}`);
+        
+        const game = await Game.findById(tableId).populate('players.user');
+        if (!game) {
+          console.error(`❌ Game not found: ${tableId}`);
+          return socket.emit('error', { message: 'Partie non trouvée' });
+        }
+        
+        const player = game.players.find(p => p.user._id.toString() === userId);
+        if (!player) {
+          return socket.emit('error', { message: 'Joueur non trouvé' });
+        }
+        
+        // Retirer la carte de la main
+        const discardedCardObject = player.cards[cardIndex];
+        player.cards.splice(cardIndex, 1);
+        
+        // Ajouter à la défausse
+        game.discardPile.push(discardedCardObject);
+        await game.save();
+        
+        console.log(`✅ Quick discard successful: ${card}`);
+        
+        // Notifier TOUS les joueurs
+        io.to(`table_${tableId}`).emit('game:card_discarded', {
+          playerId: userId,
+          card: card,
+          cardIndex: cardIndex,
+          quickDiscard: true
+        });
+        
+        // Vérifier si le joueur a gagné (plus de cartes)
+        if (player.cards.length === 0) {
+          console.log(`🏆 Player ${userId} won by quick discard!`);
+          io.to(`table_${tableId}`).emit('game:player_won', {
+            playerId: userId,
+            playerName: `${player.user.firstName} ${player.user.lastName}`
+          });
+          return;
+        }
+        
+        // La défausse rapide ne change PAS le tour
+        // Le joueur peut continuer à défausser rapidement
+        
+      } catch (error) {
+        console.error('Erreur quick discard:', error);
+        socket.emit('error', { message: 'Erreur lors de la défausse rapide' });
+      }
+    });
+    
+    // Gérer la pénalité de défausse rapide (mauvaise carte)
+    socket.on('game:quick_discard_penalty', async ({ tableId, userId, cardIndex }) => {
+      try {
+        console.log(`⚠️ Quick discard penalty - userId: ${userId}, cardIndex: ${cardIndex}`);
+        
+        const game = await Game.findById(tableId).populate('players.user');
+        if (!game) {
+          console.error(`❌ Game not found: ${tableId}`);
+          return socket.emit('error', { message: 'Partie non trouvée' });
+        }
+        
+        const player = game.players.find(p => p.user._id.toString() === userId);
+        if (!player) {
+          return socket.emit('error', { message: 'Joueur non trouvé' });
+        }
+        
+        // Vérifier qu'il y a assez de cartes dans le deck
+        if (game.deck.length < 2) {
+          console.log('⚠️ Not enough cards in deck for penalty');
+          return socket.emit('error', { message: 'Pas assez de cartes dans le deck' });
+        }
+        
+        // Piocher 2 cartes de pénalité
+        const penaltyCard1 = game.deck.pop();
+        const penaltyCard2 = game.deck.pop();
+        player.cards.push(penaltyCard1, penaltyCard2);
+        
+        await game.save();
+        
+        console.log(`✅ Penalty applied: 2 cards added to player ${userId}`);
+        console.log(`  → Penalty cards: ${penaltyCard1.value}, ${penaltyCard2.value}`);
+        
+        // Envoyer les cartes au joueur pénalisé (seulement à lui)
+        io.to(socket.id).emit('game:penalty_cards_received', {
+          cards: [penaltyCard1.value, penaltyCard2.value]
+        });
+        
+        // Notifier TOUS les joueurs de la pénalité (sans révéler les cartes)
+        io.to(`table_${tableId}`).emit('game:quick_discard_penalty_applied', {
+          playerId: userId,
+          playerName: `${player.user.firstName} ${player.user.lastName}`,
+          cardIndex: cardIndex,
+          penaltyCardCount: 2
+        });
+        
+      } catch (error) {
+        console.error('Erreur quick discard penalty:', error);
+        socket.emit('error', { message: 'Erreur lors de la pénalité' });
       }
     });
   });

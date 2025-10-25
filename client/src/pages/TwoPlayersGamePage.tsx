@@ -240,11 +240,15 @@ const TwoPlayersGamePage: React.FC = () => {
 
   // Ref pour connaître en temps réel si une pénalité est en cours (utilisé dans les callbacks setInterval)
   const isInPenaltyRef = React.useRef(false);
+  const drawnCardRef = React.useRef<{value: number, isFlipped: boolean} | null>(null);
   // Références visuelles
   const discardRef = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
     isInPenaltyRef.current = isInPenalty;
   }, [isInPenalty]);
+  React.useEffect(() => {
+    drawnCardRef.current = drawnCard;
+  }, [drawnCard]);
 
   // Handlers Scoreboard
   const openScoreboard = React.useCallback(() => setShowScoreboard(true), []);
@@ -613,10 +617,11 @@ const TwoPlayersGamePage: React.FC = () => {
     // Écouter quand une carte est défaussée
     const handleCardDiscarded = (data: any) => {
       console.log('🗑️ Card discarded event received:', data);
-      const { playerId, card, cardIndex, autoDiscard } = data;
+      const { playerId, card, cardIndex, autoDiscard, quickDiscard } = data;
       
       console.log(`  → Updating discard pile with card: ${card}`);
       console.log(`  → Current discardPile before update:`, discardPile);
+      console.log(`  → Quick discard: ${quickDiscard}, Auto discard: ${autoDiscard}`);
       
       // Animation de défausse
       const discard = discardRef.current;
@@ -664,12 +669,23 @@ const TwoPlayersGamePage: React.FC = () => {
         console.log('⏰ Auto-discard due to timeout');
       }
       
+      // Afficher le flash de défausse rapide
+      if (quickDiscard && quickDiscardActive) {
+        const rank = getRankLabel(card);
+        const playerName = playerId === myPlayerInfo?.userId 
+          ? myPlayerInfo?.name 
+          : opponentInfo?.name;
+        setQuickDiscardFlash(`${playerName} a jeté ${rank}`);
+        setTimeout(() => setQuickDiscardFlash(null), 1000);
+      }
+      
       // Réinitialiser les états de carte piochée pour TOUS les joueurs
       setDrawnCard(null);
       setShowCardActions(false);
       setSelectingCardToReplace(false);
       
-      // Si c'est l'adversaire qui a défaussé, mettre à jour ses cartes
+      // Retirer la carte de la main
+      // Pour quick discard: mettre value à -1 au lieu de splice
       if (playerId !== myPlayerInfo?.userId) {
         // L'adversaire a défaussé
         if (amIPlayer1) {
@@ -678,7 +694,13 @@ const TwoPlayersGamePage: React.FC = () => {
             if (cardIndex === -1) return prev; // Défausse directe de la carte piochée
             const newCards = [...prev];
             if (cardIndex < newCards.length) {
-              newCards.splice(cardIndex, 1);
+              if (quickDiscard) {
+                // Quick discard: mettre à -1
+                newCards[cardIndex] = { ...newCards[cardIndex], value: -1, isFlipped: false };
+              } else {
+                // Défausse normale: splice
+                newCards.splice(cardIndex, 1);
+              }
             }
             return newCards;
           });
@@ -688,7 +710,13 @@ const TwoPlayersGamePage: React.FC = () => {
             if (cardIndex === -1) return prev; // Défausse directe de la carte piochée
             const newCards = [...prev];
             if (cardIndex < newCards.length) {
-              newCards.splice(cardIndex, 1);
+              if (quickDiscard) {
+                // Quick discard: mettre à -1
+                newCards[cardIndex] = { ...newCards[cardIndex], value: -1, isFlipped: false };
+              } else {
+                // Défausse normale: splice
+                newCards.splice(cardIndex, 1);
+              }
             }
             return newCards;
           });
@@ -701,7 +729,13 @@ const TwoPlayersGamePage: React.FC = () => {
             if (cardIndex === -1) return prev; // Défausse directe de la carte piochée
             const newCards = [...prev];
             if (cardIndex < newCards.length) {
-              newCards.splice(cardIndex, 1);
+              if (quickDiscard) {
+                // Quick discard: mettre à -1
+                newCards[cardIndex] = { ...newCards[cardIndex], value: -1, isFlipped: false };
+              } else {
+                // Défausse normale: splice
+                newCards.splice(cardIndex, 1);
+              }
             }
             return newCards;
           });
@@ -711,7 +745,13 @@ const TwoPlayersGamePage: React.FC = () => {
             if (cardIndex === -1) return prev; // Défausse directe de la carte piochée
             const newCards = [...prev];
             if (cardIndex < newCards.length) {
-              newCards.splice(cardIndex, 1);
+              if (quickDiscard) {
+                // Quick discard: mettre à -1
+                newCards[cardIndex] = { ...newCards[cardIndex], value: -1, isFlipped: false };
+              } else {
+                // Défausse normale: splice
+                newCards.splice(cardIndex, 1);
+              }
             }
             return newCards;
           });
@@ -731,6 +771,77 @@ const TwoPlayersGamePage: React.FC = () => {
       
       // Si c'est l'adversaire, on ne voit pas sa nouvelle carte (reste face cachée)
       // Pas besoin de mettre à jour, la carte reste face cachée
+    };
+    
+    // Écouter la réception des cartes de pénalité (seulement pour le joueur pénalisé)
+    const handlePenaltyCardsReceived = (data: any) => {
+      console.log('📥 Penalty cards received:', data);
+      const { cards } = data;
+      
+      // Ajouter les 2 cartes à ma main (en bas)
+      setPlayer2Cards(prev => {
+        const newCards = [...prev];
+        cards.forEach((cardValue: number) => {
+          newCards.push({
+            id: `penalty-${Date.now()}-${Math.random()}`,
+            value: cardValue,
+            isFlipped: false
+          });
+        });
+        return newCards;
+      });
+      
+      console.log(`✅ Added ${cards.length} penalty cards to hand`);
+    };
+    
+    // Écouter la pénalité de défausse rapide (pour TOUS les joueurs)
+    const handleQuickDiscardPenaltyApplied = async (data: any) => {
+      console.log('⚠️ Quick discard penalty applied:', data);
+      const { playerId, playerName, cardIndex } = data;
+      
+      // Afficher l'overlay de pénalité
+      setIsInPenalty(true);
+      setPenaltyCue(true);
+      setShowPenaltyDim(true);
+      
+      // Déterminer quel joueur a la pénalité
+      const isMe = playerId === myPlayerInfo?.userId;
+      const penaltyPlayerKey = isMe 
+        ? (amIPlayer1 ? 'player1' : 'player2')
+        : (amIPlayer1 ? 'player2' : 'player1');
+      setPenaltyPlayer(penaltyPlayerKey);
+      
+      // Retourner la carte fautive face cachée après 500ms
+      setTimeout(() => {
+        if (isMe) {
+          // C'est moi qui ai la pénalité
+          setPlayer2Cards(prev => prev.map((card, idx) => 
+            idx === cardIndex ? { ...card, isFlipped: false } : card
+          ));
+        } else {
+          // C'est l'adversaire - ajouter 2 cartes face cachée
+          setPlayer1Cards(prev => {
+            const newCards = prev.map((card, idx) => 
+              idx === cardIndex ? { ...card, isFlipped: false } : card
+            );
+            // Ajouter 2 cartes face cachée (value: -1 car on ne connaît pas la valeur)
+            newCards.push(
+              { id: `penalty-opp-${Date.now()}-1`, value: -1, isFlipped: false },
+              { id: `penalty-opp-${Date.now()}-2`, value: -1, isFlipped: false }
+            );
+            return newCards;
+          });
+        }
+      }, 500);
+      
+      // Attendre 3 secondes puis retirer les overlays
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      setPenaltyCue(false);
+      setShowPenaltyDim(false);
+      setIsInPenalty(false);
+      setPenaltyPlayer(null);
+      
+      console.log(`✅ Penalty animation completed for ${playerName}`);
     };
 
     // Écouter les mises à jour des timers
@@ -757,6 +868,10 @@ const TwoPlayersGamePage: React.FC = () => {
           setMemorizedCardsCount(0);
           setMemorizedCardIndexes([]);
           
+          // Activer la défausse rapide
+          setQuickDiscardActive(true);
+          console.log('✅ Quick discard activated');
+          
           // Afficher "Mémorisation terminée" pendant 1.5s
           setShowMemorizationEndOverlay(true);
           setTimeout(() => {
@@ -779,13 +894,16 @@ const TwoPlayersGamePage: React.FC = () => {
         setTimeLeft(choice);
         
         // Si le timer de choix arrive à 0 ET que j'ai une carte piochée, émettre le timeout
-        if (choice === 0 && drawnCard) {
+        if (choice === 0 && drawnCardRef.current) {
           console.log('⏰ Choice timer expired - emitting choice timeout');
+          console.log('  → drawnCard value:', drawnCardRef.current.value);
           socket.emit('game:choice_timeout', {
             tableId: tableData?.tableId,
             userId: myPlayerInfo?.userId,
-            drawnCard: drawnCard.value
+            drawnCard: drawnCardRef.current.value
           });
+        } else if (choice === 0 && !drawnCardRef.current) {
+          console.log('⚠️ Choice timer expired but no drawnCard!');
         }
       }
     };
@@ -799,6 +917,8 @@ const TwoPlayersGamePage: React.FC = () => {
     socket.on('game:opponent_drew_card', handleOpponentDrewCard);
     socket.on('game:card_discarded', handleCardDiscarded);
     socket.on('game:card_replaced', handleCardReplaced);
+    socket.on('game:penalty_cards_received', handlePenaltyCardsReceived);
+    socket.on('game:quick_discard_penalty_applied', handleQuickDiscardPenaltyApplied);
     socket.on('game:timer_update', handleTimerUpdate);
 
     return () => {
@@ -813,6 +933,8 @@ const TwoPlayersGamePage: React.FC = () => {
       socket.off('game:opponent_drew_card', handleOpponentDrewCard);
       socket.off('game:card_discarded', handleCardDiscarded);
       socket.off('game:card_replaced', handleCardReplaced);
+      socket.off('game:penalty_cards_received', handlePenaltyCardsReceived);
+      socket.off('game:quick_discard_penalty_applied', handleQuickDiscardPenaltyApplied);
       socket.off('game:timer_update', handleTimerUpdate);
       socket.emit('leaveTableRoom', tableData.tableId);
       hasJoinedRoom.current = false; // Réinitialiser pour permettre de rejoindre si on revient
@@ -1753,21 +1875,14 @@ const TwoPlayersGamePage: React.FC = () => {
     }
 
     // Vérifier si on est en mode défausse rapide (après la phase de mémorisation)
-    if (gamePhase !== 'preparation' && gamePhase !== 'before_round' && discardPile !== null && !drawnCard && !selectingCardToReplace && quickDiscardActive) {
+    // IMPORTANT: On ne peut défausser QUE ses propres cartes (bottom)
+    if (player === 'bottom' && gamePhase !== 'preparation' && gamePhase !== 'before_round' && discardPile !== null && !drawnCard && !selectingCardToReplace && quickDiscardActive) {
       // Retourner la carte cliquée face visible
-      if (player === 'top') {
-        setPlayer1Cards(prev => {
-          const newCards = [...prev];
-          newCards[index] = { ...newCards[index], isFlipped: true };
-          return newCards;
-        });
-      } else {
-        setPlayer2Cards(prev => {
-          const newCards = [...prev];
-          newCards[index] = { ...newCards[index], isFlipped: true };
-          return newCards;
-        });
-      }
+      setPlayer2Cards(prev => {
+        const newCards = [...prev];
+        newCards[index] = { ...newCards[index], isFlipped: true };
+        return newCards;
+      });
       
       // Petite pause pour montrer la carte
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -1791,99 +1906,27 @@ const TwoPlayersGamePage: React.FC = () => {
 
       // Vérifier si la carte cliquée correspond à la valeur/type de la défausse
       if (isMatch) {
-        // Défausse réussie
-        const newCards = [...playerCards];
-        const discardedCard = newCards[index].value;
-
-        // Animation: carte depuis la main vers la défausse (1s)
-        try {
-          const oldCard = playerCards[index];
-          const oldCardId = oldCard.id;
-          let selEl = document.querySelector(`[data-player="${player}"][data-card-id="${oldCardId}"]`) as HTMLElement | null;
-          if (!selEl) {
-            selEl = document.querySelector(`[data-player="${player}"][data-card-index="${index}"]`) as HTMLElement | null;
-          }
-          const discardRect = discardRef.current?.getBoundingClientRect();
-          if (selEl && discardRect) {
-            selEl.style.visibility = 'hidden';
-            const selRect = selEl.getBoundingClientRect();
-            const selCenter = { x: selRect.left + selRect.width / 2, y: selRect.top + selRect.height / 2 };
-            const discardCenter = { x: discardRect.left + discardRect.width / 2, y: discardRect.top + discardRect.height / 2 };
-
-            setReplaceOutImage(getCardImage(discardedCard));
-            setReplaceOutAnim({ from: selCenter, to: discardCenter, toPlayer: player, index, cardValue: discardedCard });
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            setReplaceOutAnim(null);
-            setReplaceOutImage(null);
-          }
-        } catch {}
-
-        // Mettre à jour la défausse (après l'animation)
-        setDiscardPile(discardedCard);
-        // Afficher une bannière 1s pour la défausse rapide (même hors tour)
-        if (quickDiscardActive) {
-          const rank = getRankLabel(discardedCard);
-          const who = (player === 'top') ? 'Joueur 1' : 'Joueur 2';
-          setQuickDiscardFlash(`${who} a jeté ${rank}`);
-          setTimeout(() => setQuickDiscardFlash(null), 1000);
-        }
-        
-        // Retirer complètement la carte du jeu
-        if (player === 'top') {
-          setPlayer1Cards(prev => {
-            const updatedCards = [...prev];
-            updatedCards[index] = {
-              ...updatedCards[index],
-              value: -1,
-              isFlipped: false
-            };
-            return updatedCards;
-          });
-        } else {
-          setPlayer2Cards(prev => {
-            const updatedCards = [...prev];
-            updatedCards[index] = {
-              ...updatedCards[index],
-              value: -1,
-              isFlipped: false
-            };
-            return updatedCards;
+        console.log('✅ Quick discard match! Emitting to server...');
+        // Émettre au serveur pour défausse rapide
+        if (socket) {
+          socket.emit('game:quick_discard', {
+            tableId: tableData?.tableId,
+            userId: myPlayerInfo?.userId,
+            cardIndex: index,
+            card: clickedRaw
           });
         }
-        
-        // Vérifier si le joueur a gagné (ignorer pendant un remplacement) (compter les cartes restantes APRÈS avoir retiré celle-ci)
-        if (selectingCardToReplace) {
-          return;
-        }
-        // newCards reflète l'état AVANT mise à -1; on soustrait donc 1
-        const remainingCards = (playerCards.filter(card => card.value !== -1).length) - 1;
-        if (remainingCards === 0) {
-          // Le joueur a gagné: afficher overlay 3s puis tableau des scores
-          setWinner(playerKey);
-          setShowVictory(true);
-          setIsPlayerTurn(false);
-          if (timerRef.current) {
-            clearInterval(timerRef.current);
-          }
-          // Calculer le score à ajouter pour le perdant (somme de ses cartes restantes)
-          const loserKey: 'player1'|'player2' = playerKey === 'player1' ? 'player2' : 'player1';
-          const loserCardsArr = loserKey === 'player1' ? player1Cards : player2Cards;
-          const loserScoreToAdd = loserCardsArr.reduce((sum, c) => sum + getCardScore(c.value), 0);
-          setTimeout(() => {
-            setShowVictory(false);
-            setScores(prev => ({
-              player1: prev.player1 + (loserKey === 'player1' ? loserScoreToAdd : 0),
-              player2: prev.player2 + (loserKey === 'player2' ? loserScoreToAdd : 0)
-            }));
-            setShowScoreboard(true);
-          }, 3000);
-          return;
-        }
-        
         return;
       } else {
-        // Mauvaise carte - appliquer la pénalité
-        await handleQuickDiscardPenalty(playerKey, index);
+        console.log('❌ Quick discard mismatch! Emitting penalty to server...');
+        // Émettre au serveur pour pénalité
+        if (socket) {
+          socket.emit('game:quick_discard_penalty', {
+            tableId: tableData?.tableId,
+            userId: myPlayerInfo?.userId,
+            cardIndex: index
+          });
+        }
         return;
       }
     }
