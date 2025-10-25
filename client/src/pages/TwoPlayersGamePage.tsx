@@ -2384,11 +2384,8 @@ const TwoPlayersGamePage: React.FC = () => {
       {/* Titre */}
       <MultiplayerTopBanner 
         gamePhase={gamePhase} 
-        currentPlayer={currentPlayer} 
         timeLeft={timeLeft}
         tableCode={tableData?.tableCode}
-        player1Name={myPlayerInfo?.name || 'Moi'}
-        player2Name={opponentInfo?.name || 'Adversaire'}
         myReadyStatus={myReadyStatus}
         opponentReadyStatus={opponentReadyStatus}
         gameStarted={gameStarted}

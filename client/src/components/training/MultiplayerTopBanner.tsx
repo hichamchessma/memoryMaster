@@ -4,11 +4,8 @@ type GamePhase = 'preparation' | 'before_round' | 'player1_turn' | 'player2_turn
 
 interface Props {
   gamePhase: GamePhase;
-  currentPlayer: 'player1' | 'player2';
   timeLeft: number;
   tableCode?: string;
-  player1Name?: string;
-  player2Name?: string;
   myReadyStatus?: boolean;
   opponentReadyStatus?: boolean;
   gameStarted?: boolean;
@@ -16,11 +13,8 @@ interface Props {
 
 const MultiplayerTopBanner: React.FC<Props> = ({ 
   gamePhase, 
-  currentPlayer, 
   timeLeft, 
   tableCode,
-  player1Name = 'Joueur 1',
-  player2Name = 'Joueur 2',
   myReadyStatus = false,
   opponentReadyStatus = false,
   gameStarted = false
@@ -61,22 +55,12 @@ const MultiplayerTopBanner: React.FC<Props> = ({
               </span>
             </div>
           )}
-          {gamePhase !== 'preparation' && gameStarted && (
+          {gamePhase === 'before_round' && gameStarted && (
             <div className="pointer-events-auto">
               <span
-                className={`inline-flex items-center px-4 py-1 rounded-full text-white font-bold text-lg shadow-lg whitespace-nowrap border-2 border-white ${
-                  gamePhase === 'before_round'
-                    ? 'bg-blue-500 animate-pulse'
-                    : gamePhase === 'player1_turn'
-                    ? 'bg-green-500'
-                    : 'bg-red-500'
-                }`}
+                className={`inline-flex items-center px-4 py-1 rounded-full text-white font-bold text-lg shadow-lg whitespace-nowrap border-2 border-white bg-blue-500 animate-pulse`}
               >
-                {gamePhase === 'before_round'
-                  ? 'Phase de mémorisation'
-                  : currentPlayer === 'player1'
-                  ? `Tour de ${player1Name}`
-                  : `Tour de ${player2Name}`}
+                {'Phase de mémorisation'}
               </span>
             </div>
           )}
@@ -84,6 +68,6 @@ const MultiplayerTopBanner: React.FC<Props> = ({
       </div>
     </div>
   );
-};
+} 
 
 export default MultiplayerTopBanner;
