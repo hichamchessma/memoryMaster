@@ -585,7 +585,21 @@ const TwoPlayersGamePage: React.FC = () => {
               timerRef.current = null;
             }
             console.log('⏰ Time\'s up for this turn!');
-            // TODO: Passer au joueur suivant automatiquement
+            console.log(`  isMyTurn: ${isMyTurn}, socket: ${!!socket}, tableId: ${tableData?.tableId}`);
+            
+            // Passer au joueur suivant automatiquement
+            // IMPORTANT : N'émettre QUE si c'était notre tour pour éviter les doublons
+            if (socket && tableData?.tableId && tableData?.currentUserId && isMyTurn) {
+              console.log(`⏰ Emitting turn timeout to server...`);
+              
+              socket.emit('game:turn_timeout', {
+                tableId: tableData.tableId,
+                userId: tableData.currentUserId
+              });
+            } else {
+              console.log(`⏰ Not emitting (not my turn or missing data)`);
+            }
+            
             return 0;
           }
           return prev - 1;
@@ -2430,9 +2444,9 @@ const TwoPlayersGamePage: React.FC = () => {
             }}
             onClick={async () => {
               // Ne rien faire si ce n'est pas le tour du joueur ou si une action est en cours
-              // Bloquer également pendant la phase de mémorisation
-              if (!isPlayerTurn || showCardActions || selectingCardToReplace || drawnCard || gamePhase === 'before_round' || memorizationTimerStarted) {
-                console.log('⛔ Cannot draw: not your turn or action in progress');
+              // Bloquer également pendant la phase de mémorisation OU si le timer est à 0
+              if (!isPlayerTurn || showCardActions || selectingCardToReplace || drawnCard || gamePhase === 'before_round' || memorizationTimerStarted || timeLeft <= 0) {
+                console.log('⛔ Cannot draw: not your turn or action in progress or time is up');
                 return;
               }
               

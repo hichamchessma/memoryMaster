@@ -625,6 +625,39 @@ exports.setupSocket = (io) => {
         socket.emit('error', { message: 'Erreur lors du remplacement' });
       }
     });
+    
+    // Gérer le timeout du tour (quand le timer arrive à 0)
+    socket.on('game:turn_timeout', async ({ tableId, userId }) => {
+      try {
+        console.log(`⏰ Turn timeout received - tableId: ${tableId}, userId: ${userId}`);
+        
+        const game = await Game.findById(tableId).populate('players.user');
+        if (!game) {
+          console.error(`❌ Game not found: ${tableId}`);
+          return socket.emit('error', { message: 'Partie non trouvée' });
+        }
+        
+        console.log(`✅ Game found, processing timeout...`);
+        
+        // Passer au joueur suivant
+        const currentPlayerIndex = game.players.findIndex(p => p.user._id.toString() === userId);
+        const nextPlayerIndex = (currentPlayerIndex + 1) % game.players.length;
+        const nextPlayer = game.players[nextPlayerIndex];
+        const nextPlayerUser = nextPlayer.user;
+        
+        console.log(`🔄 Timeout - Next turn: ${nextPlayerUser._id} (${nextPlayerUser.firstName} ${nextPlayerUser.lastName})`);
+        
+        // Émettre le changement de tour
+        io.to(`table_${tableId}`).emit('game:turn_changed', {
+          currentPlayerId: nextPlayerUser._id.toString(),
+          currentPlayerName: `${nextPlayerUser.firstName} ${nextPlayerUser.lastName}`
+        });
+        
+      } catch (error) {
+        console.error('Erreur turn timeout:', error);
+        socket.emit('error', { message: 'Erreur lors du changement de tour' });
+      }
+    });
   });
 };
 
