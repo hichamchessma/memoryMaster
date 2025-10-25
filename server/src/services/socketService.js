@@ -5,6 +5,180 @@ const { calculateCardPoints } = require('../utils/gameUtils');
 // Stocker les connexions actives
 const activeConnections = new Map();
 
+// Stocker les timers actifs par table
+// Structure: { tableId: { memoTimer, gameTimer, choiceTimer, currentPhase } }
+const activeTimers = new Map();
+
+/**
+ * Démarrer le timer de mémorisation (2 secondes)
+ */
+function startMemorizationTimer(io, tableId, duration = 2) {
+  console.log(`🧠 Starting memorization timer for table ${tableId} (${duration}s)`);
+  
+  // Ne PAS nettoyer tous les timers - juste s'assurer qu'il n'y a pas de timer de mémorisation en cours
+  const existingTimers = activeTimers.get(tableId);
+  if (existingTimers && existingTimers.memoTimer) {
+    clearInterval(existingTimers.memoTimer);
+  }
+  
+  let timeLeft = duration;
+  
+  // Récupérer ou créer l'objet timers
+  const timers = activeTimers.get(tableId) || {
+    gameTimeLeft: 5,
+    choiceTimeLeft: 10
+  };
+  
+  timers.currentPhase = 'memorization';
+  timers.memoTimeLeft = timeLeft;
+  
+  activeTimers.set(tableId, timers);
+  
+  // Émettre l'état initial
+  io.to(`table_${tableId}`).emit('game:timer_update', {
+    phase: 'memorization',
+    memoTimeLeft: timeLeft,
+    gameTimeLeft: 5,
+    choiceTimeLeft: 10
+  });
+  
+  const interval = setInterval(() => {
+    timeLeft--;
+    timers.memoTimeLeft = timeLeft;
+    
+    io.to(`table_${tableId}`).emit('game:timer_update', {
+      phase: 'memorization',
+      memoTimeLeft: timeLeft,
+      gameTimeLeft: 5,
+      choiceTimeLeft: 10
+    });
+    
+    if (timeLeft <= 0) {
+      clearInterval(interval);
+      timers.memoTimer = null;
+      console.log(`✅ Memorization phase ended for table ${tableId}`);
+      // La phase de jeu démarrera via game:turn_changed
+    }
+  }, 1000);
+  
+  timers.memoTimer = interval;
+}
+
+/**
+ * Démarrer le timer de jeu (5 secondes par tour)
+ */
+function startGameTimer(io, tableId, duration = 5) {
+  console.log(`🎮 Starting game timer for table ${tableId} (${duration}s)`);
+  
+  const timers = activeTimers.get(tableId) || {};
+  
+  // Arrêter le timer de jeu précédent s'il existe
+  if (timers.gameTimer) {
+    clearInterval(timers.gameTimer);
+  }
+  
+  let timeLeft = duration;
+  timers.currentPhase = 'game';
+  timers.gameTimeLeft = timeLeft;
+  
+  activeTimers.set(tableId, timers);
+  
+  // Émettre l'état initial
+  io.to(`table_${tableId}`).emit('game:timer_update', {
+    phase: 'game',
+    memoTimeLeft: 0,
+    gameTimeLeft: timeLeft,
+    choiceTimeLeft: 10
+  });
+  
+  const interval = setInterval(() => {
+    timeLeft--;
+    timers.gameTimeLeft = timeLeft;
+    
+    io.to(`table_${tableId}`).emit('game:timer_update', {
+      phase: 'game',
+      memoTimeLeft: 0,
+      gameTimeLeft: timeLeft,
+      choiceTimeLeft: 10
+    });
+    
+    if (timeLeft <= 0) {
+      clearInterval(interval);
+      timers.gameTimer = null;
+      console.log(`⏰ Game timer reached 0 for table ${tableId} - waiting for client timeout event`);
+    }
+  }, 1000);
+  
+  timers.gameTimer = interval;
+}
+
+/**
+ * Démarrer le timer de choix (10 secondes pour choisir quoi faire avec la carte piochée)
+ */
+function startChoiceTimer(io, tableId, duration = 10) {
+  console.log(`⏱️ Starting choice timer for table ${tableId} (${duration}s)`);
+  
+  const timers = activeTimers.get(tableId) || {};
+  
+  // Arrêter le timer de jeu
+  if (timers.gameTimer) {
+    clearInterval(timers.gameTimer);
+    timers.gameTimer = null;
+  }
+  
+  // Arrêter le timer de choix précédent s'il existe
+  if (timers.choiceTimer) {
+    clearInterval(timers.choiceTimer);
+  }
+  
+  let timeLeft = duration;
+  timers.currentPhase = 'choice';
+  timers.choiceTimeLeft = timeLeft;
+  
+  activeTimers.set(tableId, timers);
+  
+  // Émettre l'état initial
+  io.to(`table_${tableId}`).emit('game:timer_update', {
+    phase: 'choice',
+    memoTimeLeft: 0,
+    gameTimeLeft: 0,
+    choiceTimeLeft: timeLeft
+  });
+  
+  const interval = setInterval(() => {
+    timeLeft--;
+    timers.choiceTimeLeft = timeLeft;
+    
+    io.to(`table_${tableId}`).emit('game:timer_update', {
+      phase: 'choice',
+      memoTimeLeft: 0,
+      gameTimeLeft: 0,
+      choiceTimeLeft: timeLeft
+    });
+    
+    if (timeLeft <= 0) {
+      clearInterval(interval);
+      timers.choiceTimer = null;
+      console.log(`⏰ Choice timer reached 0 for table ${tableId} - waiting for client timeout event`);
+    }
+  }, 1000);
+  
+  timers.choiceTimer = interval;
+}
+
+/**
+ * Arrêter tous les timers d'une table
+ */
+function clearAllTimers(tableId) {
+  const timers = activeTimers.get(tableId);
+  if (timers) {
+    if (timers.memoTimer) clearInterval(timers.memoTimer);
+    if (timers.gameTimer) clearInterval(timers.gameTimer);
+    if (timers.choiceTimer) clearInterval(timers.choiceTimer);
+    activeTimers.delete(tableId);
+  }
+}
+
 /**
  * Générer un deck de 52 cartes + 6 jokers
  * @returns {Array<number>} Tableau de valeurs de cartes (0-51 pour cartes normales, 104-115 pour jokers)
@@ -389,11 +563,15 @@ exports.setupSocket = (io) => {
             deckCount: deckRemaining.length
           });
           
-          // Après 7 secondes (distribution + mémorisation), démarrer le premier tour
+          // Démarrer le timer de mémorisation après la distribution (4.5s)
           // Distribution: 8 cartes * 400ms = 3.2s
           // Overlay "Préparez-vous": 2s
-          // Phase de mémorisation: 2s
-          // Total: ~7s (on met 8s pour être sûr)
+          // Total: ~5.2s (on met 4.5s pour être sûr)
+          setTimeout(() => {
+            startMemorizationTimer(io, tableId, 2);
+          }, 4500);
+          
+          // Après la mémorisation (4.5s + 2s = 6.5s), démarrer le premier tour
           setTimeout(async () => {
             // Recharger le jeu avec les infos des joueurs
             const gameWithPlayers = await Game.findById(tableId).populate('players.user');
@@ -404,12 +582,15 @@ exports.setupSocket = (io) => {
             
             console.log(`🎮 Starting first turn for player: ${firstPlayerId} (${firstPlayerUser.firstName} ${firstPlayerUser.lastName})`);
             
+            // Démarrer le timer de jeu
+            startGameTimer(io, tableId, 5);
+            
             // Émettre l'événement de changement de tour
             io.to(`table_${tableId}`).emit('game:turn_changed', {
               currentPlayerId: firstPlayerId,
               currentPlayerName: `${firstPlayerUser.firstName} ${firstPlayerUser.lastName}`
             });
-          }, 8000);
+          }, 6500);
         }
       } catch (error) {
         console.error('Erreur toggle ready:', error);
@@ -492,6 +673,9 @@ exports.setupSocket = (io) => {
         
         console.log(`✅ Card drawn and saved: ${drawnCard}`);
         
+        // Démarrer le timer de choix (10 secondes)
+        startChoiceTimer(io, tableId, 10);
+        
         // Notifier le joueur qui a pioché (il voit la carte)
         socket.emit('game:card_drawn', {
           playerId: userId,
@@ -564,6 +748,9 @@ exports.setupSocket = (io) => {
         
         console.log(`🔄 Next turn: ${nextPlayerUser._id} (${nextPlayerUser.firstName} ${nextPlayerUser.lastName})`);
         
+        // Redémarrer le timer de jeu (5 secondes)
+        startGameTimer(io, tableId, 5);
+        
         // Émettre le changement de tour
         io.to(`table_${tableId}`).emit('game:turn_changed', {
           currentPlayerId: nextPlayerUser._id.toString(),
@@ -615,6 +802,9 @@ exports.setupSocket = (io) => {
         
         console.log(`🔄 Next turn: ${nextPlayerUser._id} (${nextPlayerUser.firstName} ${nextPlayerUser.lastName})`);
         
+        // Redémarrer le timer de jeu (5 secondes)
+        startGameTimer(io, tableId, 5);
+        
         io.to(`table_${tableId}`).emit('game:turn_changed', {
           currentPlayerId: nextPlayerUser._id.toString(),
           currentPlayerName: `${nextPlayerUser.firstName} ${nextPlayerUser.lastName}`
@@ -623,6 +813,54 @@ exports.setupSocket = (io) => {
       } catch (error) {
         console.error('Erreur replace card:', error);
         socket.emit('error', { message: 'Erreur lors du remplacement' });
+      }
+    });
+    
+    // Gérer le timeout du choix (défausse automatique après 10s)
+    socket.on('game:choice_timeout', async ({ tableId, userId, drawnCard }) => {
+      try {
+        console.log(`⏰ Choice timeout - Auto-discarding card for userId: ${userId}`);
+        
+        const game = await Game.findById(tableId).populate('players.user');
+        if (!game) {
+          console.error(`❌ Game not found: ${tableId}`);
+          return socket.emit('error', { message: 'Partie non trouvée' });
+        }
+        
+        // Défausser automatiquement la carte piochée
+        game.discardPile.push(drawnCard);
+        await game.save();
+        
+        console.log(`✅ Card auto-discarded: ${drawnCard}`);
+        
+        // Notifier tous les joueurs
+        io.to(`table_${tableId}`).emit('game:card_discarded', {
+          playerId: userId,
+          card: drawnCard,
+          cardIndex: -1,
+          autoDiscard: true
+        });
+        
+        // Passer au joueur suivant
+        const currentPlayerIndex = game.players.findIndex(p => p.user._id.toString() === userId);
+        const nextPlayerIndex = (currentPlayerIndex + 1) % game.players.length;
+        const nextPlayer = game.players[nextPlayerIndex];
+        const nextPlayerUser = nextPlayer.user;
+        
+        console.log(`🔄 Next turn after auto-discard: ${nextPlayerUser._id} (${nextPlayerUser.firstName} ${nextPlayerUser.lastName})`);
+        
+        // Redémarrer le timer de jeu (5 secondes)
+        startGameTimer(io, tableId, 5);
+        
+        // Émettre le changement de tour
+        io.to(`table_${tableId}`).emit('game:turn_changed', {
+          currentPlayerId: nextPlayerUser._id.toString(),
+          currentPlayerName: `${nextPlayerUser.firstName} ${nextPlayerUser.lastName}`
+        });
+        
+      } catch (error) {
+        console.error('Erreur choice timeout:', error);
+        socket.emit('error', { message: 'Erreur lors du timeout de choix' });
       }
     });
     
@@ -646,6 +884,9 @@ exports.setupSocket = (io) => {
         const nextPlayerUser = nextPlayer.user;
         
         console.log(`🔄 Timeout - Next turn: ${nextPlayerUser._id} (${nextPlayerUser.firstName} ${nextPlayerUser.lastName})`);
+        
+        // Redémarrer le timer de jeu (5 secondes)
+        startGameTimer(io, tableId, 5);
         
         // Émettre le changement de tour
         io.to(`table_${tableId}`).emit('game:turn_changed', {

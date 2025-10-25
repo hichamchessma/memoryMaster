@@ -545,6 +545,13 @@ const TwoPlayersGamePage: React.FC = () => {
       setIsPlayerTurn(isMyTurn);
       
       // Mettre à jour la phase de jeu EN FONCTION DE QUI JE SUIS
+      // Si amIPlayer1 est null, on attend qu'il soit défini
+      if (amIPlayer1 === null) {
+        console.log('⚠️ amIPlayer1 is null, waiting for cards_dealt...');
+        // On met à jour quand même isPlayerTurn pour la logique
+        return;
+      }
+      
       if (isMyTurn) {
         // C'est MON tour
         if (amIPlayer1) {
@@ -567,44 +574,16 @@ const TwoPlayersGamePage: React.FC = () => {
         console.log(`⏳ Waiting for opponent... (${currentPlayerName})`);
       }
       
-      // Nettoyer l'ancien timer s'il existe
+      // Nettoyer l'ancien timer s'il existe (le serveur gère maintenant les timers)
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
       
-      // Réinitialiser le timer à 5 secondes pour chaque tour
-      setTimeLeft(5);
+      // Le timer est maintenant géré par le serveur via game:timer_update
+      // On ne démarre plus de timer local ici
       
-      // Démarrer le timer du tour
-      timerRef.current = setInterval(() => {
-        setTimeLeft((prev: number) => {
-          if (prev <= 1) {
-            if (timerRef.current) {
-              clearInterval(timerRef.current);
-              timerRef.current = null;
-            }
-            console.log('⏰ Time\'s up for this turn!');
-            console.log(`  isMyTurn: ${isMyTurn}, socket: ${!!socket}, tableId: ${tableData?.tableId}`);
-            
-            // Passer au joueur suivant automatiquement
-            // IMPORTANT : N'émettre QUE si c'était notre tour pour éviter les doublons
-            if (socket && tableData?.tableId && tableData?.currentUserId && isMyTurn) {
-              console.log(`⏰ Emitting turn timeout to server...`);
-              
-              socket.emit('game:turn_timeout', {
-                tableId: tableData.tableId,
-                userId: tableData.currentUserId
-              });
-            } else {
-              console.log(`⏰ Not emitting (not my turn or missing data)`);
-            }
-            
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
+      console.log(`✅ Turn changed handled - Phase: ${isMyTurn ? 'MY_TURN' : 'OPPONENT_TURN'}`);
     };
 
     // Écouter quand un joueur pioche une carte
@@ -633,26 +612,71 @@ const TwoPlayersGamePage: React.FC = () => {
     // Écouter quand une carte est défaussée
     const handleCardDiscarded = (data: any) => {
       console.log('🗑️ Card discarded:', data);
-      const { playerId, card, cardIndex } = data;
+      const { playerId, card, cardIndex, autoDiscard } = data;
       
       // Mettre à jour la défausse (visible par tous)
       setDiscardPile(card);
       
+      // Afficher un message si c'est une défausse automatique
+      if (autoDiscard) {
+        console.log('⏰ Auto-discard due to timeout');
+      }
+      
+      // Réinitialiser les états de carte piochée pour TOUS les joueurs
+      setDrawnCard(null);
+      setShowCardActions(false);
+      setSelectingCardToReplace(false);
+      
       // Si c'est l'adversaire qui a défaussé, mettre à jour ses cartes
       if (playerId !== myPlayerInfo?.userId) {
-        setPlayer1Cards(prev => {
-          const newCards = [...prev];
-          newCards.splice(cardIndex, 1);
-          return newCards;
-        });
+        // L'adversaire a défaussé
+        if (amIPlayer1) {
+          // Je suis player1, l'adversaire est player2 (en bas)
+          setPlayer2Cards(prev => {
+            if (cardIndex === -1) return prev; // Défausse directe de la carte piochée
+            const newCards = [...prev];
+            if (cardIndex < newCards.length) {
+              newCards.splice(cardIndex, 1);
+            }
+            return newCards;
+          });
+        } else {
+          // Je suis player2, l'adversaire est player1 (en haut)
+          setPlayer1Cards(prev => {
+            if (cardIndex === -1) return prev; // Défausse directe de la carte piochée
+            const newCards = [...prev];
+            if (cardIndex < newCards.length) {
+              newCards.splice(cardIndex, 1);
+            }
+            return newCards;
+          });
+        }
       } else {
-        // Si c'est nous, mettre à jour nos cartes
-        setPlayer2Cards(prev => {
-          const newCards = [...prev];
-          newCards.splice(cardIndex, 1);
-          return newCards;
-        });
+        // C'est moi qui ai défaussé
+        if (amIPlayer1) {
+          // Je suis player1 (en haut)
+          setPlayer1Cards(prev => {
+            if (cardIndex === -1) return prev; // Défausse directe de la carte piochée
+            const newCards = [...prev];
+            if (cardIndex < newCards.length) {
+              newCards.splice(cardIndex, 1);
+            }
+            return newCards;
+          });
+        } else {
+          // Je suis player2 (en bas)
+          setPlayer2Cards(prev => {
+            if (cardIndex === -1) return prev; // Défausse directe de la carte piochée
+            const newCards = [...prev];
+            if (cardIndex < newCards.length) {
+              newCards.splice(cardIndex, 1);
+            }
+            return newCards;
+          });
+        }
       }
+      
+      console.log(`✅ Discard pile updated - Card: ${card}`);
     };
     
     // Écouter quand une carte est remplacée
@@ -667,6 +691,47 @@ const TwoPlayersGamePage: React.FC = () => {
       // Pas besoin de mettre à jour, la carte reste face cachée
     };
 
+    // Écouter les mises à jour des timers
+    const handleTimerUpdate = (data: any) => {
+      console.log('⏱️ Timer update:', data);
+      const { phase, memoTimeLeft: memo, gameTimeLeft: game, choiceTimeLeft: choice } = data;
+      
+      setTimerPhase(phase);
+      setMemoTimeLeft(memo);
+      setGameTimeLeft(game);
+      setChoiceTimeLeft(choice);
+      
+      // Mettre à jour timeLeft pour l'affichage (selon la phase active)
+      if (phase === 'memorization') {
+        console.log(`  → Setting timeLeft to ${memo} (memorization)`);
+        setTimeLeft(memo);
+      } else if (phase === 'game') {
+        console.log(`  → Setting timeLeft to ${game} (game), isPlayerTurn: ${isPlayerTurnRef.current}`);
+        setTimeLeft(game);
+        
+        // Si le timer de jeu arrive à 0 ET que c'est mon tour, émettre le timeout
+        if (game === 0 && isPlayerTurnRef.current) {
+          console.log('⏰ Game timer expired - emitting turn timeout');
+          socket.emit('game:turn_timeout', {
+            tableId: tableData?.tableId,
+            userId: tableData?.currentUserId
+          });
+        }
+      } else if (phase === 'choice') {
+        setTimeLeft(choice);
+        
+        // Si le timer de choix arrive à 0 ET que j'ai une carte piochée, émettre le timeout
+        if (choice === 0 && drawnCard) {
+          console.log('⏰ Choice timer expired - emitting choice timeout');
+          socket.emit('game:choice_timeout', {
+            tableId: tableData?.tableId,
+            userId: myPlayerInfo?.userId,
+            drawnCard: drawnCard.value
+          });
+        }
+      }
+    };
+    
     socket.on('player:ready_changed', handleReadyChanged);
     socket.on('game:auto_start', handleAutoStart);
     socket.on('game:cards_dealt', handleCardsDealt);
@@ -676,6 +741,7 @@ const TwoPlayersGamePage: React.FC = () => {
     socket.on('game:opponent_drew_card', handleOpponentDrewCard);
     socket.on('game:card_discarded', handleCardDiscarded);
     socket.on('game:card_replaced', handleCardReplaced);
+    socket.on('game:timer_update', handleTimerUpdate);
 
     return () => {
       socket.off('playerJoined', handlePlayerJoined);
@@ -689,7 +755,9 @@ const TwoPlayersGamePage: React.FC = () => {
       socket.off('game:opponent_drew_card', handleOpponentDrewCard);
       socket.off('game:card_discarded', handleCardDiscarded);
       socket.off('game:card_replaced', handleCardReplaced);
+      socket.off('game:timer_update', handleTimerUpdate);
       socket.emit('leaveTableRoom', tableData.tableId);
+      hasJoinedRoom.current = false; // Réinitialiser pour permettre de rejoindre si on revient
     };
   }, [socket, tableData?.tableId, tableData?.currentUserId, navigate]);
 
@@ -792,9 +860,21 @@ const TwoPlayersGamePage: React.FC = () => {
   const [currentPlayer, setCurrentPlayer] = React.useState<'player1' | 'player2'>('player1');
   const [timeLeft, setTimeLeft] = React.useState<number>(15);
   const [isPlayerTurn, setIsPlayerTurn] = React.useState<boolean>(false);
+  const isPlayerTurnRef = React.useRef<boolean>(false); // Ref pour utiliser dans les callbacks
   const timerRef = React.useRef<NodeJS.Timeout | null>(null);
   const beforeRoundTimerRef = React.useRef<NodeJS.Timeout | null>(null);
   const prepTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  
+  // Synchroniser la ref avec l'état
+  React.useEffect(() => {
+    isPlayerTurnRef.current = isPlayerTurn;
+  }, [isPlayerTurn]);
+  
+  // États pour les 3 timers synchronisés avec le serveur
+  const [timerPhase, setTimerPhase] = React.useState<'memorization' | 'game' | 'choice' | null>(null);
+  const [memoTimeLeft, setMemoTimeLeft] = React.useState<number>(2);
+  const [gameTimeLeft, setGameTimeLeft] = React.useState<number>(5);
+  const [choiceTimeLeft, setChoiceTimeLeft] = React.useState<number>(10);
   
   // Formatage du temps n'est plus utilisé ici (timer affiché dans TopBanner)
 
