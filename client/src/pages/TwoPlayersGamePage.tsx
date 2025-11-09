@@ -2668,14 +2668,17 @@ const TwoPlayersGamePage: React.FC = () => {
               highlight={(selectingCardToReplace && currentPlayer === 'player1') || isKingPowerActive || (isQueenPowerActive && currentPlayer === 'player2') || (isJackPowerActive && currentPlayer === 'player1')}
             />
             <div className="mt-2 flex items-center justify-center gap-2">
-              <button
-                className={`px-3 py-1 rounded-full text-sm font-bold border-2 ${(!amIPlayer1 && gamePhase === 'player1_turn' && isPlayerTurn) || (amIPlayer1 && gamePhase === 'player2_turn' && !isPlayerTurn) ? 'bg-pink-600 hover:bg-pink-700 text-white border-white' : 'bg-pink-600/40 text-white/60 border-white/40 cursor-not-allowed'}`}
-                disabled={!((!amIPlayer1 && gamePhase === 'player1_turn' && isPlayerTurn) || (amIPlayer1 && gamePhase === 'player2_turn' && !isPlayerTurn)) || drawnCard !== null || selectingCardToReplace || isInPenalty || bombomDeclaredBy !== null}
-                title="Déclarer Bombom (Joueur 1)"
-                onClick={() => handleDeclareBombomFor('player1')}
-              >
-                🍬 Bombom
-              </button>
+              {/* N'afficher le bouton Bombom que pour le joueur dont c'est le tour */}
+              {(!amIPlayer1 && gamePhase === 'player1_turn' && isPlayerTurn) && (
+                <button
+                  className="px-3 py-1 rounded-full text-sm font-bold border-2 bg-pink-600 hover:bg-pink-700 text-white border-white"
+                  disabled={drawnCard !== null || selectingCardToReplace || isInPenalty || bombomDeclaredBy !== null}
+                  title="Déclarer Bombom (Joueur 1)"
+                  onClick={() => handleDeclareBombomFor('player1')}
+                >
+                  🍬 Bombom
+                </button>
+              )}
               {bombomDeclaredBy === 'player1' && (
                 <span className="text-[11px] bg-yellow-300/90 text-black px-2 py-0.5 rounded-full border border-yellow-600">Bombom activé</span>
               )}
@@ -2884,14 +2887,17 @@ const TwoPlayersGamePage: React.FC = () => {
               highlight={isMemorizationPhase || (selectingCardToReplace && currentPlayer === 'player2') || isKingPowerActive || (isQueenPowerActive && currentPlayer === 'player1') || (isJackPowerActive && currentPlayer === 'player2')}
             />
             <div className="mt-2 flex items-center justify-center gap-2">
-              <button
-                className={`px-3 py-1 rounded-full text-sm font-bold border-2 ${(amIPlayer1 && gamePhase === 'player1_turn' && isPlayerTurn) || (!amIPlayer1 && gamePhase === 'player2_turn' && isPlayerTurn) ? 'bg-pink-600 hover:bg-pink-700 text-white border-white' : 'bg-pink-600/40 text-white/60 border-white/40 cursor-not-allowed'}`}
-                disabled={!((amIPlayer1 && gamePhase === 'player1_turn' && isPlayerTurn) || (!amIPlayer1 && gamePhase === 'player2_turn' && isPlayerTurn)) || drawnCard !== null || selectingCardToReplace || isInPenalty || bombomDeclaredBy !== null}
-                title="Déclarer Bombom (Joueur 2)"
-                onClick={() => handleDeclareBombomFor('player2')}
-              >
-                🍬 Bombom
-              </button>
+              {/* N'afficher le bouton Bombom que pour le joueur dont c'est le tour */}
+              {((amIPlayer1 && gamePhase === 'player1_turn' && isPlayerTurn) || (!amIPlayer1 && gamePhase === 'player2_turn' && isPlayerTurn)) && (
+                <button
+                  className="px-3 py-1 rounded-full text-sm font-bold border-2 bg-pink-600 hover:bg-pink-700 text-white border-white"
+                  disabled={drawnCard !== null || selectingCardToReplace || isInPenalty || bombomDeclaredBy !== null}
+                  title="Déclarer Bombom (Joueur 2)"
+                  onClick={() => handleDeclareBombomFor('player2')}
+                >
+                  🍬 Bombom
+                </button>
+              )}
               {bombomDeclaredBy === 'player2' && (
                 <span className="text-[11px] bg-yellow-300/90 text-black px-2 py-0.5 rounded-full border border-yellow-600">Bombom activé</span>
               )}
