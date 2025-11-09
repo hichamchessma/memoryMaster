@@ -624,14 +624,40 @@ const TwoPlayersGamePage: React.FC = () => {
       console.log(`✅ Opponent drew a card - Animation shown`);
     };
     
+    // Fonction utilitaire pour mettre à jour un tableau de cartes de manière cohérente
+    const updateCardArray = (prev: any[], cardIndex: number, isQuickDiscard: boolean): any[] => {
+      if (cardIndex === -1) return prev; // Défausse directe de la carte piochée
+      
+      const newCards = [...prev];
+      
+      // S'assurer que le tableau a la bonne taille
+      while (newCards.length <= cardIndex) {
+        newCards.push({
+          id: `card-filler-${Date.now()}-${Math.random()}`,
+          value: -1,
+          isFlipped: false
+        });
+      }
+      
+      // Pour toutes les défausses, mettre la valeur à -1 au lieu de supprimer
+      newCards[cardIndex] = {
+        id: `discarded-${Date.now()}-${Math.random()}`,
+        value: -1,
+        isFlipped: false
+      };
+      
+      return newCards;
+    };
+
     // Écouter quand une carte est défaussée
     const handleCardDiscarded = (data: any) => {
-      console.log('🗑️ Card discarded event received:', data);
-      const { playerId, card, cardIndex, autoDiscard, quickDiscard } = data;
+      console.log('🚟️ Card discarded event received:', data);
+      const { playerId, card, cardIndex, autoDiscard, quickDiscard, totalCards } = data;
       
       console.log(`  → Updating discard pile with card: ${card}`);
       console.log(`  → Current discardPile before update:`, discardPile);
       console.log(`  → Quick discard: ${quickDiscard}, Auto discard: ${autoDiscard}`);
+      if (totalCards) console.log(`  → Total cards after discard: ${totalCards}`);
       
       // Animation de défausse
       const discard = discardRef.current;
@@ -694,41 +720,82 @@ const TwoPlayersGamePage: React.FC = () => {
       setShowCardActions(false);
       setSelectingCardToReplace(false);
       
-      // Retirer la carte de la main
-      // Pour quick discard: mettre value à -1 au lieu de splice
+      // Mettre à jour les cartes en utilisant notre fonction utilitaire
       if (playerId !== myPlayerInfo?.userId) {
         // L'adversaire a défaussé
         if (amIPlayer1) {
-          // Je suis player1, l'adversaire est player2 (en bas)
+          // Je suis player1 (en haut), l'adversaire est player2 et ses cartes sont en BAS (player2Cards)
           setPlayer2Cards(prev => {
-            if (cardIndex === -1) return prev; // Défausse directe de la carte piochée
-            const newCards = [...prev];
-            if (cardIndex < newCards.length) {
-              if (quickDiscard) {
-                // Quick discard: mettre à -1
-                newCards[cardIndex] = { ...newCards[cardIndex], value: -1, isFlipped: false };
-              } else {
-                // Défausse normale: splice
-                newCards.splice(cardIndex, 1);
+            // Créer un nouveau tableau avec le bon nombre de cartes
+            let updatedCards = [...prev];
+            
+            // S'assurer que le tableau a exactement le bon nombre de cartes
+            if (totalCards && updatedCards.length !== totalCards) {
+              console.log(`❗ Fixing card count: current=${updatedCards.length}, should be=${totalCards}`);
+              
+              // Si on a trop de cartes, on les supprime
+              if (updatedCards.length > totalCards) {
+                updatedCards = updatedCards.slice(0, totalCards);
+              }
+              
+              // Si on n'a pas assez de cartes, on en ajoute
+              while (updatedCards.length < totalCards) {
+                updatedCards.push({
+                  id: `opponent-card-filler-${Date.now()}-${Math.random()}`,
+                  value: -1,
+                  isFlipped: false
+                });
               }
             }
-            return newCards;
+            
+            // Si c'est une défausse rapide, on met à jour la carte à l'index spécifié
+            if (quickDiscard && cardIndex < updatedCards.length) {
+              updatedCards[cardIndex] = {
+                id: `discarded-${Date.now()}-${Math.random()}`,
+                value: -1,
+                isFlipped: false
+              };
+            }
+            
+            console.log(`✅ Updated opponent's cards (player2, en bas). Now has ${updatedCards.length} cards`);
+            return updatedCards;
           });
         } else {
-          // Je suis player2, l'adversaire est player1 (en haut)
+          // Je suis player2 (en bas), l'adversaire est player1 et ses cartes sont en HAUT (player1Cards)
           setPlayer1Cards(prev => {
-            if (cardIndex === -1) return prev; // Défausse directe de la carte piochée
-            const newCards = [...prev];
-            if (cardIndex < newCards.length) {
-              if (quickDiscard) {
-                // Quick discard: mettre à -1
-                newCards[cardIndex] = { ...newCards[cardIndex], value: -1, isFlipped: false };
-              } else {
-                // Défausse normale: splice
-                newCards.splice(cardIndex, 1);
+            // Créer un nouveau tableau avec le bon nombre de cartes
+            let updatedCards = [...prev];
+            
+            // S'assurer que le tableau a exactement le bon nombre de cartes
+            if (totalCards && updatedCards.length !== totalCards) {
+              console.log(`❗ Fixing card count: current=${updatedCards.length}, should be=${totalCards}`);
+              
+              // Si on a trop de cartes, on les supprime
+              if (updatedCards.length > totalCards) {
+                updatedCards = updatedCards.slice(0, totalCards);
+              }
+              
+              // Si on n'a pas assez de cartes, on en ajoute
+              while (updatedCards.length < totalCards) {
+                updatedCards.push({
+                  id: `opponent-card-filler-${Date.now()}-${Math.random()}`,
+                  value: -1,
+                  isFlipped: false
+                });
               }
             }
-            return newCards;
+            
+            // Si c'est une défausse rapide, on met à jour la carte à l'index spécifié
+            if (quickDiscard && cardIndex < updatedCards.length) {
+              updatedCards[cardIndex] = {
+                id: `discarded-${Date.now()}-${Math.random()}`,
+                value: -1,
+                isFlipped: false
+              };
+            }
+            
+            console.log(`✅ Updated opponent's cards (player1, en haut). Now has ${updatedCards.length} cards`);
+            return updatedCards;
           });
         }
       } else {
@@ -736,34 +803,58 @@ const TwoPlayersGamePage: React.FC = () => {
         if (amIPlayer1) {
           // Je suis player1 (en haut)
           setPlayer1Cards(prev => {
-            if (cardIndex === -1) return prev; // Défausse directe de la carte piochée
-            const newCards = [...prev];
-            if (cardIndex < newCards.length) {
-              if (quickDiscard) {
-                // Quick discard: mettre à -1
-                newCards[cardIndex] = { ...newCards[cardIndex], value: -1, isFlipped: false };
-              } else {
-                // Défausse normale: splice
-                newCards.splice(cardIndex, 1);
+            // Créer un nouveau tableau avec le bon nombre de cartes
+            let updatedCards = [...prev];
+            
+            // S'assurer que le tableau a exactement le bon nombre de cartes
+            if (totalCards && updatedCards.length !== totalCards) {
+              console.log(`❗ Fixing card count: current=${updatedCards.length}, should be=${totalCards}`);
+              
+              // Si on a trop de cartes, on les supprime
+              if (updatedCards.length > totalCards) {
+                updatedCards = updatedCards.slice(0, totalCards);
+              }
+              
+              // Si on n'a pas assez de cartes, on en ajoute
+              while (updatedCards.length < totalCards) {
+                updatedCards.push({
+                  id: `my-card-filler-${Date.now()}-${Math.random()}`,
+                  value: -1,
+                  isFlipped: false
+                });
               }
             }
-            return newCards;
+            
+            console.log(`✅ Updated my cards (player1, en haut). Now has ${updatedCards.length} cards`);
+            return updatedCards;
           });
         } else {
           // Je suis player2 (en bas)
           setPlayer2Cards(prev => {
-            if (cardIndex === -1) return prev; // Défausse directe de la carte piochée
-            const newCards = [...prev];
-            if (cardIndex < newCards.length) {
-              if (quickDiscard) {
-                // Quick discard: mettre à -1
-                newCards[cardIndex] = { ...newCards[cardIndex], value: -1, isFlipped: false };
-              } else {
-                // Défausse normale: splice
-                newCards.splice(cardIndex, 1);
+            // Créer un nouveau tableau avec le bon nombre de cartes
+            let updatedCards = [...prev];
+            
+            // S'assurer que le tableau a exactement le bon nombre de cartes
+            if (totalCards && updatedCards.length !== totalCards) {
+              console.log(`❗ Fixing card count: current=${updatedCards.length}, should be=${totalCards}`);
+              
+              // Si on a trop de cartes, on les supprime
+              if (updatedCards.length > totalCards) {
+                updatedCards = updatedCards.slice(0, totalCards);
+              }
+              
+              // Si on n'a pas assez de cartes, on en ajoute
+              while (updatedCards.length < totalCards) {
+                updatedCards.push({
+                  id: `my-card-filler-${Date.now()}-${Math.random()}`,
+                  value: -1,
+                  isFlipped: false
+                });
               }
             }
-            return newCards;
+            
+            console.log(`✅ Updated my cards (player2, en bas). Now has ${updatedCards.length} cards`);
+            return updatedCards;
           });
         }
       }
@@ -774,13 +865,100 @@ const TwoPlayersGamePage: React.FC = () => {
     // Écouter quand une carte est remplacée
     const handleCardReplaced = (data: any) => {
       console.log('🔄 Card replaced:', data);
-      const { playerId, cardIndex, discardedCard } = data;
+      const { playerId, cardIndex, discardedCard, newCard, newCardValue, totalCards } = data;
       
-      // Mettre à jour la défausse
-      setDiscardPile(discardedCard);
+      // Mettre à jour la défausse (discardedCard peut être un objet ou une valeur)
+      const discardValue = typeof discardedCard === 'object' && discardedCard !== null
+        ? discardedCard.value
+        : discardedCard;
+      setDiscardPile(discardValue);
+      console.log(`✅ Updated discard pile with card value: ${discardValue}`);
+      console.log(`✅ New card value: ${newCardValue}`);
       
-      // Si c'est l'adversaire, on ne voit pas sa nouvelle carte (reste face cachée)
-      // Pas besoin de mettre à jour, la carte reste face cachée
+      // Si c'est l'adversaire qui a remplacé une carte
+      if (playerId !== tableData?.currentUserId) {
+        // Déterminer quelle liste de cartes mettre à jour en fonction de amIPlayer1
+        if (amIPlayer1) {
+          // Je suis player1 (en haut), l'adversaire est player2 (en bas)
+          setPlayer2Cards(prev => {
+            // Créer un nouveau tableau avec le bon nombre de cartes
+            let updatedCards = [...prev];
+            
+            // S'assurer que le tableau a exactement le bon nombre de cartes
+            if (totalCards && updatedCards.length !== totalCards) {
+              console.log(`❗ Fixing card count: current=${updatedCards.length}, should be=${totalCards}`);
+              
+              // Si on a trop de cartes, on les supprime
+              if (updatedCards.length > totalCards) {
+                updatedCards = updatedCards.slice(0, totalCards);
+              }
+              
+              // Si on n'a pas assez de cartes, on en ajoute
+              while (updatedCards.length < totalCards) {
+                updatedCards.push({
+                  id: `opponent-card-filler-${Date.now()}-${Math.random()}`,
+                  value: -1,
+                  isFlipped: false
+                });
+              }
+            }
+            
+            // Mettre à jour la carte à l'index spécifié avec la nouvelle valeur
+            if (cardIndex < updatedCards.length && newCardValue !== undefined) {
+              updatedCards[cardIndex] = {
+                id: `opponent-card-${Date.now()}-${Math.random()}`,
+                value: newCardValue, // Utiliser la valeur de la nouvelle carte
+                isFlipped: false
+              };
+              console.log(`✅ Updated opponent's card at index ${cardIndex} with value ${newCardValue}`);
+            }
+            
+            console.log(`✅ Updated opponent's cards (player2, en bas). Now has ${updatedCards.length} cards.`);
+            return updatedCards;
+          });
+        } else {
+          // Je suis player2 (en bas), l'adversaire est player1 (en haut)
+          setPlayer1Cards(prev => {
+            // Créer un nouveau tableau avec le bon nombre de cartes
+            let updatedCards = [...prev];
+            
+            // S'assurer que le tableau a exactement le bon nombre de cartes
+            if (totalCards && updatedCards.length !== totalCards) {
+              console.log(`❗ Fixing card count: current=${updatedCards.length}, should be=${totalCards}`);
+              
+              // Si on a trop de cartes, on les supprime
+              if (updatedCards.length > totalCards) {
+                updatedCards = updatedCards.slice(0, totalCards);
+              }
+              
+              // Si on n'a pas assez de cartes, on en ajoute
+              while (updatedCards.length < totalCards) {
+                updatedCards.push({
+                  id: `opponent-card-filler-${Date.now()}-${Math.random()}`,
+                  value: -1,
+                  isFlipped: false
+                });
+              }
+            }
+            
+            // Mettre à jour la carte à l'index spécifié avec la nouvelle valeur
+            if (cardIndex < updatedCards.length && newCardValue !== undefined) {
+              updatedCards[cardIndex] = {
+                id: `opponent-card-${Date.now()}-${Math.random()}`,
+                value: newCardValue, // Utiliser la valeur de la nouvelle carte
+                isFlipped: false
+              };
+              console.log(`✅ Updated opponent's card at index ${cardIndex} with value ${newCardValue}`);
+            }
+            
+            console.log(`✅ Updated opponent's cards (player1, en haut). Now has ${updatedCards.length} cards.`);
+            return updatedCards;
+          });
+        }
+      } else {
+        // C'est moi qui ai remplacé une carte (ne devrait pas arriver car déjà géré localement)
+        console.log(`ℹ️ Received my own card replacement event from server (unusual)`);
+      }
     };
     
     // Écouter la réception des cartes de pénalité (seulement pour le joueur pénalisé)
@@ -1872,18 +2050,31 @@ const TwoPlayersGamePage: React.FC = () => {
           setReplaceInImage(null);
         }
 
-        // Remplacer la carte sélectionnée par la carte piochée dans l'état
-        const newCards = [...playerCards];
-        newCards[index] = {
-          ...newCards[index],
+        // Utiliser updateCardArray pour mettre à jour les cartes de manière cohérente
+        const updatedCards = [...playerCards];
+        
+        // S'assurer que le tableau a la bonne taille
+        while (updatedCards.length <= index) {
+          updatedCards.push({
+            id: `card-filler-${Date.now()}-${Math.random()}`,
+            value: -1,
+            isFlipped: false
+          });
+        }
+        
+        // Mettre à jour la carte à l'index spécifié
+        updatedCards[index] = {
+          id: `replaced-${Date.now()}-${Math.random()}`,
           value: drawnCard.value,
           isFlipped: false
         };
-
+        
+        console.log(`✅ Updated my cards with replacement. Now has ${updatedCards.length} cards with updated card at index ${index}`);
+        
         if (player === 'top') {
-          setPlayer1Cards(newCards);
+          setPlayer1Cards(updatedCards);
         } else {
-          setPlayer2Cards(newCards);
+          setPlayer2Cards(updatedCards);
         }
 
         // Réinitialiser les états

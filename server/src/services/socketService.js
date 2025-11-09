@@ -759,8 +759,11 @@ exports.setupSocket = (io) => {
         io.to(`table_${tableId}`).emit('game:card_discarded', {
           playerId: userId,
           card: discardedCardValue,
-          cardIndex
+          cardIndex,
+          totalCards: player.cards.length // Ajouter le nombre total de cartes
         });
+        
+        console.log(`✅ Emitted game:card_discarded with totalCards: ${player.cards.length}`);
         
         // Passer au joueur suivant
         const currentPlayerIndex = game.players.findIndex(p => p.user._id.toString() === userId);
@@ -807,14 +810,19 @@ exports.setupSocket = (io) => {
         
         await game.save();
         
-        console.log(`✅ Card replaced: ${oldCard} -> ${newCard}`);
+        console.log(`✅ Card replaced: ${oldCard.value} -> ${newCard.value}`);
         
         // Notifier tous les joueurs
         io.to(`table_${tableId}`).emit('game:card_replaced', {
           playerId: userId,
           cardIndex,
-          discardedCard: oldCard
+          discardedCard: oldCard,
+          newCard: newCard,
+          newCardValue: newCard.value, // Ajouter la valeur de la nouvelle carte pour que l'adversaire puisse la voir
+          totalCards: player.cards.length // Ajouter le nombre total de cartes
         });
+        
+        console.log(`✅ Emitted game:card_replaced with totalCards: ${player.cards.length}, newCardValue: ${newCard.value}`);
         
         // Passer au joueur suivant
         const currentPlayerIndex = game.players.findIndex(p => p.user._id.toString() === userId);
