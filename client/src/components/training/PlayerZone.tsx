@@ -1,6 +1,14 @@
 import React from 'react';
 import cardBack from '../../assets/cards/card_back.png';
-import { getCardImage } from '../../utils/cards';
+import { getCardImage as originalGetCardImage } from '../../utils/cards';
+
+// Fonction modifiée pour gérer les cartes avec value=-1
+const getCardImage = (value: number) => {
+  if (value === -1) {
+    return cardBack; // Utiliser le dos de carte pour les cartes face cachée
+  }
+  return originalGetCardImage(value);
+};
 
 interface CardState {
   id: string;
@@ -19,7 +27,8 @@ interface PlayerZoneProps {
 }
 
 const PlayerZone: React.FC<PlayerZoneProps> = ({ position, playerName, cardsDealt, cards = [], onCardClick = () => {}, highlight = false }) => {
-  const validCards = cards.filter(card => card.value !== -1);
+  // Utiliser toutes les cartes, même celles avec value=-1
+  const validCards = cards;
 
   const handleCardClick = (card: CardState) => {
     const originalIndex = cards.findIndex(c => c.id === card.id);

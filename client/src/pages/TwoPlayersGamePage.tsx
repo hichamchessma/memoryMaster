@@ -964,22 +964,71 @@ const TwoPlayersGamePage: React.FC = () => {
     // Écouter la réception des cartes de pénalité (seulement pour le joueur pénalisé)
     const handlePenaltyCardsReceived = (data: any) => {
       console.log('📥 Penalty cards received:', data);
-      const { cards } = data;
+      const { cards, totalCards } = data;
+      console.log(`  → Total cards after penalty: ${totalCards}`);
       
-      // Ajouter les 2 cartes à MA main (toujours en bas = player2Cards)
-      setPlayer2Cards(prev => {
-        const newCards = [...prev];
-        cards.forEach((cardValue: number) => {
-          newCards.push({
-            id: `penalty-${Date.now()}-${Math.random()}`,
-            value: cardValue,
-            isFlipped: false
+      // Déterminer quelle liste de cartes mettre à jour en fonction de amIPlayer1
+      if (amIPlayer1) {
+        // Je suis player1, mes cartes sont dans player1Cards (en haut)
+        setPlayer1Cards(prev => {
+          // Créer un nouveau tableau avec le bon nombre de cartes
+          let newCards = [...prev];
+          
+          // S'assurer que le tableau a exactement le bon nombre de cartes
+          if (totalCards) {
+            console.log(`  → ❗ Checking card count: current=${newCards.length}, should be=${totalCards} after adding ${cards.length} cards`);
+            
+            // Si on a trop de cartes, on les supprime
+            if (newCards.length > totalCards - cards.length) {
+              console.log(`  → ❗ Removing ${newCards.length - (totalCards - cards.length)} excess cards`);
+              newCards = newCards.slice(0, totalCards - cards.length);
+            }
+          }
+          
+          // Ajouter les nouvelles cartes de pénalité
+          cards.forEach((cardValue: number) => {
+            newCards.push({
+              id: `penalty-${Date.now()}-${Math.random()}`,
+              value: cardValue,
+              isFlipped: false
+            });
           });
+          
+          console.log(`  → Updated my cards (player1). Now has ${newCards.length} cards`);
+          return newCards;
         });
-        return newCards;
-      });
+      } else {
+        // Je suis player2, mes cartes sont dans player2Cards (en bas)
+        setPlayer2Cards(prev => {
+          // Créer un nouveau tableau avec le bon nombre de cartes
+          let newCards = [...prev];
+          
+          // S'assurer que le tableau a exactement le bon nombre de cartes
+          if (totalCards) {
+            console.log(`  → ❗ Checking card count: current=${newCards.length}, should be=${totalCards} after adding ${cards.length} cards`);
+            
+            // Si on a trop de cartes, on les supprime
+            if (newCards.length > totalCards - cards.length) {
+              console.log(`  → ❗ Removing ${newCards.length - (totalCards - cards.length)} excess cards`);
+              newCards = newCards.slice(0, totalCards - cards.length);
+            }
+          }
+          
+          // Ajouter les nouvelles cartes de pénalité
+          cards.forEach((cardValue: number) => {
+            newCards.push({
+              id: `penalty-${Date.now()}-${Math.random()}`,
+              value: cardValue,
+              isFlipped: false
+            });
+          });
+          
+          console.log(`  → Updated my cards (player2). Now has ${newCards.length} cards`);
+          return newCards;
+        });
+      }
       
-      console.log(`✅ Added ${cards.length} penalty cards to my hand (bottom = player2Cards)`);
+      console.log(`✅ Added ${cards.length} penalty cards to my hand`);
     };
     
     // Écouter la pénalité de défausse rapide (pour TOUS les joueurs)
@@ -987,7 +1036,8 @@ const TwoPlayersGamePage: React.FC = () => {
       console.log('⚠️ Quick discard penalty applied:', data);
       console.log('  → My userId:', myPlayerInfoRef.current?.userId);
       console.log('  → Penalty playerId:', data.playerId);
-      const { playerId, playerName, cardIndex } = data;
+      const { playerId, playerName, cardIndex, totalCards } = data;
+      console.log('  → Total cards after penalty:', totalCards);
       
       // Afficher l'overlay de pénalité
       setIsInPenalty(true);
@@ -1006,20 +1056,96 @@ const TwoPlayersGamePage: React.FC = () => {
       console.log('  → Checking penalty target...');
       if (!isMe) {
         // C'est l'ADVERSAIRE qui a la pénalité
-        // L'adversaire est TOUJOURS affiché en haut (player1Cards) dans notre layout
-        console.log('  → 🎯 ADVERSAIRE has penalty - Adding 2 face-down cards to TOP (player1Cards)');
+        // Déterminer quelle liste de cartes mettre à jour en fonction de amIPlayer1
+        console.log('  → 🎯 ADVERSAIRE has penalty - Updating opponent cards');
         
-        setPlayer1Cards(prev => {
-          console.log('  → Inside setPlayer1Cards - Current length:', prev.length);
-          const newCards = [...prev];
-          newCards.push(
-            { id: `penalty-opp-${Date.now()}-1`, value: -1, isFlipped: false },
-            { id: `penalty-opp-${Date.now()}-2`, value: -1, isFlipped: false }
-          );
-          console.log('  → Inside setPlayer1Cards - New length:', newCards.length);
-          return newCards;
-        });
-        console.log('  → setPlayer1Cards called!');
+        if (amIPlayer1) {
+          // Je suis player1 (en haut), l'adversaire est player2 (en bas)
+          console.log('  → I am player1, updating player2Cards (opponent)');
+          setPlayer2Cards(prev => {
+            console.log('  → Inside setPlayer2Cards - Current length:', prev.length);
+            
+            // Créer un nouveau tableau avec le bon nombre de cartes
+            let newCards = [...prev];
+            
+            // S'assurer que le tableau a exactement le bon nombre de cartes
+            if (totalCards) {
+              console.log(`  → ❗ Checking card count: current=${newCards.length}, should be=${totalCards}`);
+              
+              // Si on a trop de cartes, on les supprime
+              if (newCards.length > totalCards) {
+                console.log(`  → ❗ Removing ${newCards.length - totalCards} excess cards`);
+                newCards = newCards.slice(0, totalCards);
+              }
+              
+              // Si on n'a pas assez de cartes, on en ajoute
+              if (newCards.length < totalCards) {
+                console.log(`  → ❗ Adding ${totalCards - newCards.length} missing cards`);
+                while (newCards.length < totalCards) {
+                  newCards.push({
+                    id: `penalty-opp-${Date.now()}-${Math.random()}`,
+                    value: -1,
+                    isFlipped: false
+                  });
+                }
+              }
+            } else {
+              // Si totalCards n'est pas défini, on ajoute simplement 2 cartes
+              console.log(`  → ❗ totalCards not defined, adding 2 cards`);
+              newCards.push(
+                { id: `penalty-opp-${Date.now()}-1`, value: -1, isFlipped: false },
+                { id: `penalty-opp-${Date.now()}-2`, value: -1, isFlipped: false }
+              );
+            }
+            
+            console.log('  → Inside setPlayer2Cards - New length:', newCards.length);
+            return newCards;
+          });
+          console.log('  → setPlayer2Cards called!');
+        } else {
+          // Je suis player2 (en bas), l'adversaire est player1 (en haut)
+          console.log('  → I am player2, updating player1Cards (opponent)');
+          setPlayer1Cards(prev => {
+            console.log('  → Inside setPlayer1Cards - Current length:', prev.length);
+            
+            // Créer un nouveau tableau avec le bon nombre de cartes
+            let newCards = [...prev];
+            
+            // S'assurer que le tableau a exactement le bon nombre de cartes
+            if (totalCards) {
+              console.log(`  → ❗ Checking card count: current=${newCards.length}, should be=${totalCards}`);
+              
+              // Si on a trop de cartes, on les supprime
+              if (newCards.length > totalCards) {
+                console.log(`  → ❗ Removing ${newCards.length - totalCards} excess cards`);
+                newCards = newCards.slice(0, totalCards);
+              }
+              
+              // Si on n'a pas assez de cartes, on en ajoute
+              if (newCards.length < totalCards) {
+                console.log(`  → ❗ Adding ${totalCards - newCards.length} missing cards`);
+                while (newCards.length < totalCards) {
+                  newCards.push({
+                    id: `penalty-opp-${Date.now()}-${Math.random()}`,
+                    value: -1,
+                    isFlipped: false
+                  });
+                }
+              }
+            } else {
+              // Si totalCards n'est pas défini, on ajoute simplement 2 cartes
+              console.log(`  → ❗ totalCards not defined, adding 2 cards`);
+              newCards.push(
+                { id: `penalty-opp-${Date.now()}-1`, value: -1, isFlipped: false },
+                { id: `penalty-opp-${Date.now()}-2`, value: -1, isFlipped: false }
+              );
+            }
+            
+            console.log('  → Inside setPlayer1Cards - New length:', newCards.length);
+            return newCards;
+          });
+          console.log('  → setPlayer1Cards called!');
+        }
       } else {
         // C'est MOI qui ai la pénalité
         // Mes vraies cartes seront ajoutées via handlePenaltyCardsReceived
