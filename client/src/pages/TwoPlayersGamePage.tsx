@@ -567,6 +567,12 @@ const TwoPlayersGamePage: React.FC = () => {
       // Le timer est maintenant géré par le serveur via game:timer_update
       // On ne démarre plus de timer local ici
       
+      // Réinitialiser l'état de la carte piochée pour permettre de piocher à nouveau
+      // quand le tour revient au joueur après que l'adversaire n'a rien fait
+      setDrawnCard(null);
+      setShowCardActions(false);
+      setSelectingCardToReplace(false);
+      
       console.log(`✅ Turn changed handled - gamePhase: ${newPhase}, isMyTurn: ${isMyTurn}`);
     };
 
