@@ -1490,6 +1490,60 @@ exports.joinTable = async (req, res, next) => {
   }
 };
 
+// Supprimer toutes les tables (admin uniquement)
+exports.deleteAllTables = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const userRole = req.user.role;
+    
+    // Vérifier que l'utilisateur est admin (en mode développement, on autorise tout le monde)
+    const isAdmin = userRole === 'admin' || process.env.NODE_ENV === 'development';
+    
+    if (!isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Seul un administrateur peut supprimer toutes les tables'
+      });
+    }
+
+    // Récupérer toutes les tables actives
+    const tables = await Game.find({ status: { $in: ['waiting', 'playing'] } });
+    
+    if (tables.length === 0) {
+      return res.json({
+        success: true,
+        message: 'Aucune table active à supprimer'
+      });
+    }
+
+    // Supprimer toutes les tables
+    const result = await Game.deleteMany({ status: { $in: ['waiting', 'playing'] } });
+    
+    res.json({
+      success: true,
+      message: `${result.deletedCount} tables supprimées avec succès`
+    });
+
+    // Notifier tous les clients
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        // Émettre un événement pour chaque table supprimée
+        tables.forEach(table => {
+          io.to(table.code).emit('table_deleted', { tableId: table._id });
+        });
+        // Émettre un événement global
+        io.emit('all_tables_deleted');
+      }
+    } catch (e) {
+      console.error('Erreur émission socket deleteAllTables:', e);
+    }
+  } catch (error) {
+    console.error('Erreur lors de la suppression de toutes les tables:', error);
+    next(error);
+  }
+};
+
 // Supprimer une table (hôte ou admin)
 exports.deleteTable = async (req, res, next) => {
   try {

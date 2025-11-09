@@ -113,6 +113,23 @@ const LobbyPage: React.FC = () => {
     }
   };
 
+  // Supprimer toutes les tables (admin)
+  const handleDeleteAllTables = async () => {
+    if (!confirm('ATTENTION: Êtes-vous sûr de vouloir supprimer TOUTES les tables ? Cette action est irréversible.')) return;
+    try {
+      const response = await api.delete('/game/tables');
+      if (response.data?.success) {
+        qc.invalidateQueries({ queryKey: ['tables', 'waiting,playing'] });
+        // Afficher un message de succès temporaire
+        setError(null);
+        const successMsg = response.data.message || 'Toutes les tables ont été supprimées';
+        alert(successMsg);
+      }
+    } catch (e: any) {
+      setError(e.error || e.message || 'Erreur lors de la suppression de toutes les tables');
+    }
+  };
+
   // Vérifier si l'utilisateur est dans une table
   const isUserInTable = (table: TableItem) => {
     return table.players.some(p => p._id === user?._id);
@@ -196,7 +213,16 @@ const LobbyPage: React.FC = () => {
 
           {/* Liste des tables */}
           <div className="mb-8">
-            <h2 className="text-2xl font-bold text-white mb-6">🎯 Tables Actives</h2>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-white">🎯 Tables Actives</h2>
+              <button
+                onClick={handleDeleteAllTables}
+                className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-lg flex items-center gap-2 transition-all duration-300 hover:scale-105"
+                title="Supprimer toutes les tables actives"
+              >
+                <span>🗑️</span> Tout supprimer
+              </button>
+            </div>
             {(isTablesLoading || isTablesFetching) && <div className="text-gray-300">Chargement des tables...</div>}
             {tablesError && <div className="text-red-300">Erreur de chargement des tables: {tablesError.message}</div>}
 

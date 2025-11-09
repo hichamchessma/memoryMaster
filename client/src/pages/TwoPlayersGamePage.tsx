@@ -221,6 +221,7 @@ const TwoPlayersGamePage: React.FC = () => {
   const [memorizedCardIndexes, setMemorizedCardIndexes] = React.useState<number[]>([]);
   // Zone à laisser visible pendant la pénalité
   const [penaltyPlayer, setPenaltyPlayer] = React.useState<'player1' | 'player2' | null>(null);
+  const [faultyCardIndex, setFaultyCardIndex] = React.useState<number | null>(null);
   // Animation sifflet arbitre juste avant l'assombrissement
   const [penaltyCue, setPenaltyCue] = React.useState(false);
   // Contrôle spécifique de l'overlay sombre (décorrélé du blocage logique isInPenalty)
@@ -1033,20 +1034,22 @@ const TwoPlayersGamePage: React.FC = () => {
     
     // Écouter la pénalité de défausse rapide (pour TOUS les joueurs)
     const handleQuickDiscardPenaltyApplied = async (data: any) => {
-      console.log('⚠️ Quick discard penalty applied:', data);
-      console.log('  → My userId:', myPlayerInfoRef.current?.userId);
-      console.log('  → Penalty playerId:', data.playerId);
-      const { playerId, playerName, cardIndex, totalCards } = data;
-      console.log('  → Total cards after penalty:', totalCards);
+      console.log('📥 Quick discard penalty applied:', data);
+      const { playerId, playerName, cardIndex, totalCards, penaltyCards } = data;
+      console.log(`  → Penalty player: ${playerId} (${playerName})`);
+      console.log(`  → Card index: ${cardIndex}`);
+      console.log(`  → Total cards after penalty: ${totalCards}`);
+      console.log(`  → Penalty cards: ${penaltyCards ? penaltyCards.join(', ') : 'not provided'}`);
       
       // Afficher l'overlay de pénalité
       setIsInPenalty(true);
-      setPenaltyCue(true);
-      setShowPenaltyDim(true);
+      setFaultyCardIndex(cardIndex);
       
-      // Déterminer quel joueur a la pénalité
-      const isMe = playerId === myPlayerInfoRef.current?.userId;
-      console.log('  → Is it me?', isMe);
+      // Déterminer si c'est moi qui ai la pénalité
+      const isMe = playerId === tableData?.currentUserId;
+      console.log(`  → Is it me? ${isMe}`);
+      
+      // Déterminer quel joueur a la pénalité (pour l'affichage visuel)
       const penaltyPlayerKey = isMe 
         ? (amIPlayer1 ? 'player1' : 'player2')
         : (amIPlayer1 ? 'player2' : 'player1');
@@ -1057,7 +1060,7 @@ const TwoPlayersGamePage: React.FC = () => {
       if (!isMe) {
         // C'est l'ADVERSAIRE qui a la pénalité
         // Déterminer quelle liste de cartes mettre à jour en fonction de amIPlayer1
-        console.log('  → 🎯 ADVERSAIRE has penalty - Updating opponent cards');
+        console.log('  → 🏹 ADVERSAIRE has penalty - Updating opponent cards');
         
         if (amIPlayer1) {
           // Je suis player1 (en haut), l'adversaire est player2 (en bas)
@@ -1073,14 +1076,24 @@ const TwoPlayersGamePage: React.FC = () => {
               console.log(`  → ❗ Checking card count: current=${newCards.length}, should be=${totalCards}`);
               
               // Si on a trop de cartes, on les supprime
-              if (newCards.length > totalCards) {
-                console.log(`  → ❗ Removing ${newCards.length - totalCards} excess cards`);
-                newCards = newCards.slice(0, totalCards);
+              if (newCards.length > totalCards - (penaltyCards?.length || 2)) {
+                console.log(`  → ❗ Removing ${newCards.length - (totalCards - (penaltyCards?.length || 2))} excess cards`);
+                newCards = newCards.slice(0, totalCards - (penaltyCards?.length || 2));
               }
               
-              // Si on n'a pas assez de cartes, on en ajoute
-              if (newCards.length < totalCards) {
-                console.log(`  → ❗ Adding ${totalCards - newCards.length} missing cards`);
+              // Ajouter les cartes de pénalité avec leurs vraies valeurs
+              if (penaltyCards && penaltyCards.length > 0) {
+                console.log(`  → ❗ Adding ${penaltyCards.length} penalty cards with real values: ${penaltyCards.join(', ')}`);
+                penaltyCards.forEach((cardValue: number, idx: number) => {
+                  newCards.push({
+                    id: `penalty-opp-${Date.now()}-${idx}-${Math.random()}`,
+                    value: cardValue,
+                    isFlipped: false
+                  });
+                });
+              } else {
+                // Fallback si penaltyCards n'est pas défini
+                console.log(`  → ❗ penaltyCards not provided, adding 2 generic cards`);
                 while (newCards.length < totalCards) {
                   newCards.push({
                     id: `penalty-opp-${Date.now()}-${Math.random()}`,
@@ -1092,10 +1105,20 @@ const TwoPlayersGamePage: React.FC = () => {
             } else {
               // Si totalCards n'est pas défini, on ajoute simplement 2 cartes
               console.log(`  → ❗ totalCards not defined, adding 2 cards`);
-              newCards.push(
-                { id: `penalty-opp-${Date.now()}-1`, value: -1, isFlipped: false },
-                { id: `penalty-opp-${Date.now()}-2`, value: -1, isFlipped: false }
-              );
+              if (penaltyCards && penaltyCards.length > 0) {
+                penaltyCards.forEach((cardValue: number, idx: number) => {
+                  newCards.push({
+                    id: `penalty-opp-${Date.now()}-${idx}`,
+                    value: cardValue,
+                    isFlipped: false
+                  });
+                });
+              } else {
+                newCards.push(
+                  { id: `penalty-opp-${Date.now()}-1`, value: -1, isFlipped: false },
+                  { id: `penalty-opp-${Date.now()}-2`, value: -1, isFlipped: false }
+                );
+              }
             }
             
             console.log('  → Inside setPlayer2Cards - New length:', newCards.length);
@@ -1116,14 +1139,24 @@ const TwoPlayersGamePage: React.FC = () => {
               console.log(`  → ❗ Checking card count: current=${newCards.length}, should be=${totalCards}`);
               
               // Si on a trop de cartes, on les supprime
-              if (newCards.length > totalCards) {
-                console.log(`  → ❗ Removing ${newCards.length - totalCards} excess cards`);
-                newCards = newCards.slice(0, totalCards);
+              if (newCards.length > totalCards - (penaltyCards?.length || 2)) {
+                console.log(`  → ❗ Removing ${newCards.length - (totalCards - (penaltyCards?.length || 2))} excess cards`);
+                newCards = newCards.slice(0, totalCards - (penaltyCards?.length || 2));
               }
               
-              // Si on n'a pas assez de cartes, on en ajoute
-              if (newCards.length < totalCards) {
-                console.log(`  → ❗ Adding ${totalCards - newCards.length} missing cards`);
+              // Ajouter les cartes de pénalité avec leurs vraies valeurs
+              if (penaltyCards && penaltyCards.length > 0) {
+                console.log(`  → ❗ Adding ${penaltyCards.length} penalty cards with real values: ${penaltyCards.join(', ')}`);
+                penaltyCards.forEach((cardValue: number, idx: number) => {
+                  newCards.push({
+                    id: `penalty-opp-${Date.now()}-${idx}-${Math.random()}`,
+                    value: cardValue,
+                    isFlipped: false
+                  });
+                });
+              } else {
+                // Fallback si penaltyCards n'est pas défini
+                console.log(`  → ❗ penaltyCards not provided, adding 2 generic cards`);
                 while (newCards.length < totalCards) {
                   newCards.push({
                     id: `penalty-opp-${Date.now()}-${Math.random()}`,
@@ -1135,10 +1168,20 @@ const TwoPlayersGamePage: React.FC = () => {
             } else {
               // Si totalCards n'est pas défini, on ajoute simplement 2 cartes
               console.log(`  → ❗ totalCards not defined, adding 2 cards`);
-              newCards.push(
-                { id: `penalty-opp-${Date.now()}-1`, value: -1, isFlipped: false },
-                { id: `penalty-opp-${Date.now()}-2`, value: -1, isFlipped: false }
-              );
+              if (penaltyCards && penaltyCards.length > 0) {
+                penaltyCards.forEach((cardValue: number, idx: number) => {
+                  newCards.push({
+                    id: `penalty-opp-${Date.now()}-${idx}`,
+                    value: cardValue,
+                    isFlipped: false
+                  });
+                });
+              } else {
+                newCards.push(
+                  { id: `penalty-opp-${Date.now()}-1`, value: -1, isFlipped: false },
+                  { id: `penalty-opp-${Date.now()}-2`, value: -1, isFlipped: false }
+                );
+              }
             }
             
             console.log('  → Inside setPlayer1Cards - New length:', newCards.length);

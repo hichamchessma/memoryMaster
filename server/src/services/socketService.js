@@ -1030,17 +1030,19 @@ exports.setupSocket = (io) => {
         
         console.log(`✅ Sent penalty cards to player ${userId} with totalCards: ${player.cards.length}`);
         
-        // Notifier TOUS les joueurs de la pénalité (sans révéler les cartes)
+        // Notifier TOUS les joueurs de la pénalité (en incluant les valeurs des cartes)
         console.log(`📢 Emitting game:quick_discard_penalty_applied to table_${tableId}`);
         console.log(`  → Penalty player: ${userId} (${player.user.firstName} ${player.user.lastName})`);
         console.log(`  → Card index: ${cardIndex}`);
         console.log(`  → Total cards after penalty: ${player.cards.length}`);
+        console.log(`  → Penalty cards: ${penaltyCard1.value}, ${penaltyCard2.value}`);
         io.to(`table_${tableId}`).emit('game:quick_discard_penalty_applied', {
           playerId: userId,
           playerName: `${player.user.firstName} ${player.user.lastName}`,
           cardIndex: cardIndex,
           penaltyCardCount: 2,
-          totalCards: player.cards.length // Ajouter le nombre total de cartes
+          totalCards: player.cards.length, // Ajouter le nombre total de cartes
+          penaltyCards: [penaltyCard1.value, penaltyCard2.value] // Ajouter les valeurs des cartes de pénalité
         });
         console.log(`✅ Event emitted to all players in table_${tableId}`);
         

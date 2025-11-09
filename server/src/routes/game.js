@@ -8,6 +8,7 @@ const {
   joinTable,
   leaveTable,
   deleteTable,
+  deleteAllTables,
   startTableGame,
   createGame,
   joinGame,
@@ -28,6 +29,7 @@ router.get('/tables/:tableId', protect, getTable);
 router.post('/tables/:tableId/join', protect, joinTable);
 router.post('/tables/:tableId/leave', protect, leaveTable);
 router.delete('/tables/:tableId', protect, deleteTable);
+router.delete('/tables', protect, deleteAllTables);
 router.post('/tables/:tableId/start', protect, startTableGame);
 
 // Anciennes routes pour compatibilité (avec codes)
