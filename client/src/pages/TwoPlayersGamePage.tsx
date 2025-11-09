@@ -241,6 +241,7 @@ const TwoPlayersGamePage: React.FC = () => {
   // Ref pour connaître en temps réel si une pénalité est en cours (utilisé dans les callbacks setInterval)
   const isInPenaltyRef = React.useRef(false);
   const drawnCardRef = React.useRef<{value: number, isFlipped: boolean} | null>(null);
+  const myPlayerInfoRef = React.useRef<{name: string; isReal: boolean; userId: string} | null>(null);
   // Références visuelles
   const discardRef = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
@@ -249,6 +250,9 @@ const TwoPlayersGamePage: React.FC = () => {
   React.useEffect(() => {
     drawnCardRef.current = drawnCard;
   }, [drawnCard]);
+  React.useEffect(() => {
+    myPlayerInfoRef.current = myPlayerInfo;
+  }, [myPlayerInfo]);
 
   // Handlers Scoreboard
   const openScoreboard = React.useCallback(() => setShowScoreboard(true), []);
@@ -778,7 +782,7 @@ const TwoPlayersGamePage: React.FC = () => {
       console.log('📥 Penalty cards received:', data);
       const { cards } = data;
       
-      // Ajouter les 2 cartes à ma main (en bas)
+      // Ajouter les 2 cartes à MA main (toujours en bas = player2Cards)
       setPlayer2Cards(prev => {
         const newCards = [...prev];
         cards.forEach((cardValue: number) => {
@@ -791,12 +795,14 @@ const TwoPlayersGamePage: React.FC = () => {
         return newCards;
       });
       
-      console.log(`✅ Added ${cards.length} penalty cards to hand`);
+      console.log(`✅ Added ${cards.length} penalty cards to my hand (bottom = player2Cards)`);
     };
     
     // Écouter la pénalité de défausse rapide (pour TOUS les joueurs)
     const handleQuickDiscardPenaltyApplied = async (data: any) => {
       console.log('⚠️ Quick discard penalty applied:', data);
+      console.log('  → My userId:', myPlayerInfoRef.current?.userId);
+      console.log('  → Penalty playerId:', data.playerId);
       const { playerId, playerName, cardIndex } = data;
       
       // Afficher l'overlay de pénalité
@@ -805,34 +811,54 @@ const TwoPlayersGamePage: React.FC = () => {
       setShowPenaltyDim(true);
       
       // Déterminer quel joueur a la pénalité
-      const isMe = playerId === myPlayerInfo?.userId;
+      const isMe = playerId === myPlayerInfoRef.current?.userId;
+      console.log('  → Is it me?', isMe);
       const penaltyPlayerKey = isMe 
         ? (amIPlayer1 ? 'player1' : 'player2')
         : (amIPlayer1 ? 'player2' : 'player1');
       setPenaltyPlayer(penaltyPlayerKey);
       
-      // Retourner la carte fautive face cachée après 500ms
+      // TOUS les joueurs doivent voir visuellement 2 cartes ajoutées
+      console.log('  → Checking penalty target...');
+      if (!isMe) {
+        // C'est l'ADVERSAIRE qui a la pénalité
+        // L'adversaire est TOUJOURS affiché en haut (player1Cards) dans notre layout
+        console.log('  → 🎯 ADVERSAIRE has penalty - Adding 2 face-down cards to TOP (player1Cards)');
+        
+        setPlayer1Cards(prev => {
+          console.log('  → Inside setPlayer1Cards - Current length:', prev.length);
+          const newCards = [...prev];
+          newCards.push(
+            { id: `penalty-opp-${Date.now()}-1`, value: -1, isFlipped: false },
+            { id: `penalty-opp-${Date.now()}-2`, value: -1, isFlipped: false }
+          );
+          console.log('  → Inside setPlayer1Cards - New length:', newCards.length);
+          return newCards;
+        });
+        console.log('  → setPlayer1Cards called!');
+      } else {
+        // C'est MOI qui ai la pénalité
+        // Mes vraies cartes seront ajoutées via handlePenaltyCardsReceived
+        console.log('  → 🎯 I have penalty - Waiting for real penalty cards via game:penalty_cards_received');
+      }
+      
+      // Attendre que les 2 cartes soient ajoutées (game:penalty_cards_received pour moi)
+      // Puis retourner la carte fautive face cachée après 1s
       setTimeout(() => {
         if (isMe) {
-          // C'est moi qui ai la pénalité
+          // C'est moi qui ai la pénalité - retourner la carte fautive face cachée
+          // Je suis TOUJOURS affiché en bas (player2Cards)
           setPlayer2Cards(prev => prev.map((card, idx) => 
             idx === cardIndex ? { ...card, isFlipped: false } : card
           ));
         } else {
-          // C'est l'adversaire - ajouter 2 cartes face cachée
-          setPlayer1Cards(prev => {
-            const newCards = prev.map((card, idx) => 
-              idx === cardIndex ? { ...card, isFlipped: false } : card
-            );
-            // Ajouter 2 cartes face cachée (value: -1 car on ne connaît pas la valeur)
-            newCards.push(
-              { id: `penalty-opp-${Date.now()}-1`, value: -1, isFlipped: false },
-              { id: `penalty-opp-${Date.now()}-2`, value: -1, isFlipped: false }
-            );
-            return newCards;
-          });
+          // C'est l'adversaire - retourner la carte fautive face cachée
+          // L'adversaire est TOUJOURS affiché en haut (player1Cards)
+          setPlayer1Cards(prev => prev.map((card, idx) => 
+            idx === cardIndex ? { ...card, isFlipped: false } : card
+          ));
         }
-      }, 500);
+      }, 1000);
       
       // Attendre 3 secondes puis retirer les overlays
       await new Promise(resolve => setTimeout(resolve, 3000));
@@ -908,6 +934,22 @@ const TwoPlayersGamePage: React.FC = () => {
       }
     };
     
+    // Retirer TOUS les anciens listeners pour éviter les doublons
+    // On utilise socket.off(event) sans handler pour retirer TOUS les listeners de cet événement
+    socket.off('player:ready_changed');
+    socket.off('game:auto_start');
+    socket.off('game:cards_dealt');
+    socket.off('game:player_quit');
+    socket.off('game:turn_changed');
+    socket.off('game:card_drawn');
+    socket.off('game:opponent_drew_card');
+    socket.off('game:card_discarded');
+    socket.off('game:card_replaced');
+    socket.off('game:penalty_cards_received');
+    socket.off('game:quick_discard_penalty_applied');
+    socket.off('game:timer_update');
+    
+    // Enregistrer les nouveaux listeners
     socket.on('player:ready_changed', handleReadyChanged);
     socket.on('game:auto_start', handleAutoStart);
     socket.on('game:cards_dealt', handleCardsDealt);
@@ -922,20 +964,21 @@ const TwoPlayersGamePage: React.FC = () => {
     socket.on('game:timer_update', handleTimerUpdate);
 
     return () => {
-      socket.off('playerJoined', handlePlayerJoined);
-      socket.off('table_updated', handlePlayerJoined);
-      socket.off('player:ready_changed', handleReadyChanged);
-      socket.off('game:auto_start', handleAutoStart);
-      socket.off('game:cards_dealt', handleCardsDealt);
-      socket.off('game:player_quit', handlePlayerQuit);
-      socket.off('game:turn_changed', handleTurnChanged);
-      socket.off('game:card_drawn', handleCardDrawn);
-      socket.off('game:opponent_drew_card', handleOpponentDrewCard);
-      socket.off('game:card_discarded', handleCardDiscarded);
-      socket.off('game:card_replaced', handleCardReplaced);
-      socket.off('game:penalty_cards_received', handlePenaltyCardsReceived);
-      socket.off('game:quick_discard_penalty_applied', handleQuickDiscardPenaltyApplied);
-      socket.off('game:timer_update', handleTimerUpdate);
+      // Retirer TOUS les listeners sans passer les handlers
+      socket.off('playerJoined');
+      socket.off('table_updated');
+      socket.off('player:ready_changed');
+      socket.off('game:auto_start');
+      socket.off('game:cards_dealt');
+      socket.off('game:player_quit');
+      socket.off('game:turn_changed');
+      socket.off('game:card_drawn');
+      socket.off('game:opponent_drew_card');
+      socket.off('game:card_discarded');
+      socket.off('game:card_replaced');
+      socket.off('game:penalty_cards_received');
+      socket.off('game:quick_discard_penalty_applied');
+      socket.off('game:timer_update');
       socket.emit('leaveTableRoom', tableData.tableId);
       hasJoinedRoom.current = false; // Réinitialiser pour permettre de rejoindre si on revient
     };
@@ -1303,10 +1346,12 @@ const TwoPlayersGamePage: React.FC = () => {
 
   // Actions Bombom (par joueur)
   const canDeclareBombomFor = React.useCallback((player: 'player1' | 'player2') => {
+    // Vérifier si c'est le tour du joueur correspondant
     const correctPhase = (gamePhase === 'player1_turn' && player === 'player1') || (gamePhase === 'player2_turn' && player === 'player2');
+    
     // Déclarable uniquement pendant le tour du joueur, sans action en cours, et si aucun Bombom actif
-    return correctPhase && currentPlayer === player && isPlayerTurn && !drawnCard && !selectingCardToReplace && !isInPenalty && bombomDeclaredBy === null;
-  }, [gamePhase, currentPlayer, isPlayerTurn, drawnCard, selectingCardToReplace, isInPenalty, bombomDeclaredBy]);
+    return correctPhase && isPlayerTurn && drawnCard === null && !selectingCardToReplace && !isInPenalty && bombomDeclaredBy === null;
+  }, [gamePhase, isPlayerTurn, drawnCard, selectingCardToReplace, isInPenalty, bombomDeclaredBy]);
 
   const handleDeclareBombomFor = React.useCallback((player: 'player1' | 'player2') => {
     if (!canDeclareBombomFor(player)) return;
@@ -2221,25 +2266,17 @@ const TwoPlayersGamePage: React.FC = () => {
     if (amIPlayer1 === null) return false;
     
     // Mapper la position visuelle au joueur réel
-    // Si je suis player1 (Ali):
-    //   - player1 (haut) = moi (Ali) → gamePhase devrait être 'player1_turn'
-    //   - player2 (bas) = adversaire (Hicham) → gamePhase devrait être 'player2_turn'
-    // Si je suis player2 (Hicham):
-    //   - player1 (haut) = adversaire (Ali) → gamePhase devrait être 'player1_turn'
-    //   - player2 (bas) = moi (Hicham) → gamePhase devrait être 'player2_turn'
+    // IMPORTANT: Dans l'interface, le joueur actuel est TOUJOURS en bas (player2)
+    // et l'adversaire est TOUJOURS en haut (player1), quelle que soit l'identité réelle
     
     if (amIPlayer1) {
-      // Je suis Ali (player1 réel), affiché en bas
-      // player1 (position haut) = adversaire Hicham (player2 réel)
-      // player2 (position bas) = moi Ali (player1 réel)
-      if (player === 'player1') return gamePhase === 'player2_turn'; // Haut = Hicham
-      if (player === 'player2') return gamePhase === 'player1_turn'; // Bas = Ali
+      // Je suis player1 (réel), affiché en bas (position player2)
+      if (player === 'player1') return gamePhase === 'player2_turn'; // Haut (visuel) = tour de player2 (réel)
+      if (player === 'player2') return gamePhase === 'player1_turn'; // Bas (visuel) = tour de player1 (réel)
     } else {
-      // Je suis Hicham (player2 réel), affiché en bas
-      // player1 (position haut) = adversaire Ali (player1 réel)
-      // player2 (position bas) = moi Hicham (player2 réel)
-      if (player === 'player1') return gamePhase === 'player1_turn'; // Haut = Ali
-      if (player === 'player2') return gamePhase === 'player2_turn'; // Bas = Hicham
+      // Je suis player2 (réel), affiché en bas (position player2)
+      if (player === 'player1') return gamePhase === 'player1_turn'; // Haut (visuel) = tour de player1 (réel)
+      if (player === 'player2') return gamePhase === 'player2_turn'; // Bas (visuel) = tour de player2 (réel)
     }
     
     return false;
@@ -2632,8 +2669,8 @@ const TwoPlayersGamePage: React.FC = () => {
             />
             <div className="mt-2 flex items-center justify-center gap-2">
               <button
-                className={`px-3 py-1 rounded-full text-sm font-bold border-2 ${canDeclareBombomFor('player1') ? 'bg-pink-600 hover:bg-pink-700 text-white border-white' : 'bg-pink-600/40 text-white/60 border-white/40 cursor-not-allowed'}`}
-                disabled={!canDeclareBombomFor('player1')}
+                className={`px-3 py-1 rounded-full text-sm font-bold border-2 ${(!amIPlayer1 && gamePhase === 'player1_turn' && isPlayerTurn) || (amIPlayer1 && gamePhase === 'player2_turn' && !isPlayerTurn) ? 'bg-pink-600 hover:bg-pink-700 text-white border-white' : 'bg-pink-600/40 text-white/60 border-white/40 cursor-not-allowed'}`}
+                disabled={!((!amIPlayer1 && gamePhase === 'player1_turn' && isPlayerTurn) || (amIPlayer1 && gamePhase === 'player2_turn' && !isPlayerTurn)) || drawnCard !== null || selectingCardToReplace || isInPenalty || bombomDeclaredBy !== null}
                 title="Déclarer Bombom (Joueur 1)"
                 onClick={() => handleDeclareBombomFor('player1')}
               >
@@ -2848,8 +2885,8 @@ const TwoPlayersGamePage: React.FC = () => {
             />
             <div className="mt-2 flex items-center justify-center gap-2">
               <button
-                className={`px-3 py-1 rounded-full text-sm font-bold border-2 ${canDeclareBombomFor('player2') ? 'bg-pink-600 hover:bg-pink-700 text-white border-white' : 'bg-pink-600/40 text-white/60 border-white/40 cursor-not-allowed'}`}
-                disabled={!canDeclareBombomFor('player2')}
+                className={`px-3 py-1 rounded-full text-sm font-bold border-2 ${(amIPlayer1 && gamePhase === 'player1_turn' && isPlayerTurn) || (!amIPlayer1 && gamePhase === 'player2_turn' && isPlayerTurn) ? 'bg-pink-600 hover:bg-pink-700 text-white border-white' : 'bg-pink-600/40 text-white/60 border-white/40 cursor-not-allowed'}`}
+                disabled={!((amIPlayer1 && gamePhase === 'player1_turn' && isPlayerTurn) || (!amIPlayer1 && gamePhase === 'player2_turn' && isPlayerTurn)) || drawnCard !== null || selectingCardToReplace || isInPenalty || bombomDeclaredBy !== null}
                 title="Déclarer Bombom (Joueur 2)"
                 onClick={() => handleDeclareBombomFor('player2')}
               >

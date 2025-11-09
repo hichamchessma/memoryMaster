@@ -1003,14 +1003,15 @@ exports.setupSocket = (io) => {
           return socket.emit('error', { message: 'Pas assez de cartes dans le deck' });
         }
         
-        // Piocher 2 cartes de pénalité
+        // IMPORTANT: La carte fautive RESTE dans la main (on ne la retire PAS)
+        // On ajoute seulement 2 nouvelles cartes de pénalité
         const penaltyCard1 = game.deck.pop();
         const penaltyCard2 = game.deck.pop();
         player.cards.push(penaltyCard1, penaltyCard2);
         
         await game.save();
         
-        console.log(`✅ Penalty applied: 2 cards added to player ${userId}`);
+        console.log(`✅ Penalty applied: 2 cards added to player ${userId} (faulty card remains)`);
         console.log(`  → Penalty cards: ${penaltyCard1.value}, ${penaltyCard2.value}`);
         
         // Envoyer les cartes au joueur pénalisé (seulement à lui)
@@ -1019,12 +1020,16 @@ exports.setupSocket = (io) => {
         });
         
         // Notifier TOUS les joueurs de la pénalité (sans révéler les cartes)
+        console.log(`📢 Emitting game:quick_discard_penalty_applied to table_${tableId}`);
+        console.log(`  → Penalty player: ${userId} (${player.user.firstName} ${player.user.lastName})`);
+        console.log(`  → Card index: ${cardIndex}`);
         io.to(`table_${tableId}`).emit('game:quick_discard_penalty_applied', {
           playerId: userId,
           playerName: `${player.user.firstName} ${player.user.lastName}`,
           cardIndex: cardIndex,
           penaltyCardCount: 2
         });
+        console.log(`✅ Event emitted to all players in table_${tableId}`);
         
       } catch (error) {
         console.error('Erreur quick discard penalty:', error);
