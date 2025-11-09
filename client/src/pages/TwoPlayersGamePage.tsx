@@ -730,6 +730,12 @@ const TwoPlayersGamePage: React.FC = () => {
             // Créer un nouveau tableau avec le bon nombre de cartes
             let updatedCards = [...prev];
             
+            // Si c'est une défausse rapide, on supprime la carte à l'index spécifié
+            if (quickDiscard && cardIndex < updatedCards.length) {
+              console.log(`❗ Removing opponent's card at index ${cardIndex} for quick discard`);
+              updatedCards = [...updatedCards.slice(0, cardIndex), ...updatedCards.slice(cardIndex + 1)];
+            }
+            
             // S'assurer que le tableau a exactement le bon nombre de cartes
             if (totalCards && updatedCards.length !== totalCards) {
               console.log(`❗ Fixing card count: current=${updatedCards.length}, should be=${totalCards}`);
@@ -747,15 +753,6 @@ const TwoPlayersGamePage: React.FC = () => {
                   isFlipped: false
                 });
               }
-            }
-            
-            // Si c'est une défausse rapide, on met à jour la carte à l'index spécifié
-            if (quickDiscard && cardIndex < updatedCards.length) {
-              updatedCards[cardIndex] = {
-                id: `discarded-${Date.now()}-${Math.random()}`,
-                value: -1,
-                isFlipped: false
-              };
             }
             
             console.log(`✅ Updated opponent's cards (player2, en bas). Now has ${updatedCards.length} cards`);
@@ -767,6 +764,12 @@ const TwoPlayersGamePage: React.FC = () => {
             // Créer un nouveau tableau avec le bon nombre de cartes
             let updatedCards = [...prev];
             
+            // Si c'est une défausse rapide, on supprime la carte à l'index spécifié
+            if (quickDiscard && cardIndex < updatedCards.length) {
+              console.log(`❗ Removing opponent's card at index ${cardIndex} for quick discard`);
+              updatedCards = [...updatedCards.slice(0, cardIndex), ...updatedCards.slice(cardIndex + 1)];
+            }
+            
             // S'assurer que le tableau a exactement le bon nombre de cartes
             if (totalCards && updatedCards.length !== totalCards) {
               console.log(`❗ Fixing card count: current=${updatedCards.length}, should be=${totalCards}`);
@@ -784,15 +787,6 @@ const TwoPlayersGamePage: React.FC = () => {
                   isFlipped: false
                 });
               }
-            }
-            
-            // Si c'est une défausse rapide, on met à jour la carte à l'index spécifié
-            if (quickDiscard && cardIndex < updatedCards.length) {
-              updatedCards[cardIndex] = {
-                id: `discarded-${Date.now()}-${Math.random()}`,
-                value: -1,
-                isFlipped: false
-              };
             }
             
             console.log(`✅ Updated opponent's cards (player1, en haut). Now has ${updatedCards.length} cards`);
@@ -806,6 +800,12 @@ const TwoPlayersGamePage: React.FC = () => {
           setPlayer1Cards(prev => {
             // Créer un nouveau tableau avec le bon nombre de cartes
             let updatedCards = [...prev];
+            
+            // Si c'est une défausse rapide, supprimer la carte à l'index spécifié
+            if (quickDiscard && cardIndex < updatedCards.length) {
+              console.log(`❗ Removing card at index ${cardIndex} for quick discard`);
+              updatedCards = [...updatedCards.slice(0, cardIndex), ...updatedCards.slice(cardIndex + 1)];
+            }
             
             // S'assurer que le tableau a exactement le bon nombre de cartes
             if (totalCards && updatedCards.length !== totalCards) {
@@ -834,6 +834,12 @@ const TwoPlayersGamePage: React.FC = () => {
           setPlayer2Cards(prev => {
             // Créer un nouveau tableau avec le bon nombre de cartes
             let updatedCards = [...prev];
+            
+            // Si c'est une défausse rapide, supprimer la carte à l'index spécifié
+            if (quickDiscard && cardIndex < updatedCards.length) {
+              console.log(`❗ Removing card at index ${cardIndex} for quick discard`);
+              updatedCards = [...updatedCards.slice(0, cardIndex), ...updatedCards.slice(cardIndex + 1)];
+            }
             
             // S'assurer que le tableau a exactement le bon nombre de cartes
             if (totalCards && updatedCards.length !== totalCards) {
