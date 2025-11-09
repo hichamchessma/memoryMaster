@@ -1036,10 +1036,62 @@ exports.setupSocket = (io) => {
         socket.emit('error', { message: 'Erreur lors de la pénalité' });
       }
     });
+
+    // Gérer la fin d'un tour
+    socket.on('game:end_turn', async (data) => {
+      const { tableId, userId, nextPlayerId } = data;
+      console.log(`🔄 End turn received - tableId: ${tableId}, userId: ${userId}, nextPlayerId: ${nextPlayerId}`);
+      
+      try {
+        const game = await Game.findById(tableId).populate('players.user');
+        if (!game) {
+          console.error('⚠️ Game not found for end turn:', tableId);
+          return socket.emit('error', { message: 'Table non trouvée' });
+        }
+        
+        const nextPlayerUser = game.players.find(p => p.user._id.toString() === nextPlayerId)?.user;
+        if (!nextPlayerUser) {
+          console.error('⚠️ Next player not found:', nextPlayerId);
+          return socket.emit('error', { message: 'Joueur non trouvé' });
+        }
+        
+        // Démarrer le timer de jeu pour le prochain joueur
+        startGameTimer(io, tableId, 5);
+        
+        // Émettre l'événement de changement de tour
+        io.to(`table_${tableId}`).emit('game:turn_changed', {
+          currentPlayerId: nextPlayerId,
+          currentPlayerName: `${nextPlayerUser.firstName} ${nextPlayerUser.lastName}`
+        });
+      } catch (error) {
+        console.error('Erreur end turn:', error);
+        socket.emit('error', { message: 'Erreur lors de la fin du tour' });
+      }
+    });
+    
+    // Gérer le début d'un tour
+    socket.on('game:start_turn', async (data) => {
+      const { tableId, userId, currentPlayerId } = data;
+      console.log(`🎮 Start turn received - tableId: ${tableId}, userId: ${userId}, currentPlayerId: ${currentPlayerId}`);
+      
+      try {
+        const game = await Game.findById(tableId).populate('players.user');
+        if (!game) {
+          console.error('⚠️ Game not found for start turn:', tableId);
+          return socket.emit('error', { message: 'Table non trouvée' });
+        }
+        
+        // Démarrer le timer de jeu
+        startGameTimer(io, tableId, 5);
+      } catch (error) {
+        console.error('Erreur start turn:', error);
+        socket.emit('error', { message: 'Erreur lors du début du tour' });
+      }
+    });
   });
 };
 
-// Vérifier l'état d'un joueur (élimination, victoire, etc.)
+// Vérifier l'état d'un joueur (elimination, victoire, etc.)
 function checkPlayerStatus(game, player) {
   const score = player.cards.reduce((sum, card) => sum + card.points, 0);
   player.score = score;

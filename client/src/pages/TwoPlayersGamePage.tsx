@@ -1124,14 +1124,17 @@ const TwoPlayersGamePage: React.FC = () => {
     setCurrentPlayer(nextPlayer);
     setGamePhase(nextPlayer === 'player1' ? 'player1_turn' : 'player2_turn');
     
-    // Démarrer le timer pour le prochain joueur après un court délai
-    setTimeout(() => {
-      setTimeLeft(7); // Réduit à 7 secondes
-      if (startTurnTimerRef.current) {
-        startTurnTimerRef.current();
-      }
-    }, 500);
-  }, []);
+    // Informer le serveur du changement de tour
+    if (socket) {
+      socket.emit('game:end_turn', {
+        tableId: tableData?.tableId,
+        userId: tableData?.currentUserId,
+        nextPlayerId: nextPlayer === 'player1' ? tablePlayers[0]?._id : tablePlayers[1]?._id
+      });
+    }
+    
+    // Ne pas démarrer de timer local, le serveur va gérer cela
+  }, [socket, tableData, tablePlayers]);
   
   // Fonction pour démarrer le timer du tour
   const startTurnTimer = React.useCallback(() => {
@@ -1143,10 +1146,6 @@ const TwoPlayersGamePage: React.FC = () => {
     
     // Si Bombom a été déclaré précédemment par ce joueur, gérer ShowTime avant tout
     if (bombomDeclaredBy === currentPlayer) {
-      // Stopper tout timer en cours par sécurité
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
       // Si l'annulation n'a pas encore été utilisée, proposer d'annuler ou de lancer ShowTime
       const canCancel = !bombomCancelUsed[currentPlayer];
       if (canCancel) {
@@ -1163,44 +1162,17 @@ const TwoPlayersGamePage: React.FC = () => {
 
     // Activer le tour du joueur
     setIsPlayerTurn(true);
-    // Réinitialiser le temps à 7 secondes
-    setTimeLeft(7);
     
-    // Nettoyer l'ancien timer s'il existe
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
+    // Informer le serveur du début du tour (il gérera le timer)
+    if (socket) {
+      socket.emit('game:start_turn', {
+        tableId: tableData?.tableId,
+        userId: tableData?.currentUserId,
+        currentPlayerId: currentPlayer === 'player1' ? tablePlayers[0]?._id : tablePlayers[1]?._id
+      });
     }
     
-    // Créer une copie locale de currentPlayer pour la fermeture
-    const currentPlayerLocal = currentPlayer;
-    
-    // Démarrer le nouveau timer
-    timerRef.current = setInterval(() => {
-      setTimeLeft(prev => {
-        // Si une pénalité est en cours, on fige le timer
-        if (isInPenaltyRef.current) {
-          return prev;
-        }
-        if (prev <= 1) {
-          // Fin du tour, passer au joueur suivant
-          console.log('Fin du temps pour', currentPlayerLocal);
-          clearInterval(timerRef.current!);
-          
-          // Si une carte a été piochée mais aucune action n'a été effectuée, la défausser
-          if (drawnCard) {
-            setDrawnCard(null);
-            setShowCardActions(false);
-            setSelectingCardToReplace(false);
-          }
-          
-          // Gérer la fin du tour
-          handleTurnEnd(currentPlayerLocal);
-          
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+    // Ne pas créer de timer local, le serveur gère cela via game:timer_update
   }, [currentPlayer, handleTurnEnd, drawnCard, bombomDeclaredBy, bombomCancelUsed]);
 
   // Déclenche ShowTime: révèle toutes les cartes, calcule le gagnant (score le plus bas gagne), affiche et enregistre les scores
@@ -1853,8 +1825,15 @@ const TwoPlayersGamePage: React.FC = () => {
     // Si on est en train de sélectionner une carte à remplacer, ce mode a la priorité
     if (selectingCardToReplace) {
       // Vérifier si le joueur actuel est bien celui qui doit jouer
-      const isCurrentPlayer = (player === 'top' && currentPlayer === 'player1') || 
-                             (player === 'bottom' && currentPlayer === 'player2');
+      // Prendre en compte amIPlayer1 pour déterminer correctement le joueur actuel
+      let isCurrentPlayer;
+      if (amIPlayer1) {
+        // Je suis player1, mes cartes sont en bas (bottom)
+        isCurrentPlayer = (player === 'bottom' && currentPlayer === 'player1');
+      } else {
+        // Je suis player2, mes cartes sont en bas (bottom)
+        isCurrentPlayer = (player === 'bottom' && currentPlayer === 'player2');
+      }
       
       if (isCurrentPlayer && drawnCard) {
         // Récupérer les rectangles pour les animations
@@ -1912,8 +1891,23 @@ const TwoPlayersGamePage: React.FC = () => {
         setShowCardActions(false);
         setSelectingCardToReplace(false);
 
-        // Passer au tour suivant
-        handleTurnEnd(currentPlayer);
+        // Émettre l'événement de remplacement de carte au serveur
+        if (socket) {
+          socket.emit('game:replace_card', {
+            tableId: tableData?.tableId,
+            userId: tableData?.currentUserId,
+            cardIndex: index,
+            newCard: {
+              id: `drawn-${Date.now()}`,
+              value: drawnCard.value,
+              isFlipped: false,
+              isVisible: false,
+              position: index
+            }
+          });
+        }
+        
+        // Ne pas appeler handleTurnEnd ici, le serveur gérera le changement de tour
 
         // Après le re-render, réafficher le slot
         try {
@@ -2671,7 +2665,7 @@ const TwoPlayersGamePage: React.FC = () => {
               cardsDealt={cardsDealt} 
               cards={player1Cards}
               onCardClick={(index) => handleCardClick('top', index)}
-              highlight={(selectingCardToReplace && currentPlayer === 'player1') || isKingPowerActive || (isQueenPowerActive && currentPlayer === 'player2') || (isJackPowerActive && currentPlayer === 'player1')}
+              highlight={isKingPowerActive || (isQueenPowerActive && currentPlayer === 'player2') || (isJackPowerActive && currentPlayer === 'player1')}
             />
             <div className="mt-2 flex items-center justify-center gap-2">
               {/* N'afficher le bouton Bombom que pour le joueur dont c'est le tour */}
@@ -2890,7 +2884,7 @@ const TwoPlayersGamePage: React.FC = () => {
               cardsDealt={cardsDealt} 
               cards={player2Cards}
               onCardClick={(index) => handleCardClick('bottom', index)}
-              highlight={isMemorizationPhase || (selectingCardToReplace && currentPlayer === 'player2') || isKingPowerActive || (isQueenPowerActive && currentPlayer === 'player1') || (isJackPowerActive && currentPlayer === 'player2')}
+              highlight={isMemorizationPhase || (selectingCardToReplace) || isKingPowerActive || (isQueenPowerActive && currentPlayer === 'player1') || (isJackPowerActive && currentPlayer === 'player2')}
             />
             <div className="mt-2 flex items-center justify-center gap-2">
               {/* N'afficher le bouton Bombom que pour le joueur dont c'est le tour */}
