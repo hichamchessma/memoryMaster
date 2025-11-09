@@ -180,6 +180,32 @@ function clearAllTimers(tableId) {
 }
 
 /**
+ * Arrêter uniquement le timer de jeu d'une table
+ */
+function clearGameTimer(tableId) {
+  const timers = activeTimers.get(tableId);
+  if (timers && timers.gameTimer) {
+    clearInterval(timers.gameTimer);
+    timers.gameTimer = null;
+    console.log(`⏸️ Game timer paused for table ${tableId} due to power activation`);
+    activeTimers.set(tableId, timers);
+  }
+}
+
+/**
+ * Arrêter uniquement le timer de choix d'une table
+ */
+function clearChoiceTimer(tableId) {
+  const timers = activeTimers.get(tableId);
+  if (timers && timers.choiceTimer) {
+    clearInterval(timers.choiceTimer);
+    timers.choiceTimer = null;
+    console.log(`⏸️ Choice timer paused for table ${tableId} due to power activation`);
+    activeTimers.set(tableId, timers);
+  }
+}
+
+/**
  * Générer un deck de 52 cartes + 6 jokers
  * @returns {Array<number>} Tableau de valeurs de cartes (0-51 pour cartes normales, 104-115 pour jokers)
  */
@@ -1101,6 +1127,104 @@ exports.setupSocket = (io) => {
       } catch (error) {
         console.error('Erreur start turn:', error);
         socket.emit('error', { message: 'Erreur lors du début du tour' });
+      }
+    });
+    
+    // Gérer l'activation des pouvoirs des cartes figures (J, Q, K)
+    socket.on('game:power_activated', async (data) => {
+      const { tableId, userId, powerType } = data;
+      console.log(`👑 Power activated - tableId: ${tableId}, userId: ${userId}, powerType: ${powerType}`);
+      
+      try {
+        const game = await Game.findById(tableId).populate('players.user');
+        if (!game) {
+          console.error('⚠️ Game not found for power activation:', tableId);
+          return socket.emit('error', { message: 'Table non trouvée' });
+        }
+        
+        // Annuler le timer de jeu en cours pour éviter la désynchronisation
+        clearGameTimer(tableId);
+        clearChoiceTimer(tableId);
+        
+        // Sauvegarder l'état du pouvoir actif dans la table
+        const timers = activeTimers.get(tableId) || {};
+        timers.activePower = {
+          powerType,
+          playerId: userId
+        };
+        activeTimers.set(tableId, timers);
+        
+        // Notifier tous les joueurs que le pouvoir est activé et que le minuteur est en pause
+        io.to(`table_${tableId}`).emit('game:power_activated', {
+          playerId: userId,
+          powerType: powerType,
+          message: `Pouvoir de carte ${powerType === 'jack' ? 'Valet' : powerType === 'queen' ? 'Dame' : 'Roi'} activé`
+        });
+        
+        // Réinitialiser l'état du minuteur pour éviter l'affichage de 00:00
+        io.to(`table_${tableId}`).emit('game:timer_update', {
+          phase: 'power_active',
+          memoTimeLeft: 0,
+          gameTimeLeft: 30, // Valeur arbitraire pour montrer que le timer est en pause
+          choiceTimeLeft: 0
+        });
+      } catch (error) {
+        console.error('Erreur power activation:', error);
+        socket.emit('error', { message: 'Erreur lors de l\'activation du pouvoir' });
+      }
+    });
+    
+    // Gérer la fin de l'utilisation des pouvoirs des cartes figures (J, Q, K)
+    socket.on('game:power_completed', async (data) => {
+      const { tableId, userId, powerType } = data;
+      console.log(`👑 Power completed - tableId: ${tableId}, userId: ${userId}, powerType: ${powerType}`);
+      
+      try {
+        const game = await Game.findById(tableId).populate('players.user');
+        if (!game) {
+          console.error('⚠️ Game not found for power completion:', tableId);
+          return socket.emit('error', { message: 'Table non trouvée' });
+        }
+        
+        // Récupérer l'état du pouvoir actif
+        const timers = activeTimers.get(tableId) || {};
+        const activePower = timers.activePower;
+        
+        // Vérifier que c'est bien le même joueur qui termine le pouvoir
+        if (activePower && activePower.playerId === userId && activePower.powerType === powerType) {
+          // Effacer l'état du pouvoir actif
+          delete timers.activePower;
+          activeTimers.set(tableId, timers);
+          
+          // Notifier tous les joueurs que le pouvoir est terminé
+          io.to(`table_${tableId}`).emit('game:power_completed', {
+            playerId: userId,
+            powerType: powerType,
+            message: `Pouvoir de carte ${powerType === 'jack' ? 'Valet' : powerType === 'queen' ? 'Dame' : 'Roi'} terminé`
+          });
+          
+          // Passer au joueur suivant
+          const currentPlayerIndex = game.players.findIndex(p => p.user._id.toString() === userId);
+          const nextPlayerIndex = (currentPlayerIndex + 1) % game.players.length;
+          const nextPlayer = game.players[nextPlayerIndex];
+          const nextPlayerUser = nextPlayer.user;
+          
+          console.log(`🔄 Next turn after power completion: ${nextPlayerUser._id} (${nextPlayerUser.firstName} ${nextPlayerUser.lastName})`);
+          
+          // Redémarrer le timer de jeu (5 secondes)
+          startGameTimer(io, tableId, 5);
+          
+          // Émettre le changement de tour
+          io.to(`table_${tableId}`).emit('game:turn_changed', {
+            currentPlayerId: nextPlayerUser._id.toString(),
+            currentPlayerName: `${nextPlayerUser.firstName} ${nextPlayerUser.lastName}`
+          });
+        } else {
+          console.error(`⚠️ Power completion mismatch: active=${JSON.stringify(activePower)}, received=${userId}/${powerType}`);
+        }
+      } catch (error) {
+        console.error('Erreur power completion:', error);
+        socket.emit('error', { message: 'Erreur lors de la fin du pouvoir' });
       }
     });
   });

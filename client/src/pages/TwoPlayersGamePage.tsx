@@ -1229,6 +1229,62 @@ const TwoPlayersGamePage: React.FC = () => {
       console.log(`✅ Penalty animation completed for ${playerName}`);
     };
 
+    // Écouter l'activation des pouvoirs des cartes figures
+    const handlePowerActivated = (data: any) => {
+      console.log('👑 Power activated event received:', data);
+      const { playerId, powerType, message } = data;
+      
+      // Afficher un message pour indiquer que le pouvoir est activé
+      console.log(`  → ${message}`);
+      
+      // Si c'est un autre joueur qui active un pouvoir, mettre à jour l'état local
+      if (playerId !== tableData?.currentUserId) {
+        if (powerType === 'jack') {
+          setIsJackPowerActive(true);
+          setJackCue(true);
+          setTimeout(() => setJackCue(false), 900);
+        } else if (powerType === 'queen') {
+          setIsQueenPowerActive(true);
+          setQueenCue(true);
+          setTimeout(() => setQueenCue(false), 900);
+        } else if (powerType === 'king') {
+          setIsKingPowerActive(true);
+          setKingSelections([]);
+          setPowerCue(true);
+          setTimeout(() => setPowerCue(false), 900);
+        }
+      }
+      
+      // Le serveur va envoyer une mise à jour du minuteur avec phase='power_active'
+    };
+    
+    // Écouter la fin des pouvoirs des cartes figures
+    const handlePowerCompleted = (data: any) => {
+      console.log('👑 Power completed event received:', data);
+      const { playerId, powerType, message } = data;
+      
+      // Afficher un message pour indiquer que le pouvoir est terminé
+      console.log(`  → ${message}`);
+      
+      // Réinitialiser les états des pouvoirs, peu importe qui a terminé le pouvoir
+      if (powerType === 'jack') {
+        setIsJackPowerActive(false);
+      } else if (powerType === 'queen') {
+        setIsQueenPowerActive(false);
+      } else if (powerType === 'king') {
+        setIsKingPowerActive(false);
+        setKingSelections([]);
+      }
+      
+      // Si c'est un autre joueur qui a terminé son pouvoir, s'assurer que l'état local est cohérent
+      if (playerId !== tableData?.currentUserId) {
+        setDrawnCard(null);
+        setShowCardActions(false);
+      }
+      
+      // Le serveur va envoyer une mise à jour du minuteur avec phase='game'
+    };
+
     // Écouter les mises à jour des timers
     const handleTimerUpdate = (data: any) => {
       console.log('⏱️ Timer update:', data);
@@ -1290,6 +1346,10 @@ const TwoPlayersGamePage: React.FC = () => {
         } else if (choice === 0 && !drawnCardRef.current) {
           console.log('⚠️ Choice timer expired but no drawnCard!');
         }
+      } else if (phase === 'power_active') {
+        // Pendant l'activation d'un pouvoir, on affiche un minuteur fixe
+        setTimeLeft(30); // Valeur arbitraire pour montrer que le timer est en pause
+        console.log('👑 Power active phase - timer paused');
       }
     };
     
@@ -1320,6 +1380,8 @@ const TwoPlayersGamePage: React.FC = () => {
     socket.on('game:card_replaced', handleCardReplaced);
     socket.on('game:penalty_cards_received', handlePenaltyCardsReceived);
     socket.on('game:quick_discard_penalty_applied', handleQuickDiscardPenaltyApplied);
+    socket.on('game:power_activated', handlePowerActivated);
+    socket.on('game:power_completed', handlePowerCompleted);
     socket.on('game:timer_update', handleTimerUpdate);
 
     return () => {
@@ -2039,8 +2101,25 @@ const TwoPlayersGamePage: React.FC = () => {
         setShowCardActions(false);
         setIsKingPowerActive(false);
         setKingSelections([]);
-
-        handleTurnEnd(currentPlayer);
+        
+        // Notifier le serveur que le pouvoir est terminé
+        if (socket) {
+          socket.emit('game:power_completed', {
+            tableId: tableData?.tableId,
+            userId: tableData?.currentUserId,
+            powerType: 'king'
+          });
+          
+          // Défausser le Roi
+          if (drawnCard) {
+            socket.emit('game:discard_card', {
+              tableId: tableData?.tableId,
+              userId: tableData?.currentUserId,
+              cardIndex: -1, // -1 = carte piochée (pas encore dans la main)
+              card: drawnCard.value
+            });
+          }
+        }
       } catch (e) {
         // En cas d'erreur, reset du mode
         setIsKingPowerActive(false);
@@ -2108,7 +2187,25 @@ const TwoPlayersGamePage: React.FC = () => {
       setIsQueenPowerActive(false);
       setDrawnCard(null);
       setShowCardActions(false);
-      handleTurnEnd(currentPlayer);
+      
+      // Notifier le serveur que le pouvoir est terminé
+      if (socket) {
+        socket.emit('game:power_completed', {
+          tableId: tableData?.tableId,
+          userId: tableData?.currentUserId,
+          powerType: 'queen'
+        });
+        
+        // Défausser la Dame
+        if (drawnCard) {
+          socket.emit('game:discard_card', {
+            tableId: tableData?.tableId,
+            userId: tableData?.currentUserId,
+            cardIndex: -1, // -1 = carte piochée (pas encore dans la main)
+            card: drawnCard.value
+          });
+        }
+      }
       return;
     }
 
@@ -2171,7 +2268,25 @@ const TwoPlayersGamePage: React.FC = () => {
       setIsJackPowerActive(false);
       setDrawnCard(null);
       setShowCardActions(false);
-      handleTurnEnd(currentPlayer);
+      
+      // Notifier le serveur que le pouvoir est terminé
+      if (socket) {
+        socket.emit('game:power_completed', {
+          tableId: tableData?.tableId,
+          userId: tableData?.currentUserId,
+          powerType: 'jack'
+        });
+        
+        // Défausser le Valet
+        if (drawnCard) {
+          socket.emit('game:discard_card', {
+            tableId: tableData?.tableId,
+            userId: tableData?.currentUserId,
+            cardIndex: -1, // -1 = carte piochée (pas encore dans la main)
+            card: drawnCard.value
+          });
+        }
+      }
       return;
     }
 
@@ -3118,6 +3233,15 @@ const TwoPlayersGamePage: React.FC = () => {
                           setIsJackPowerActive(true);
                           setJackCue(true);
                           setTimeout(() => setJackCue(false), 900);
+                          
+                          // Notifier le serveur que le pouvoir est activé
+                          if (socket) {
+                            socket.emit('game:power_activated', {
+                              tableId: tableData?.tableId,
+                              userId: tableData?.currentUserId,
+                              powerType: 'jack'
+                            });
+                          }
                         }}
                         className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-sm font-semibold shadow"
                       >
@@ -3132,6 +3256,15 @@ const TwoPlayersGamePage: React.FC = () => {
                           setIsQueenPowerActive(true);
                           setQueenCue(true);
                           setTimeout(() => setQueenCue(false), 900);
+                          
+                          // Notifier le serveur que le pouvoir est activé
+                          if (socket) {
+                            socket.emit('game:power_activated', {
+                              tableId: tableData?.tableId,
+                              userId: tableData?.currentUserId,
+                              powerType: 'queen'
+                            });
+                          }
                         }}
                         className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded-lg text-sm font-semibold shadow"
                       >
@@ -3147,6 +3280,15 @@ const TwoPlayersGamePage: React.FC = () => {
                           setKingSelections([]);
                           setPowerCue(true);
                           setTimeout(() => setPowerCue(false), 900);
+                          
+                          // Notifier le serveur que le pouvoir est activé
+                          if (socket) {
+                            socket.emit('game:power_activated', {
+                              tableId: tableData?.tableId,
+                              userId: tableData?.currentUserId,
+                              powerType: 'king'
+                            });
+                          }
                         }}
                         className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-sm font-semibold shadow"
                       >
