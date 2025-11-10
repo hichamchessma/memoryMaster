@@ -195,6 +195,8 @@ const TwoPlayersGamePage: React.FC = () => {
   const [jackCue, setJackCue] = React.useState(false);
   // Variable d'état pour suivre si une carte a déjà été sélectionnée avec le pouvoir du Valet
   const [jackCardSelected, setJackCardSelected] = React.useState(false);
+  // Variable pour suivre si un pouvoir quelconque est actif
+  const [anyPowerActive, setAnyPowerActive] = React.useState(false);
   // Référence pour bloquer immédiatement les clics multiples
   const jackPowerUsedRef = React.useRef(false);
   const [deck, setDeck] = React.useState<number[]>([]);
@@ -1333,15 +1335,18 @@ const TwoPlayersGamePage: React.FC = () => {
         // Réinitialiser la référence et le blocage global pour permettre une nouvelle activation du pouvoir
         jackPowerUsedRef.current = false;
         setJackCardSelected(false);
+        setAnyPowerActive(false); // Réinitialiser la variable pour permettre l'affichage du menu
         console.log('  → Jack power reference and global block reset');
       } else if (powerType === 'queen') {
         setIsQueenPowerActive(false);
         // Réinitialiser le blocage global pour permettre une nouvelle activation du pouvoir
         setQueenCardSelected(false);
+        setAnyPowerActive(false); // Réinitialiser la variable pour permettre l'affichage du menu
         console.log('  → Queen power global block reset');
       } else if (powerType === 'king') {
         setIsKingPowerActive(false);
         setKingPowerActivated(false); // Réinitialiser la variable pour permettre une nouvelle activation
+        setAnyPowerActive(false); // Réinitialiser la variable pour permettre l'affichage du menu
         setKingSelections([]);
       }
       
@@ -3253,7 +3258,7 @@ const TwoPlayersGamePage: React.FC = () => {
               cardsDealt={cardsDealt} 
               cards={player1Cards}
               onCardClick={(index) => handleCardClick('top', index)}
-              highlight={isKingPowerActive && isPlayerTurn || (isQueenPowerActive && isPlayerTurn)}
+              highlight={(isKingPowerActive && isPlayerTurn) || (isQueenPowerActive && isPlayerTurn)}
             />
             <div className="mt-2 flex items-center justify-center gap-2">
               {/* N'afficher le bouton Bombom que pour le joueur dont c'est le tour */}
@@ -3320,7 +3325,7 @@ const TwoPlayersGamePage: React.FC = () => {
               <span className="mt-2 text-sm font-bold">Piocher</span>
               <div className="absolute bottom-2 text-xs text-gray-200">{deck.length} cartes</div>
               {/* Panneau de carte piochée (absolu sous le deck) */}
-              {drawnCard && showCardActions && (
+              {drawnCard && showCardActions && !anyPowerActive && (
                 <div
                   className="z-40 w-44 bg-black/45 backdrop-blur-md rounded-2xl px-4 py-3 shadow-2xl border border-white/20"
                   style={{
@@ -3346,6 +3351,7 @@ const TwoPlayersGamePage: React.FC = () => {
                           // Réinitialiser la référence pour permettre un nouveau clic
                           jackPowerUsedRef.current = false;
                           setIsJackPowerActive(true);
+                          setAnyPowerActive(true); // Marquer qu'un pouvoir est actif
                           setJackCue(true);
                           setTimeout(() => setJackCue(false), 900);
                           
@@ -3369,6 +3375,7 @@ const TwoPlayersGamePage: React.FC = () => {
                           // Activer le mode pouvoir de la Dame
                           setShowCardActions(false);
                           setIsQueenPowerActive(true);
+                          setAnyPowerActive(true); // Marquer qu'un pouvoir est actif
                           setQueenCue(true);
                           setTimeout(() => setQueenCue(false), 900);
                           
@@ -3393,6 +3400,7 @@ const TwoPlayersGamePage: React.FC = () => {
                           setShowCardActions(false);
                           setIsKingPowerActive(true);
                           setKingPowerActivated(true); // Marquer le pouvoir comme activé pour éviter la double activation
+                          setAnyPowerActive(true); // Marquer qu'un pouvoir est actif
                           setKingSelections([]);
                           setPowerCue(true);
                           setTimeout(() => setPowerCue(false), 900);
@@ -3508,7 +3516,7 @@ const TwoPlayersGamePage: React.FC = () => {
               cardsDealt={cardsDealt} 
               cards={player2Cards}
               onCardClick={(index) => handleCardClick('bottom', index)}
-              highlight={isMemorizationPhase || (selectingCardToReplace && isPlayerTurn) || (isKingPowerActive && isPlayerTurn) || (isJackPowerActive && isPlayerTurn)}
+              highlight={isMemorizationPhase || (selectingCardToReplace && isPlayerTurn) || (isKingPowerActive && isPlayerTurn) || (isJackPowerActive && isPlayerTurn) || false}
             />
             <div className="mt-2 flex items-center justify-center gap-2">
               {/* N'afficher le bouton Bombom que pour le joueur dont c'est le tour */}
