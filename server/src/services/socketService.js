@@ -1364,6 +1364,27 @@ exports.setupSocket = (io) => {
       }
     });
     
+    // Gérer spécifiquement l'échange de cartes avec le pouvoir du Roi
+    socket.on('game:king_swap_cards', async (data) => {
+      const { tableId, userId, card1, card2 } = data;
+      console.log(`👑 King swap cards - tableId: ${tableId}, userId: ${userId}`);
+      console.log(`  → Card 1: ${JSON.stringify(card1)}`);
+      console.log(`  → Card 2: ${JSON.stringify(card2)}`);
+      
+      try {
+        // Transmettre l'échange à tous les joueurs de la table
+        io.to(`table_${tableId}`).emit('game:king_swap_cards', {
+          playerId: userId,
+          card1: card1,
+          card2: card2
+        });
+        
+        console.log(`✅ King swap broadcast to all players in table ${tableId}`);
+      } catch (error) {
+        console.error(`❌ Error handling king swap:`, error);
+      }
+    });
+    
     // Gérer la fin de l'utilisation des pouvoirs des cartes figures (J, Q, K)
     socket.on('game:power_completed', async (data) => {
       const { tableId, userId, powerType } = data;

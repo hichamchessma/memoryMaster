@@ -182,6 +182,7 @@ const TwoPlayersGamePage: React.FC = () => {
   const [selectingCardToReplace, setSelectingCardToReplace] = React.useState(false);
   // Pouvoir du Roi: activer pour échanger deux cartes
   const [isKingPowerActive, setIsKingPowerActive] = React.useState(false);
+  const [kingPowerActivated, setKingPowerActivated] = React.useState(false); // Pour éviter la double activation
   const [kingSelections, setKingSelections] = React.useState<Array<{player: 'top'|'bottom', index: number}>>([]);
   const [powerCue, setPowerCue] = React.useState(false);
   // Pouvoir de la Dame: voir une carte adverse 3s
@@ -1243,8 +1244,10 @@ const TwoPlayersGamePage: React.FC = () => {
       // Afficher un message pour indiquer que le pouvoir est activé
       console.log(`  → ${message}`);
       
-      // Si c'est un autre joueur qui active un pouvoir, mettre à jour l'état local
+      // IMPORTANT: Ne mettre à jour l'état local QUE si c'est un autre joueur qui active un pouvoir
+      // Si c'est nous qui activons le pouvoir, nous avons déjà mis à jour l'état localement
       if (playerId !== tableData?.currentUserId) {
+        console.log(`  → Autre joueur (${playerId}) a activé le pouvoir ${powerType}`);
         if (powerType === 'jack') {
           setIsJackPowerActive(true);
           setJackCue(true);
@@ -1259,9 +1262,61 @@ const TwoPlayersGamePage: React.FC = () => {
           setPowerCue(true);
           setTimeout(() => setPowerCue(false), 900);
         }
+      } else {
+        console.log(`  → C'est moi qui ai activé le pouvoir ${powerType}, pas besoin de mettre à jour l'état local`);
       }
       
       // Le serveur va envoyer une mise à jour du minuteur avec phase='power_active'
+    };
+    
+    // Écouter l'échange de cartes avec le pouvoir du Roi
+    const handleKingSwapCards = (data: any) => {
+      console.log('👑 King swap cards event received:', data);
+      const { playerId, card1, card2 } = data;
+      
+      // Ne pas traiter notre propre événement (déjà appliqué localement)
+      if (playerId === tableData?.currentUserId) {
+        console.log('  → Ignoring my own king swap event');
+        return;
+      }
+      
+      console.log('  → Processing king swap from other player');
+      console.log('  → Card 1:', card1);
+      console.log('  → Card 2:', card2);
+      
+      // IMPORTANT: Inverser les positions car l'autre joueur voit le plateau à l'envers
+      // Si l'autre joueur dit 'top', c'est 'bottom' pour nous, et vice versa
+      const invertPosition = (pos: 'top' | 'bottom'): 'top' | 'bottom' => {
+        return pos === 'top' ? 'bottom' : 'top';
+      };
+      
+      // Fonction pour appliquer l'échange sur une carte
+      const applySwap = (p: 'top'|'bottom', idx: number, newVal: number) => {
+        // Inverser la position car l'autre joueur voit le plateau à l'envers
+        const adjustedPosition = invertPosition(p);
+        console.log(`  → Original position: ${p}, Adjusted position: ${adjustedPosition}`);
+        console.log(`  → Applying swap to ${adjustedPosition} card at index ${idx}, new value: ${newVal}`);
+        
+        if (adjustedPosition === 'top') {
+          setPlayer1Cards(prev => {
+            const next = [...prev];
+            next[idx] = { ...next[idx], value: newVal, isFlipped: false };
+            return next;
+          });
+        } else {
+          setPlayer2Cards(prev => {
+            const next = [...prev];
+            next[idx] = { ...next[idx], value: newVal, isFlipped: false };
+            return next;
+          });
+        }
+      };
+      
+      // Appliquer les échanges en inversant les positions
+      applySwap(card1.position, card1.index, card1.newValue);
+      applySwap(card2.position, card2.index, card2.newValue);
+      
+      console.log('  → King swap applied successfully on my side');
     };
     
     // Écouter la fin des pouvoirs des cartes figures
@@ -1286,6 +1341,7 @@ const TwoPlayersGamePage: React.FC = () => {
         console.log('  → Queen power global block reset');
       } else if (powerType === 'king') {
         setIsKingPowerActive(false);
+        setKingPowerActivated(false); // Réinitialiser la variable pour permettre une nouvelle activation
         setKingSelections([]);
       }
       
@@ -1395,6 +1451,9 @@ const TwoPlayersGamePage: React.FC = () => {
     socket.off('game:card_replaced');
     socket.off('game:penalty_cards_received');
     socket.off('game:quick_discard_penalty_applied');
+    socket.off('game:power_activated');
+    socket.off('game:power_completed');
+    socket.off('game:king_swap_cards');
     socket.off('game:timer_update');
     
     // Enregistrer les nouveaux listeners
@@ -1411,6 +1470,7 @@ const TwoPlayersGamePage: React.FC = () => {
     socket.on('game:quick_discard_penalty_applied', handleQuickDiscardPenaltyApplied);
     socket.on('game:power_activated', handlePowerActivated);
     socket.on('game:power_completed', handlePowerCompleted);
+    socket.on('game:king_swap_cards', handleKingSwapCards);
     socket.on('game:timer_update', handleTimerUpdate);
 
     return () => {
@@ -1428,6 +1488,9 @@ const TwoPlayersGamePage: React.FC = () => {
       socket.off('game:card_replaced');
       socket.off('game:penalty_cards_received');
       socket.off('game:quick_discard_penalty_applied');
+      socket.off('game:power_activated');
+      socket.off('game:power_completed');
+      socket.off('game:king_swap_cards');
       socket.off('game:timer_update');
       socket.emit('leaveTableRoom', tableData.tableId);
       hasJoinedRoom.current = false; // Réinitialiser pour permettre de rejoindre si on revient
@@ -2064,6 +2127,25 @@ const TwoPlayersGamePage: React.FC = () => {
         applySwap(selA.player, selA.index, bCard.value);
         applySwap(selB.player, selB.index, aCard.value);
 
+        // Notifier le serveur de l'échange pour synchroniser l'autre joueur
+        if (socket) {
+          console.log('👑 Roi: Notification au serveur de l\'échange de cartes');
+          
+          // Approche simplifiée : envoyer simplement les indices et valeurs des cartes
+          // Chaque client appliquera les changements selon sa propre perspective
+          socket.emit('game:king_swap_cards', {
+            tableId: tableData?.tableId,
+            userId: tableData?.currentUserId,
+            // Envoyer les informations des cartes échangées
+            card1: { index: selA.index, position: selA.player, oldValue: aCard.value, newValue: bCard.value },
+            card2: { index: selB.index, position: selB.player, oldValue: bCard.value, newValue: aCard.value }
+          });
+          
+          console.log('👑 Événement game:king_swap_cards émis avec les informations suivantes:');
+          console.log(`  → Carte 1: index=${selA.index}, position=${selA.player}, oldValue=${aCard.value}, newValue=${bCard.value}`);
+          console.log(`  → Carte 2: index=${selB.index}, position=${selB.player}, oldValue=${bCard.value}, newValue=${aCard.value}`);
+        }
+
         // Attendre un tick pour que le DOM reflète le swap avant la défausse du Roi
         await new Promise(requestAnimationFrame);
 
@@ -2087,6 +2169,7 @@ const TwoPlayersGamePage: React.FC = () => {
         setDrawnCard(null);
         setShowCardActions(false);
         setIsKingPowerActive(false);
+        setKingPowerActivated(false); // Réinitialiser pour permettre une nouvelle activation
         setKingSelections([]);
         
         // Notifier le serveur que le pouvoir est terminé
@@ -2110,7 +2193,9 @@ const TwoPlayersGamePage: React.FC = () => {
       } catch (e) {
         // En cas d'erreur, reset du mode
         setIsKingPowerActive(false);
+        setKingPowerActivated(false); // Réinitialiser pour permettre une nouvelle activation
         setKingSelections([]);
+        console.error('👑 Erreur lors de l\'application du pouvoir du Roi:', e);
       }
       return;
     }
@@ -3301,12 +3386,13 @@ const TwoPlayersGamePage: React.FC = () => {
                         Activer et défausser
                       </button>
                     )}
-                    {drawnCard && !isJoker(drawnCard.value) && getCardValue(drawnCard.value) === 12 && (
+                    {drawnCard && !isJoker(drawnCard.value) && getCardValue(drawnCard.value) === 12 && !isKingPowerActive && !kingPowerActivated && (
                       <button
                         onClick={async () => {
                           // Activer le mode pouvoir du Roi
                           setShowCardActions(false);
                           setIsKingPowerActive(true);
+                          setKingPowerActivated(true); // Marquer le pouvoir comme activé pour éviter la double activation
                           setKingSelections([]);
                           setPowerCue(true);
                           setTimeout(() => setPowerCue(false), 900);
