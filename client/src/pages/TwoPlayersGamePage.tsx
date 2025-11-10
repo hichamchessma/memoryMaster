@@ -190,6 +190,10 @@ const TwoPlayersGamePage: React.FC = () => {
   // Pouvoir du Valet: voir une de SES cartes 3s
   const [isJackPowerActive, setIsJackPowerActive] = React.useState(false);
   const [jackCue, setJackCue] = React.useState(false);
+  // Variable d'état pour suivre si une carte a déjà été sélectionnée avec le pouvoir du Valet
+  const [jackCardSelected, setJackCardSelected] = React.useState(false);
+  // Référence pour bloquer immédiatement les clics multiples
+  const jackPowerUsedRef = React.useRef(false);
   const [deck, setDeck] = React.useState<number[]>([]);
   // Test helper: force next draw
   const [forcedNextDraw, setForcedNextDraw] = React.useState<
@@ -1269,6 +1273,10 @@ const TwoPlayersGamePage: React.FC = () => {
       // Réinitialiser les états des pouvoirs, peu importe qui a terminé le pouvoir
       if (powerType === 'jack') {
         setIsJackPowerActive(false);
+        // Réinitialiser la référence et le blocage global pour permettre une nouvelle activation du pouvoir
+        jackPowerUsedRef.current = false;
+        setJackCardSelected(false);
+        console.log('  → Jack power reference and global block reset');
       } else if (powerType === 'queen') {
         setIsQueenPowerActive(false);
       } else if (powerType === 'king') {
@@ -1828,7 +1836,8 @@ const TwoPlayersGamePage: React.FC = () => {
   const handleCardClick = async (player: 'top' | 'bottom', index: number) => {
     // Vérifie si l'index est valide
     const handLength = (player === 'top' ? player1Cards.length : player2Cards.length);
-    if (index < 0 || index >= handLength || isInPenalty) return;
+    // Bloquer tous les clics si une carte a déjà été sélectionnée avec le pouvoir du Valet
+    if (index < 0 || index >= handLength || isInPenalty || jackCardSelected) return;
     
     const playerKey = player === 'top' ? 'player1' : 'player2';
     const playerCards = player === 'top' ? player1Cards : player2Cards;
@@ -2182,47 +2191,55 @@ const TwoPlayersGamePage: React.FC = () => {
       return;
     }
 
-    // Mode pouvoir du Valet: cliquer une carte PERSONNELLE pour la voir 3s
+    // Mode pouvoir du Valet: cliquer UNE SEULE carte PERSONNELLE pour la voir 3s
     if (isJackPowerActive) {
-      const isPlayer1Turn = currentPlayer === 'player1';
-      const allowedSide: 'top'|'bottom' = isPlayer1Turn ? 'top' : 'bottom';
-      if (player !== allowedSide) return;
-      const targetCards = player === 'top' ? player1Cards : player2Cards;
-      if (targetCards[index].value === -1) return;
-
+      // Vérifier si le pouvoir a déjà été utilisé (bloque immédiatement les clics multiples)
+      if (jackPowerUsedRef.current) {
+        console.log(' Valet: Pouvoir déjà utilisé, clic ignoré');
+        return;
+      }
+      
+      // Ne permettre de cliquer que sur nos propres cartes (bottom)
+      if (player !== 'bottom') return;
+      
+      // Vérifier que la carte existe et n'est pas vide
+      if (player2Cards[index].value === -1) return;
+      
+      // Marquer le pouvoir comme utilisé IMMEÉDIATEMENT pour bloquer tout autre clic
+      jackPowerUsedRef.current = true;
+      
+      // Activer le blocage global des clics
+      setJackCardSelected(true);
+      
+      // Désactiver l'état du pouvoir (pour l'UI)
+      setIsJackPowerActive(false);
+      
+      console.log(' Valet: Affichage de la carte sélectionnée pendant 3 secondes');
+      
       // Retourner face visible 3 secondes
-      if (player === 'top') {
-        setPlayer1Cards(prev => {
-          const next = [...prev];
-          next[index] = { ...next[index], isFlipped: true };
-          return next;
-        });
-      } else {
-        setPlayer2Cards(prev => {
-          const next = [...prev];
-          next[index] = { ...next[index], isFlipped: true };
-          return next;
-        });
-      }
-
+      setPlayer2Cards(prev => {
+        const next = [...prev];
+        next[index] = { ...next[index], isFlipped: true };
+        return next;
+      });
+      
+      // Attendre 3s puis rebasculer face cachée
       await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      console.log(' Valet: Masquage de la carte après 3 secondes');
+      
+      // Remettre face cachée
+      setPlayer2Cards(prev => {
+        const next = [...prev];
+        next[index] = { ...next[index], isFlipped: false };
+        return next;
+      });
 
-      if (player === 'top') {
-        setPlayer1Cards(prev => {
-          const next = [...prev];
-          next[index] = { ...next[index], isFlipped: false };
-          return next;
-        });
-      } else {
-        setPlayer2Cards(prev => {
-          const next = [...prev];
-          next[index] = { ...next[index], isFlipped: false };
-          return next;
-        });
-      }
-
-      // Défausser le Valet pioché avec animation deck -> défausse
+      console.log(' Valet: Défausse du Valet');
+      
+      // Défausser le Valet
       if (drawnCard) {
+        // Animation de défausse
         const deckRect = deckRef.current?.getBoundingClientRect();
         const discardRect = discardRef.current?.getBoundingClientRect();
         if (deckRect && discardRect) {
@@ -2235,31 +2252,35 @@ const TwoPlayersGamePage: React.FC = () => {
           setReplaceOutImage(null);
         }
         setDiscardPile(drawnCard.value);
-      }
-
-      // Reset états et fin de tour
-      setIsJackPowerActive(false);
-      setDrawnCard(null);
-      setShowCardActions(false);
-      
-      // Notifier le serveur que le pouvoir est terminé
-      if (socket) {
-        socket.emit('game:power_completed', {
-          tableId: tableData?.tableId,
-          userId: tableData?.currentUserId,
-          powerType: 'jack'
-        });
         
-        // Défausser le Valet
-        if (drawnCard) {
+        // Notifier le serveur
+        if (socket) {
+          console.log(' Valet: Notification au serveur');
+          socket.emit('game:power_completed', {
+            tableId: tableData?.tableId,
+            userId: tableData?.currentUserId,
+            powerType: 'jack'
+          });
+          
           socket.emit('game:discard_card', {
             tableId: tableData?.tableId,
             userId: tableData?.currentUserId,
-            cardIndex: -1, // -1 = carte piochée (pas encore dans la main)
+            cardIndex: -1,
             card: drawnCard.value
           });
         }
       }
+      
+      // Reset états
+      setDrawnCard(null);
+      setShowCardActions(false);
+      
+      // Réinitialiser la référence et le blocage global pour le prochain tour
+      setTimeout(() => {
+        jackPowerUsedRef.current = false;
+        setJackCardSelected(false);
+        console.log(' Valet: Réinitialisation des blocages pour le prochain tour');
+      }, 2000);
       return;
     }
 
@@ -3123,7 +3144,7 @@ const TwoPlayersGamePage: React.FC = () => {
               cardsDealt={cardsDealt} 
               cards={player1Cards}
               onCardClick={(index) => handleCardClick('top', index)}
-              highlight={isKingPowerActive && isPlayerTurn || (isQueenPowerActive && currentPlayer === 'player1' && isPlayerTurn) || (isJackPowerActive && currentPlayer === 'player1' && isPlayerTurn)}
+              highlight={isKingPowerActive && isPlayerTurn || (isQueenPowerActive && isPlayerTurn)}
             />
             <div className="mt-2 flex items-center justify-center gap-2">
               {/* N'afficher le bouton Bombom que pour le joueur dont c'est le tour */}
@@ -3213,6 +3234,8 @@ const TwoPlayersGamePage: React.FC = () => {
                         onClick={() => {
                           // Activer le mode pouvoir du Valet
                           setShowCardActions(false);
+                          // Réinitialiser la référence pour permettre un nouveau clic
+                          jackPowerUsedRef.current = false;
                           setIsJackPowerActive(true);
                           setJackCue(true);
                           setTimeout(() => setJackCue(false), 900);
@@ -3375,7 +3398,7 @@ const TwoPlayersGamePage: React.FC = () => {
               cardsDealt={cardsDealt} 
               cards={player2Cards}
               onCardClick={(index) => handleCardClick('bottom', index)}
-              highlight={isMemorizationPhase || (selectingCardToReplace && isPlayerTurn) || (isKingPowerActive && isPlayerTurn) || (isQueenPowerActive && currentPlayer === 'player2' && isPlayerTurn) || (isJackPowerActive && currentPlayer === 'player2' && isPlayerTurn)}
+              highlight={isMemorizationPhase || (selectingCardToReplace && isPlayerTurn) || (isKingPowerActive && isPlayerTurn) || (isQueenPowerActive && currentPlayer === 'player2' && isPlayerTurn) || (isJackPowerActive && isPlayerTurn)}
             />
             <div className="mt-2 flex items-center justify-center gap-2">
               {/* N'afficher le bouton Bombom que pour le joueur dont c'est le tour */}
