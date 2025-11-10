@@ -1282,7 +1282,11 @@ const TwoPlayersGamePage: React.FC = () => {
         setShowCardActions(false);
       }
       
+      // Forcer la mise à jour du timer pour éviter l'affichage de 30 secondes
       // Le serveur va envoyer une mise à jour du minuteur avec phase='game'
+      // mais on force une mise à jour immédiate pour éviter un délai
+      setTimerPhase('game');
+      setTimeLeft(5); // Valeur par défaut du timer de jeu
     };
 
     // Écouter les mises à jour des timers
@@ -3115,7 +3119,7 @@ const TwoPlayersGamePage: React.FC = () => {
               cardsDealt={cardsDealt} 
               cards={player1Cards}
               onCardClick={(index) => handleCardClick('top', index)}
-              highlight={isKingPowerActive || (isQueenPowerActive && currentPlayer === 'player2') || (isJackPowerActive && currentPlayer === 'player1')}
+              highlight={isKingPowerActive && isPlayerTurn || (isQueenPowerActive && currentPlayer === 'player1' && isPlayerTurn) || (isJackPowerActive && currentPlayer === 'player1' && isPlayerTurn)}
             />
             <div className="mt-2 flex items-center justify-center gap-2">
               {/* N'afficher le bouton Bombom que pour le joueur dont c'est le tour */}
@@ -3361,7 +3365,7 @@ const TwoPlayersGamePage: React.FC = () => {
               cardsDealt={cardsDealt} 
               cards={player2Cards}
               onCardClick={(index) => handleCardClick('bottom', index)}
-              highlight={isMemorizationPhase || (selectingCardToReplace) || isKingPowerActive || (isQueenPowerActive && currentPlayer === 'player1') || (isJackPowerActive && currentPlayer === 'player2')}
+              highlight={isMemorizationPhase || (selectingCardToReplace && isPlayerTurn) || (isKingPowerActive && isPlayerTurn) || (isQueenPowerActive && currentPlayer === 'player2' && isPlayerTurn) || (isJackPowerActive && currentPlayer === 'player2' && isPlayerTurn)}
             />
             <div className="mt-2 flex items-center justify-center gap-2">
               {/* N'afficher le bouton Bombom que pour le joueur dont c'est le tour */}
