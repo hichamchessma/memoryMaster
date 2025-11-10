@@ -3055,6 +3055,10 @@ const TwoPlayersGamePage: React.FC = () => {
                         setForcedNextDraw({ kind: 'rank', rank: mapRank(lbl) });
                       }
                       setShowForceMenu(false);
+                      
+                      // Ajouter un message de confirmation
+                      setQuickDiscardFlash(`Prochaine pioche forcée: ${lbl}`);
+                      setTimeout(() => setQuickDiscardFlash(null), 1500);
                     }}
                   >
                     {lbl}
@@ -3167,10 +3171,16 @@ const TwoPlayersGamePage: React.FC = () => {
                 // Désactiver temporairement pour éviter le spam
                 setShowCardActions(true); // Bloque les clics suivants
                 
+                // Envoyer l'information de carte forcée au serveur si elle existe
                 socket.emit('game:draw_card', {
                   tableId: tableData?.tableId,
                   userId: tableData?.currentUserId,
-                  fromDeck: true
+                  fromDeck: true,
+                  forcedCard: forcedNextDraw ? {
+                    kind: forcedNextDraw.kind,
+                    rank: forcedNextDraw.kind === 'rank' ? forcedNextDraw.rank : undefined,
+                    type: forcedNextDraw.kind === 'joker' ? forcedNextDraw.type : undefined
+                  } : undefined
                 });
               }
             }}

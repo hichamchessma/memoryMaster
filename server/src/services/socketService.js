@@ -770,7 +770,7 @@ exports.setupSocket = (io) => {
     });
 
     // Piocher une carte du deck
-    socket.on('game:draw_card', async ({ tableId, userId, fromDeck }) => {
+    socket.on('game:draw_card', async ({ tableId, userId, fromDeck, forcedCard }) => {
       try {
         console.log(`🎴 Player ${userId} drawing card from ${fromDeck ? 'deck' : 'discard'}`);
         
@@ -794,11 +794,45 @@ exports.setupSocket = (io) => {
         if (fromDeck) {
           // Piocher du deck
           if (!game.deck || game.deck.length === 0) {
-            console.error('❌ Deck is empty or undefined');
+            console.error('✖ Deck is empty or undefined');
             return socket.emit('error', { message: 'Le deck est vide' });
           }
-          drawnCard = game.deck.pop();
-          console.log(`  ✅ Drew card: ${drawnCard}, Remaining deck: ${game.deck.length}`);
+          
+          if (forcedCard) {
+            console.log(`  🎯 Forced card requested:`, forcedCard);
+            
+            // Trouver l'index de la carte forcée dans le deck
+            let forcedCardIndex = -1;
+            
+            if (forcedCard.kind === 'rank') {
+              // Chercher une carte avec le rang spécifié
+              forcedCardIndex = game.deck.findIndex(card => {
+                // Extraire le rang (0-12) de la valeur de la carte (0-51)
+                const rank = card.value % 13;
+                return rank === forcedCard.rank;
+              });
+            } else if (forcedCard.kind === 'joker') {
+              // Chercher un joker du type spécifié
+              const jokerBaseValue = forcedCard.type === 1 ? 104 : 110;
+              forcedCardIndex = game.deck.findIndex(card => {
+                return card.value >= jokerBaseValue && card.value < jokerBaseValue + 6;
+              });
+            }
+            
+            if (forcedCardIndex !== -1) {
+              // Retirer la carte forcée du deck
+              drawnCard = game.deck.splice(forcedCardIndex, 1)[0];
+              console.log(`  ✅ Drew forced card: ${drawnCard.value}, Remaining deck: ${game.deck.length}`);
+            } else {
+              console.log(`  ⚠️ Forced card not found in deck, drawing random card`);
+              drawnCard = game.deck.pop();
+              console.log(`  ✅ Drew random card: ${drawnCard.value}, Remaining deck: ${game.deck.length}`);
+            }
+          } else {
+            // Piocher normalement
+            drawnCard = game.deck.pop();
+            console.log(`  ✅ Drew card: ${drawnCard.value}, Remaining deck: ${game.deck.length}`);
+          }
         } else {
           // Piocher de la défausse
           if (!game.discardPile || game.discardPile.length === 0) {
