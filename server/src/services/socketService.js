@@ -1385,6 +1385,41 @@ exports.setupSocket = (io) => {
       }
     });
     
+    // Gérer la déclaration de Bombom
+    socket.on('game:bombom_declared', async (data) => {
+      const { tableId, userId, player } = data;
+      console.log(`🍬 Bombom declared - tableId: ${tableId}, userId: ${userId}, player: ${player}`);
+      
+      try {
+        const game = await Game.findById(tableId).populate('players.user');
+        if (!game) {
+          console.error('⚠️ Game not found for bombom declaration:', tableId);
+          return socket.emit('error', { message: 'Table non trouvée' });
+        }
+        
+        // Trouver l'index du joueur qui a déclaré Bombom
+        const playerIndex = game.players.findIndex(p => p.user._id.toString() === userId);
+        if (playerIndex === -1) {
+          console.error(`⚠️ Player ${userId} not found in game ${tableId}`);
+          return socket.emit('error', { message: 'Joueur non trouvé dans la partie' });
+        }
+        
+        // Mettre à jour le statut Bombom du joueur
+        game.players[playerIndex].hasBombom = true;
+        await game.save();
+        
+        // Notifier tous les joueurs de la table
+        io.to(`table_${tableId}`).emit('game:bombom_declared', {
+          playerId: userId,
+          player: player
+        });
+        
+        console.log(`✅ Bombom declaration broadcast to all players in table ${tableId}`);
+      } catch (error) {
+        console.error(`❌ Error handling bombom declaration:`, error);
+      }
+    });
+    
     // Gérer la fin de l'utilisation des pouvoirs des cartes figures (J, Q, K)
     socket.on('game:power_completed', async (data) => {
       const { tableId, userId, powerType } = data;

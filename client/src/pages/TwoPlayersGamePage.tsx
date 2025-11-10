@@ -518,6 +518,7 @@ const TwoPlayersGamePage: React.FC = () => {
     // Écouter les changements de tour
     const handleTurnChanged = (data: any) => {
       console.log('🔄 Turn changed:', data);
+      console.log('🍬 État Bombom lors du changement de tour:', { bombomDeclaredBy, currentPlayer });
       const { currentPlayerId, currentPlayerName } = data;
       
       // Utiliser tableData.currentUserId pour comparer
@@ -1321,6 +1322,28 @@ const TwoPlayersGamePage: React.FC = () => {
       console.log('  → King swap applied successfully on my side');
     };
     
+    // Écouter la déclaration de Bombom
+    const handleBombomDeclared = (data: any) => {
+      console.log('🍬 Bombom declared event received:', data);
+      const { playerId, player } = data;
+      
+      // Ne pas traiter notre propre événement (déjà appliqué localement)
+      if (playerId === tableData?.currentUserId) {
+        console.log('  → Ignoring my own bombom declaration event');
+        return;
+      }
+      
+      console.log('  → Processing bombom declaration from other player');
+      
+      // Mettre à jour l'état local pour refuser d'autres déclarations Bombom
+      setBombomDeclaredBy(player);
+      
+      // Afficher un message temporaire
+      const who = player === 'player1' ? 'Joueur 1' : 'Joueur 2';
+      setQuickDiscardFlash(`${who} a déclaré Bombom!`);
+      setTimeout(() => setQuickDiscardFlash(null), 1000);
+    };
+    
     // Écouter la fin des pouvoirs des cartes figures
     const handlePowerCompleted = (data: any) => {
       console.log('👑 Power completed event received:', data);
@@ -1477,6 +1500,7 @@ const TwoPlayersGamePage: React.FC = () => {
     socket.on('game:power_completed', handlePowerCompleted);
     socket.on('game:king_swap_cards', handleKingSwapCards);
     socket.on('game:timer_update', handleTimerUpdate);
+    socket.on('game:bombom_declared', handleBombomDeclared);
 
     return () => {
       // Retirer TOUS les listeners sans passer les handlers
@@ -1497,6 +1521,7 @@ const TwoPlayersGamePage: React.FC = () => {
       socket.off('game:power_completed');
       socket.off('game:king_swap_cards');
       socket.off('game:timer_update');
+      socket.off('game:bombom_declared');
       socket.emit('leaveTableRoom', tableData.tableId);
       hasJoinedRoom.current = false; // Réinitialiser pour permettre de rejoindre si on revient
     };
@@ -1650,14 +1675,16 @@ const TwoPlayersGamePage: React.FC = () => {
   
   // Fonction pour démarrer le timer du tour
   const startTurnTimer = React.useCallback(() => {
-    console.log('Démarrage du minuteur de tour pour', currentPlayer);
+    console.log('🕐 Démarrage du minuteur de tour pour', currentPlayer);
     
     // Mettre à jour la phase de jeu en fonction du joueur actuel
     const newPhase = currentPlayer === 'player1' ? 'player1_turn' : 'player2_turn';
     setGamePhase(newPhase);
     
     // Si Bombom a été déclaré précédemment par ce joueur, gérer ShowTime avant tout
+    console.log('🍬 Vérification Bombom:', { bombomDeclaredBy, currentPlayer });
     if (bombomDeclaredBy === currentPlayer) {
+      console.log('🍬 Bombom détecté pour le joueur actuel!');
       // Si l'annulation n'a pas encore été utilisée, proposer d'annuler ou de lancer ShowTime
       const canCancel = !bombomCancelUsed[currentPlayer];
       if (canCancel) {
@@ -1858,12 +1885,42 @@ const TwoPlayersGamePage: React.FC = () => {
   }, [gamePhase, isPlayerTurn, drawnCard, selectingCardToReplace, isInPenalty, bombomDeclaredBy]);
 
   const handleDeclareBombomFor = React.useCallback((player: 'player1' | 'player2') => {
-    if (!canDeclareBombomFor(player)) return;
+    console.log('🍬 Tentative de déclaration Bombom pour', player);
+    
+    // Vérifier si le joueur peut déclarer Bombom
+    if (!canDeclareBombomFor(player)) {
+      console.log('🚨 Impossible de déclarer Bombom:', { 
+        player, 
+        gamePhase, 
+        isPlayerTurn, 
+        drawnCard, 
+        selectingCardToReplace, 
+        isInPenalty, 
+        bombomDeclaredBy 
+      });
+      return;
+    }
+    
+    console.log('✅ Déclaration Bombom acceptée pour', player);
+    
+    // Mettre à jour l'état pour indiquer que Bombom a été déclaré
     setBombomDeclaredBy(player);
+    
+    // Notifier le serveur de la déclaration de Bombom
+    if (socket) {
+      console.log('💬 Envoi de l\'event game:bombom_declared au serveur');
+      socket.emit('game:bombom_declared', {
+        tableId: tableData?.tableId,
+        userId: tableData?.currentUserId,
+        player: player
+      });
+    }
+    
+    // Afficher un message temporaire
     const who = player === 'player1' ? 'Joueur 1' : 'Joueur 2';
     setQuickDiscardFlash(`${who} a déclaré Bombom!`);
     setTimeout(() => setQuickDiscardFlash(null), 1000);
-  }, [canDeclareBombomFor]);
+  }, [canDeclareBombomFor, socket, tableData]);
 
   const handleCancelBombom = React.useCallback(() => {
     // Annuler seulement lors du prompt au retour du tour, et seulement une fois par joueur
@@ -3031,6 +3088,7 @@ const TwoPlayersGamePage: React.FC = () => {
       )}
       {/* Prompt ShowTime suite à Bombom */}
       {showShowTimePrompt && bombomDeclaredBy === currentPlayer && (
+        // Console.log déjà ajouté ailleurs
         <div className="absolute inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/70" />
           <div className="relative z-10 px-6 py-5 rounded-2xl bg-yellow-400 text-gray-900 border-4 border-white shadow-2xl text-center w-[min(90%,420px)]">
@@ -3261,20 +3319,7 @@ const TwoPlayersGamePage: React.FC = () => {
               highlight={(isKingPowerActive && isPlayerTurn) || (isQueenPowerActive && isPlayerTurn)}
             />
             <div className="mt-2 flex items-center justify-center gap-2">
-              {/* N'afficher le bouton Bombom que pour le joueur dont c'est le tour */}
-              {(!amIPlayer1 && gamePhase === 'player1_turn' && isPlayerTurn) && (
-                <button
-                  className="px-3 py-1 rounded-full text-sm font-bold border-2 bg-pink-600 hover:bg-pink-700 text-white border-white"
-                  disabled={drawnCard !== null || selectingCardToReplace || isInPenalty || bombomDeclaredBy !== null}
-                  title="Déclarer Bombom (Joueur 1)"
-                  onClick={() => handleDeclareBombomFor('player1')}
-                >
-                  🍬 Bombom
-                </button>
-              )}
-              {bombomDeclaredBy === 'player1' && (
-                <span className="text-[11px] bg-yellow-300/90 text-black px-2 py-0.5 rounded-full border border-yellow-600">Bombom activé</span>
-              )}
+              {/* Le message Bombom activé ne doit pas apparaître en haut */}
             </div>
           </div>
         </div>
@@ -3519,18 +3564,16 @@ const TwoPlayersGamePage: React.FC = () => {
               highlight={isMemorizationPhase || (selectingCardToReplace && isPlayerTurn) || (isKingPowerActive && isPlayerTurn) || (isJackPowerActive && isPlayerTurn) || false}
             />
             <div className="mt-2 flex items-center justify-center gap-2">
-              {/* N'afficher le bouton Bombom que pour le joueur dont c'est le tour */}
-              {((amIPlayer1 && gamePhase === 'player1_turn' && isPlayerTurn) || (!amIPlayer1 && gamePhase === 'player2_turn' && isPlayerTurn)) && (
-                <button
-                  className="px-3 py-1 rounded-full text-sm font-bold border-2 bg-pink-600 hover:bg-pink-700 text-white border-white"
-                  disabled={drawnCard !== null || selectingCardToReplace || isInPenalty || bombomDeclaredBy !== null}
-                  title="Déclarer Bombom (Joueur 2)"
-                  onClick={() => handleDeclareBombomFor('player2')}
-                >
-                  🍬 Bombom
-                </button>
-              )}
-              {bombomDeclaredBy === 'player2' && (
+              {/* Afficher le bouton Bombom pour tous les joueurs, mais actif uniquement pour celui dont c'est le tour */}
+              <button
+                className={`px-3 py-1 rounded-full text-sm font-bold border-2 ${isPlayerTurn && bombomDeclaredBy === null ? 'bg-pink-600 hover:bg-pink-700 text-white' : 'bg-gray-400 text-gray-600 cursor-not-allowed'} border-white`}
+                disabled={!isPlayerTurn || drawnCard !== null || selectingCardToReplace || isInPenalty || bombomDeclaredBy !== null}
+                title={bombomDeclaredBy !== null ? 'Un Bombom est déjà activé' : isPlayerTurn ? 'Déclarer Bombom' : 'Vous ne pouvez pas déclarer Bombom pendant le tour de l\'adversaire'}
+                onClick={() => handleDeclareBombomFor(amIPlayer1 ? 'player1' : 'player2')}
+              >
+                🍬 Bombom
+              </button>
+              {bombomDeclaredBy !== null && (
                 <span className="text-[11px] bg-yellow-300/90 text-black px-2 py-0.5 rounded-full border border-yellow-600">Bombom activé</span>
               )}
             </div>
