@@ -187,6 +187,8 @@ const TwoPlayersGamePage: React.FC = () => {
   // Pouvoir de la Dame: voir une carte adverse 3s
   const [isQueenPowerActive, setIsQueenPowerActive] = React.useState(false);
   const [queenCue, setQueenCue] = React.useState(false);
+  // Variable d'état pour suivre si une carte a déjà été sélectionnée avec le pouvoir de la Dame
+  const [queenCardSelected, setQueenCardSelected] = React.useState(false);
   // Pouvoir du Valet: voir une de SES cartes 3s
   const [isJackPowerActive, setIsJackPowerActive] = React.useState(false);
   const [jackCue, setJackCue] = React.useState(false);
@@ -1279,6 +1281,9 @@ const TwoPlayersGamePage: React.FC = () => {
         console.log('  → Jack power reference and global block reset');
       } else if (powerType === 'queen') {
         setIsQueenPowerActive(false);
+        // Réinitialiser le blocage global pour permettre une nouvelle activation du pouvoir
+        setQueenCardSelected(false);
+        console.log('  → Queen power global block reset');
       } else if (powerType === 'king') {
         setIsKingPowerActive(false);
         setKingSelections([]);
@@ -1836,8 +1841,8 @@ const TwoPlayersGamePage: React.FC = () => {
   const handleCardClick = async (player: 'top' | 'bottom', index: number) => {
     // Vérifie si l'index est valide
     const handLength = (player === 'top' ? player1Cards.length : player2Cards.length);
-    // Bloquer tous les clics si une carte a déjà été sélectionnée avec le pouvoir du Valet
-    if (index < 0 || index >= handLength || isInPenalty || jackCardSelected) return;
+    // Bloquer tous les clics si une carte a déjà été sélectionnée avec le pouvoir du Valet ou de la Dame
+    if (index < 0 || index >= handLength || isInPenalty || jackCardSelected || queenCardSelected) return;
     
     const playerKey = player === 'top' ? 'player1' : 'player2';
     const playerCards = player === 'top' ? player1Cards : player2Cards;
@@ -2112,11 +2117,24 @@ const TwoPlayersGamePage: React.FC = () => {
     
     // Mode pouvoir de la Dame: cliquer une carte ADVERSE pour la voir 3s
     if (isQueenPowerActive) {
-      const isPlayer1Turn = currentPlayer === 'player1';
-      const allowedSide: 'top'|'bottom' = isPlayer1Turn ? 'bottom' : 'top';
-      if (player !== allowedSide) return;
+      // CORRECTION FINALE: La Dame permet de voir une carte ADVERSE
+      // Dans l'interface, le joueur est TOUJOURS en bas (bottom) et l'adversaire en haut (top)
+      // Donc avec le pouvoir de la Dame, on doit pouvoir cliquer sur les cartes du HAUT (top)
+      
+      // Avec le pouvoir de la Dame, on ne peut cliquer que sur les cartes adverses (top)
+      if (player !== 'top') {
+        console.log('💫 Dame: Vous ne pouvez voir que les cartes ADVERSES (en haut)');
+        return;
+      }
+      
+      console.log('💫 Dame: Tentative de voir une carte adverse sur le côté', player);
       const targetCards = player === 'top' ? player1Cards : player2Cards;
       if (targetCards[index].value === -1) return;
+      
+      // Activer le blocage global des clics
+      setQueenCardSelected(true);
+      
+      console.log('💫 Dame: Carte sélectionnée, blocage des autres clics');
 
       // Retourner face visible 3 secondes (sans changer la logique du tour)
       if (player === 'top') {
@@ -2169,6 +2187,12 @@ const TwoPlayersGamePage: React.FC = () => {
       setIsQueenPowerActive(false);
       setDrawnCard(null);
       setShowCardActions(false);
+      
+      // Réinitialiser le blocage global après un délai
+      setTimeout(() => {
+        setQueenCardSelected(false);
+        console.log('💫 Dame: Déblocage des clics après fin du pouvoir');
+      }, 2000);
       
       // Notifier le serveur que le pouvoir est terminé
       if (socket) {
@@ -3398,7 +3422,7 @@ const TwoPlayersGamePage: React.FC = () => {
               cardsDealt={cardsDealt} 
               cards={player2Cards}
               onCardClick={(index) => handleCardClick('bottom', index)}
-              highlight={isMemorizationPhase || (selectingCardToReplace && isPlayerTurn) || (isKingPowerActive && isPlayerTurn) || (isQueenPowerActive && currentPlayer === 'player2' && isPlayerTurn) || (isJackPowerActive && isPlayerTurn)}
+              highlight={isMemorizationPhase || (selectingCardToReplace && isPlayerTurn) || (isKingPowerActive && isPlayerTurn) || (isJackPowerActive && isPlayerTurn)}
             />
             <div className="mt-2 flex items-center justify-center gap-2">
               {/* N'afficher le bouton Bombom que pour le joueur dont c'est le tour */}
