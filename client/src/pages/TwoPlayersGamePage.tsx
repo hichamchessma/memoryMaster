@@ -1290,6 +1290,18 @@ const TwoPlayersGamePage: React.FC = () => {
       console.log('⏱️ Timer update:', data);
       const { phase, memoTimeLeft: memo, gameTimeLeft: game, choiceTimeLeft: choice } = data;
       
+      // IMPORTANT: Arrêter TOUS les timers locaux pour éviter les chevauchements
+      if (timerRef.current) {
+        console.log('⏸️ Stopping local game timer due to server timer update');
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      if (beforeRoundTimerRef.current) {
+        console.log('⏸️ Stopping local memorization timer due to server timer update');
+        clearInterval(beforeRoundTimerRef.current);
+        beforeRoundTimerRef.current = null;
+      }
+      
       setTimerPhase(phase);
       setMemoTimeLeft(memo);
       setGameTimeLeft(game);
@@ -1651,11 +1663,22 @@ const TwoPlayersGamePage: React.FC = () => {
     // Nettoyer l'ancien timer s'il existe
     if (beforeRoundTimerRef.current) {
       clearInterval(beforeRoundTimerRef.current);
+      beforeRoundTimerRef.current = null;
     }
     
     // Démarrer le compte à rebours de 5 secondes
     setTimeLeft(5);
     setMemorizationTimerStarted(true);
+    
+    // En mode multijoueur, le serveur gère les timers
+    if (tableData?.tableId && socket) {
+      console.log('💬 Mode multijoueur: le serveur gère les timers');
+      // Le serveur enverra des événements game:timer_update
+      return;
+    }
+    
+    // Mode local seulement: utiliser un timer local
+    console.log('💻 Mode local: utilisation d\'un timer local');
     
     // Mettre à jour le temps toutes les secondes
     beforeRoundTimerRef.current = setInterval(() => {
@@ -1666,7 +1689,10 @@ const TwoPlayersGamePage: React.FC = () => {
         }
         if (prev <= 1) {
           // Fin du temps, passer au jeu normal
-          clearInterval(beforeRoundTimerRef.current!);
+          if (beforeRoundTimerRef.current) {
+            clearInterval(beforeRoundTimerRef.current);
+            beforeRoundTimerRef.current = null;
+          }
           console.log('Fin de la phase de mémorisation, passage au jeu normal');
           
           // Retourner toutes les cartes
@@ -1693,7 +1719,7 @@ const TwoPlayersGamePage: React.FC = () => {
         return prev - 1;
       });
     }, 1000);
-  }, [setGamePhase, setCurrentPlayer, setIsPlayerTurn, setTimeLeft, setPlayer1Cards, setPlayer2Cards]);
+  }, [setGamePhase, setCurrentPlayer, setIsPlayerTurn, setTimeLeft, setPlayer1Cards, setPlayer2Cards, tableData, socket]);
   
   // Nettoyer les intervalles quand le composant est démonté
   React.useEffect(() => {
@@ -1758,98 +1784,41 @@ const TwoPlayersGamePage: React.FC = () => {
     // Annuler seulement lors du prompt au retour du tour, et seulement une fois par joueur
     if (!showShowTimePrompt || bombomDeclaredBy !== currentPlayer) return;
     if (bombomCancelUsed[currentPlayer]) return;
+    
+    console.log('🔄 Cancelling Bombom declaration');
+    
+    // Mettre à jour l'état local
     setBombomCancelUsed(prev => ({ ...prev, [currentPlayer]: true }));
     setBombomDeclaredBy(null);
     setShowShowTimePrompt(false);
+    
     // Reprendre le tour normalement
     setIsPlayerTurn(true);
-    setTimeLeft(7);
-    if (timerRef.current) clearInterval(timerRef.current);
-    // Redémarrer le timer
-    timerRef.current = setInterval(() => {
-      setTimeLeft(prev => {
-        if (isInPenaltyRef.current) return prev;
-        if (prev <= 1) {
-          clearInterval(timerRef.current!);
-          if (drawnCard) {
-            setDrawnCard(null);
-            setShowCardActions(false);
-            setSelectingCardToReplace(false);
-          }
-          handleTurnEnd(currentPlayer);
-          return 0;
-        }
-        return prev - 1;
+    
+    // IMPORTANT: Arrêter tous les timers locaux pour éviter les chevauchements
+    if (timerRef.current) {
+      console.log('⏸️ Stopping local game timer');
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    
+    // Demander au serveur de démarrer un nouveau tour
+    if (tableData?.tableId && tableData?.currentUserId && socket) {
+      console.log('💬 Emitting game:start_turn to server');
+      socket.emit('game:start_turn', {
+        tableId: tableData.tableId,
+        userId: tableData.currentUserId,
+        currentPlayerId: tableData.currentUserId
       });
-    }, 1000);
-  }, [showShowTimePrompt, bombomDeclaredBy, currentPlayer, bombomCancelUsed, drawnCard, handleTurnEnd]);
+    } else {
+      // Mode local seulement (fallback)
+      console.log('⚠️ No tableData or socket available, using local timer');
+      setTimeLeft(7);
+    }
+  }, [showShowTimePrompt, bombomDeclaredBy, currentPlayer, bombomCancelUsed, socket, tableData]);
 
   // utilitaires déplacés dans ../utils/cards
 
-  // Gère la pénalité de défausse rapide
-  const handleQuickDiscardPenalty = async (player: 'player1' | 'player2', cardIndex: number) => {
-    if (deck.length < 2) {
-      console.log('Pas assez de cartes dans le deck pour la pénalité');
-      return;
-    }
-
-    // Bloquer immédiatement, mémoriser le joueur fautif
-    setIsInPenalty(true);
-    setPenaltyPlayer(player);
-
-    // Lancer l'animation d'annonce et l'assombrissement en même temps
-    setPenaltyCue(true);
-    setShowPenaltyDim(true);
-    const penaltyVisualMs = 3000; // durée demandée
-    const visualWait = new Promise<void>(resolve => setTimeout(resolve, penaltyVisualMs));
-    const newDeck = [...deck];
-    const penaltyCards = [newDeck.pop()!, newDeck.pop()!];
-    setDeck(newDeck);
-
-    // Animer la distribution des cartes pénalité
-    for (let i = 0; i < 2; i++) {
-      // Ajouter la carte avec animation — toujours à droite (append) et face cachée
-      const newCard = {
-        id: `penalty-${Date.now()}-${i}`,
-        value: penaltyCards[i],
-        isFlipped: false
-      } as CardState;
-
-      if (player === 'player1') {
-        setPlayer1Cards(prev => {
-          const newCards = [...prev];
-          // Toujours ajouter à la fin pour être à droite, sans remplir les trous
-          newCards.push(newCard);
-          return newCards;
-        });
-      } else {
-        setPlayer2Cards(prev => {
-          const newCards = [...prev];
-          newCards.push(newCard);
-          return newCards;
-        });
-      }
-
-      // Petite pause entre les 2 cartes: 1 seconde
-      if (i === 0) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-    }
-
-    // Retourner face cachée la carte fautive (celle cliquée) après distribution
-    if (player === 'player1') {
-      setPlayer1Cards(prev => prev.map((card, idx) => idx === cardIndex ? { ...card, isFlipped: false } : card));
-    } else {
-      setPlayer2Cards(prev => prev.map((card, idx) => idx === cardIndex ? { ...card, isFlipped: false } : card));
-    }
-
-    // Fin de pénalité: attendre la fin des 3s d'assombrissement, puis retirer overlays et débloquer
-    await visualWait;
-    setPenaltyCue(false);
-    setShowPenaltyDim(false);
-    setIsInPenalty(false);
-    setPenaltyPlayer(null);
-  };
 
   // Gère le clic sur une carte
   const handleCardClick = async (player: 'top' | 'bottom', index: number) => {

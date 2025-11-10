@@ -11,26 +11,31 @@ const activeTimers = new Map();
 
 /**
  * Démarrer le timer de mémorisation (2 secondes)
+ * Ce timer n'existe que pendant la phase de mémorisation initiale
  */
 function startMemorizationTimer(io, tableId, duration = 2) {
   console.log(`🧠 Starting memorization timer for table ${tableId} (${duration}s)`);
   
-  // Ne PAS nettoyer tous les timers - juste s'assurer qu'il n'y a pas de timer de mémorisation en cours
-  const existingTimers = activeTimers.get(tableId);
-  if (existingTimers && existingTimers.memoTimer) {
-    clearInterval(existingTimers.memoTimer);
+  // IMPORTANT: Arrêter TOUS les timers existants avant d'en démarrer un nouveau
+  stopAllTimers(tableId);
+  
+  // Récupérer ou créer l'objet timers
+  const timers = activeTimers.get(tableId) || {};
+  
+  // Vérification de sécurité: s'assurer qu'aucun timer n'est actif
+  if (timers.memoTimer || timers.gameTimer || timers.choiceTimer) {
+    console.error(`⚠️ Attempting to start memo timer but other timers are still active for table ${tableId}!`);
+    // Arrêter tous les timers pour éviter les chevauchements
+    stopAllTimers(tableId);
   }
   
   let timeLeft = duration;
   
-  // Récupérer ou créer l'objet timers
-  const timers = activeTimers.get(tableId) || {
-    gameTimeLeft: 5,
-    choiceTimeLeft: 10
-  };
-  
+  // Définir clairement la phase actuelle
   timers.currentPhase = 'memorization';
   timers.memoTimeLeft = timeLeft;
+  timers.gameTimeLeft = 0; // Mettre à zéro les autres timers
+  timers.choiceTimeLeft = 0;
   
   activeTimers.set(tableId, timers);
   
@@ -38,8 +43,8 @@ function startMemorizationTimer(io, tableId, duration = 2) {
   io.to(`table_${tableId}`).emit('game:timer_update', {
     phase: 'memorization',
     memoTimeLeft: timeLeft,
-    gameTimeLeft: 5,
-    choiceTimeLeft: 10
+    gameTimeLeft: 0,
+    choiceTimeLeft: 0
   });
   
   const interval = setInterval(() => {
@@ -49,8 +54,8 @@ function startMemorizationTimer(io, tableId, duration = 2) {
     io.to(`table_${tableId}`).emit('game:timer_update', {
       phase: 'memorization',
       memoTimeLeft: timeLeft,
-      gameTimeLeft: 5,
-      choiceTimeLeft: 10
+      gameTimeLeft: 0,
+      choiceTimeLeft: 0
     });
     
     if (timeLeft <= 0) {
@@ -62,24 +67,42 @@ function startMemorizationTimer(io, tableId, duration = 2) {
   }, 1000);
   
   timers.memoTimer = interval;
+  console.log(`✅ Memorization timer started for table ${tableId} - Duration: ${duration}s`);
 }
 
 /**
  * Démarrer le timer de jeu (5 secondes par tour)
+ * Ce timer n'existe que pendant la phase où le joueur doit piocher une carte
  */
 function startGameTimer(io, tableId, duration = 5) {
   console.log(`🎮 Starting game timer for table ${tableId} (${duration}s)`);
   
+  // IMPORTANT: Arrêter TOUS les timers existants avant d'en démarrer un nouveau
+  stopAllTimers(tableId);
+  
+  // Récupérer ou créer l'objet timers
   const timers = activeTimers.get(tableId) || {};
   
-  // Arrêter le timer de jeu précédent s'il existe
-  if (timers.gameTimer) {
-    clearInterval(timers.gameTimer);
+  // Vérification de sécurité: s'assurer qu'aucun timer n'est actif
+  if (timers.memoTimer || timers.gameTimer || timers.choiceTimer) {
+    console.error(`⚠️ Attempting to start game timer but other timers are still active for table ${tableId}!`);
+    // Arrêter tous les timers pour éviter les chevauchements
+    stopAllTimers(tableId);
+  }
+  
+  // Vérifier si un pouvoir est actif
+  if (timers.activePower) {
+    console.log(`⚠️ Cannot start game timer while power is active: ${JSON.stringify(timers.activePower)}`);
+    return; // Ne pas démarrer le timer si un pouvoir est actif
   }
   
   let timeLeft = duration;
+  
+  // Définir clairement la phase actuelle
   timers.currentPhase = 'game';
   timers.gameTimeLeft = timeLeft;
+  timers.memoTimeLeft = 0; // Mettre à zéro les autres timers
+  timers.choiceTimeLeft = 0;
   
   activeTimers.set(tableId, timers);
   
@@ -88,7 +111,7 @@ function startGameTimer(io, tableId, duration = 5) {
     phase: 'game',
     memoTimeLeft: 0,
     gameTimeLeft: timeLeft,
-    choiceTimeLeft: 10
+    choiceTimeLeft: 0
   });
   
   const interval = setInterval(() => {
@@ -99,7 +122,7 @@ function startGameTimer(io, tableId, duration = 5) {
       phase: 'game',
       memoTimeLeft: 0,
       gameTimeLeft: timeLeft,
-      choiceTimeLeft: 10
+      choiceTimeLeft: 0
     });
     
     if (timeLeft <= 0) {
@@ -110,30 +133,42 @@ function startGameTimer(io, tableId, duration = 5) {
   }, 1000);
   
   timers.gameTimer = interval;
+  console.log(`✅ Game timer started for table ${tableId} - Duration: ${duration}s`);
 }
 
 /**
  * Démarrer le timer de choix (10 secondes pour choisir quoi faire avec la carte piochée)
+ * Ce timer n'existe que pendant la phase où le joueur a pioché et doit prendre une décision
  */
 function startChoiceTimer(io, tableId, duration = 10) {
   console.log(`⏱️ Starting choice timer for table ${tableId} (${duration}s)`);
   
+  // IMPORTANT: Arrêter TOUS les timers existants avant d'en démarrer un nouveau
+  stopAllTimers(tableId);
+  
+  // Récupérer ou créer l'objet timers
   const timers = activeTimers.get(tableId) || {};
   
-  // Arrêter le timer de jeu
-  if (timers.gameTimer) {
-    clearInterval(timers.gameTimer);
-    timers.gameTimer = null;
+  // Vérification de sécurité: s'assurer qu'aucun timer n'est actif
+  if (timers.memoTimer || timers.gameTimer || timers.choiceTimer) {
+    console.error(`⚠️ Attempting to start choice timer but other timers are still active for table ${tableId}!`);
+    // Arrêter tous les timers pour éviter les chevauchements
+    stopAllTimers(tableId);
   }
   
-  // Arrêter le timer de choix précédent s'il existe
-  if (timers.choiceTimer) {
-    clearInterval(timers.choiceTimer);
+  // Vérifier si un pouvoir est actif
+  if (timers.activePower) {
+    console.log(`⚠️ Cannot start choice timer while power is active: ${JSON.stringify(timers.activePower)}`);
+    return; // Ne pas démarrer le timer si un pouvoir est actif
   }
   
   let timeLeft = duration;
+  
+  // Définir clairement la phase actuelle
   timers.currentPhase = 'choice';
   timers.choiceTimeLeft = timeLeft;
+  timers.memoTimeLeft = 0; // Mettre à zéro les autres timers
+  timers.gameTimeLeft = 0;
   
   activeTimers.set(tableId, timers);
   
@@ -164,10 +199,12 @@ function startChoiceTimer(io, tableId, duration = 10) {
   }, 1000);
   
   timers.choiceTimer = interval;
+  console.log(`✅ Choice timer started for table ${tableId} - Duration: ${duration}s`);
 }
 
 /**
- * Arrêter tous les timers d'une table
+ * Arrêter TOUS les timers d'une table et supprimer l'entrée
+ * À utiliser uniquement quand la table est supprimée
  */
 function clearAllTimers(tableId) {
   const timers = activeTimers.get(tableId);
@@ -176,31 +213,99 @@ function clearAllTimers(tableId) {
     if (timers.gameTimer) clearInterval(timers.gameTimer);
     if (timers.choiceTimer) clearInterval(timers.choiceTimer);
     activeTimers.delete(tableId);
+    console.log(`🗑️ All timers cleared and removed for table ${tableId}`);
+  }
+}
+
+/**
+ * Arrêter TOUS les timers d'une table mais conserver l'entrée
+ * À utiliser avant de démarrer un nouveau timer
+ */
+function stopAllTimers(tableId) {
+  const timers = activeTimers.get(tableId);
+  if (timers) {
+    // Arrêter tous les timers
+    let timersCount = 0;
+    
+    if (timers.memoTimer) {
+      clearInterval(timers.memoTimer);
+      timers.memoTimer = null;
+      timersCount++;
+      console.log(`⏸️ Memo timer stopped for table ${tableId}`);
+    }
+    
+    if (timers.gameTimer) {
+      clearInterval(timers.gameTimer);
+      timers.gameTimer = null;
+      timersCount++;
+      console.log(`⏸️ Game timer stopped for table ${tableId}`);
+    }
+    
+    if (timers.choiceTimer) {
+      clearInterval(timers.choiceTimer);
+      timers.choiceTimer = null;
+      timersCount++;
+      console.log(`⏸️ Choice timer stopped for table ${tableId}`);
+    }
+    
+    // Conserver l'entrée dans la Map mais avec tous les timers arrêtés
+    activeTimers.set(tableId, timers);
+    
+    if (timersCount > 0) {
+      console.log(`⚠️ ${timersCount} timers were running simultaneously and have been stopped for table ${tableId}`);
+    } else {
+      console.log(`✅ No active timers found for table ${tableId}`);
+    }
+    
+    // Afficher l'état actuel des timers
+    console.log(`📊 Timer state for table ${tableId}:`, {
+      phase: timers.currentPhase || 'none',
+      memoTimer: timers.memoTimer !== null,
+      gameTimer: timers.gameTimer !== null,
+      choiceTimer: timers.choiceTimer !== null,
+      activePower: timers.activePower || 'none'
+    });
+  }
+}
+
+/**
+ * Arrêter uniquement le timer de mémorisation d'une table
+ * @deprecated Utiliser stopAllTimers() à la place
+ */
+function clearMemoTimer(tableId) {
+  const timers = activeTimers.get(tableId);
+  if (timers && timers.memoTimer) {
+    clearInterval(timers.memoTimer);
+    timers.memoTimer = null;
+    console.log(`⏸️ Memo timer cleared for table ${tableId}`);
+    activeTimers.set(tableId, timers);
   }
 }
 
 /**
  * Arrêter uniquement le timer de jeu d'une table
+ * @deprecated Utiliser stopAllTimers() à la place
  */
 function clearGameTimer(tableId) {
   const timers = activeTimers.get(tableId);
   if (timers && timers.gameTimer) {
     clearInterval(timers.gameTimer);
     timers.gameTimer = null;
-    console.log(`⏸️ Game timer paused for table ${tableId} due to power activation`);
+    console.log(`⏸️ Game timer paused for table ${tableId}`);
     activeTimers.set(tableId, timers);
   }
 }
 
 /**
  * Arrêter uniquement le timer de choix d'une table
+ * @deprecated Utiliser stopAllTimers() à la place
  */
 function clearChoiceTimer(tableId) {
   const timers = activeTimers.get(tableId);
   if (timers && timers.choiceTimer) {
     clearInterval(timers.choiceTimer);
     timers.choiceTimer = null;
-    console.log(`⏸️ Choice timer paused for table ${tableId} due to power activation`);
+    console.log(`⏸️ Choice timer paused for table ${tableId}`);
     activeTimers.set(tableId, timers);
   }
 }
@@ -677,6 +782,13 @@ exports.setupSocket = (io) => {
         
         console.log(`  📊 Game state - Deck: ${game.deck?.length || 0} cards, Discard: ${game.discardPile?.length || 0} cards`);
         
+        // Vérifier si un pouvoir est actif
+        const timers = activeTimers.get(tableId) || {};
+        if (timers.activePower) {
+          console.log(`⚠️ Cannot draw card while power is active: ${JSON.stringify(timers.activePower)}`);
+          return socket.emit('error', { message: 'Impossible de piocher pendant l\'activation d\'un pouvoir' });
+        }
+        
         let drawnCard;
         
         if (fromDeck) {
@@ -701,7 +813,8 @@ exports.setupSocket = (io) => {
         
         console.log(`✅ Card drawn and saved: ${drawnCard}`);
         
-        // Démarrer le timer de choix (10 secondes)
+        // IMPORTANT: Arrêter le timer de jeu et démarrer le timer de choix (10 secondes)
+        // Ceci arrêtera automatiquement tous les autres timers
         startChoiceTimer(io, tableId, 10);
         
         // Notifier le joueur qui a pioché (il voit la carte)
@@ -716,6 +829,8 @@ exports.setupSocket = (io) => {
           playerId: userId,
           fromDeck
         });
+        
+        console.log(`✅ Choice timer started for player ${userId} - Game timer stopped`);
         
       } catch (error) {
         console.error('Erreur draw card:', error);
@@ -748,6 +863,13 @@ exports.setupSocket = (io) => {
         }
         
         console.log(`  ✅ Player found: ${player.user.firstName} ${player.user.lastName}`);
+        
+        // Vérifier si un pouvoir est actif
+        const timers = activeTimers.get(tableId) || {};
+        if (timers.activePower) {
+          console.log(`⚠️ Cannot discard card while power is active: ${JSON.stringify(timers.activePower)}`);
+          return socket.emit('error', { message: 'Impossible de défausser pendant l\'activation d\'un pouvoir' });
+        }
         
         let discardedCardValue;
         let discardedCardObject;
@@ -799,7 +921,8 @@ exports.setupSocket = (io) => {
         
         console.log(`🔄 Next turn: ${nextPlayerUser._id} (${nextPlayerUser.firstName} ${nextPlayerUser.lastName})`);
         
-        // Redémarrer le timer de jeu (5 secondes)
+        // IMPORTANT: Arrêter tous les timers et démarrer le timer de jeu (5 secondes)
+        // Ceci arrêtera automatiquement tous les autres timers
         startGameTimer(io, tableId, 5);
         
         // Émettre le changement de tour
@@ -807,6 +930,8 @@ exports.setupSocket = (io) => {
           currentPlayerId: nextPlayerUser._id.toString(),
           currentPlayerName: `${nextPlayerUser.firstName} ${nextPlayerUser.lastName}`
         });
+        
+        console.log(`✅ Game timer started for next player ${nextPlayerUser._id} - Choice timer stopped`);
         
       } catch (error) {
         console.error('Erreur discard card:', error);
@@ -883,6 +1008,13 @@ exports.setupSocket = (io) => {
           return socket.emit('error', { message: 'Partie non trouvée' });
         }
         
+        // Vérifier si un pouvoir est actif
+        const timers = activeTimers.get(tableId) || {};
+        if (timers.activePower) {
+          console.log(`⚠️ Cannot process choice timeout while power is active: ${JSON.stringify(timers.activePower)}`);
+          return socket.emit('error', { message: 'Impossible de traiter le timeout pendant l\'activation d\'un pouvoir' });
+        }
+        
         // Défausser automatiquement la carte piochée
         const discardedCardObject = {
           value: drawnCard,
@@ -911,7 +1043,8 @@ exports.setupSocket = (io) => {
         
         console.log(`🔄 Next turn after auto-discard: ${nextPlayerUser._id} (${nextPlayerUser.firstName} ${nextPlayerUser.lastName})`);
         
-        // Redémarrer le timer de jeu (5 secondes)
+        // IMPORTANT: Arrêter tous les timers et démarrer le timer de jeu (5 secondes)
+        // Ceci arrêtera automatiquement tous les autres timers
         startGameTimer(io, tableId, 5);
         
         // Émettre le changement de tour
@@ -919,6 +1052,8 @@ exports.setupSocket = (io) => {
           currentPlayerId: nextPlayerUser._id.toString(),
           currentPlayerName: `${nextPlayerUser.firstName} ${nextPlayerUser.lastName}`
         });
+        
+        console.log(`✅ Game timer started for next player ${nextPlayerUser._id} - Choice timer stopped`);
         
       } catch (error) {
         console.error('Erreur choice timeout:', error);
@@ -939,6 +1074,13 @@ exports.setupSocket = (io) => {
         
         console.log(`✅ Game found, processing timeout...`);
         
+        // Vérifier si un pouvoir est actif
+        const timers = activeTimers.get(tableId) || {};
+        if (timers.activePower) {
+          console.log(`⚠️ Cannot process turn timeout while power is active: ${JSON.stringify(timers.activePower)}`);
+          return socket.emit('error', { message: 'Impossible de traiter le timeout pendant l\'activation d\'un pouvoir' });
+        }
+        
         // Passer au joueur suivant
         const currentPlayerIndex = game.players.findIndex(p => p.user._id.toString() === userId);
         const nextPlayerIndex = (currentPlayerIndex + 1) % game.players.length;
@@ -947,7 +1089,8 @@ exports.setupSocket = (io) => {
         
         console.log(`🔄 Timeout - Next turn: ${nextPlayerUser._id} (${nextPlayerUser.firstName} ${nextPlayerUser.lastName})`);
         
-        // Redémarrer le timer de jeu (5 secondes)
+        // IMPORTANT: Arrêter tous les timers et démarrer le timer de jeu (5 secondes)
+        // Ceci arrêtera automatiquement tous les autres timers
         startGameTimer(io, tableId, 5);
         
         // Émettre le changement de tour
@@ -955,6 +1098,8 @@ exports.setupSocket = (io) => {
           currentPlayerId: nextPlayerUser._id.toString(),
           currentPlayerName: `${nextPlayerUser.firstName} ${nextPlayerUser.lastName}`
         });
+        
+        console.log(`✅ Game timer started for next player ${nextPlayerUser._id}`);
         
       } catch (error) {
         console.error('Erreur turn timeout:', error);
@@ -1142,16 +1287,25 @@ exports.setupSocket = (io) => {
           return socket.emit('error', { message: 'Table non trouvée' });
         }
         
-        // Annuler le timer de jeu en cours pour éviter la désynchronisation
-        clearGameTimer(tableId);
-        clearChoiceTimer(tableId);
+        // Arrêter TOUS les timers en cours pour éviter la désynchronisation
+        stopAllTimers(tableId);
+        
+        // Récupérer ou créer l'objet timers
+        const timers = activeTimers.get(tableId) || {};
         
         // Sauvegarder l'état du pouvoir actif dans la table
-        const timers = activeTimers.get(tableId) || {};
         timers.activePower = {
           powerType,
-          playerId: userId
+          playerId: userId,
+          activatedAt: new Date().getTime()
         };
+        
+        // Mettre à jour la phase actuelle
+        timers.currentPhase = 'power_active';
+        timers.memoTimeLeft = 0;
+        timers.gameTimeLeft = 0;
+        timers.choiceTimeLeft = 0;
+        
         activeTimers.set(tableId, timers);
         
         // Notifier tous les joueurs que le pouvoir est activé et que le minuteur est en pause
@@ -1168,6 +1322,8 @@ exports.setupSocket = (io) => {
           gameTimeLeft: 30, // Valeur arbitraire pour montrer que le timer est en pause
           choiceTimeLeft: 0
         });
+        
+        console.log(`✅ Power ${powerType} activated for player ${userId} - All timers paused`);
       } catch (error) {
         console.error('Erreur power activation:', error);
         socket.emit('error', { message: 'Erreur lors de l\'activation du pouvoir' });
@@ -1192,6 +1348,9 @@ exports.setupSocket = (io) => {
         
         // Vérifier que c'est bien le même joueur qui termine le pouvoir
         if (activePower && activePower.playerId === userId && activePower.powerType === powerType) {
+          // Arrêter tous les timers existants
+          stopAllTimers(tableId);
+          
           // Effacer l'état du pouvoir actif
           delete timers.activePower;
           activeTimers.set(tableId, timers);
@@ -1211,7 +1370,7 @@ exports.setupSocket = (io) => {
           
           console.log(`🔄 Next turn after power completion: ${nextPlayerUser._id} (${nextPlayerUser.firstName} ${nextPlayerUser.lastName})`);
           
-          // Redémarrer le timer de jeu (5 secondes)
+          // Redémarrer le timer de jeu (5 secondes) - ceci arrêtera automatiquement tous les autres timers
           startGameTimer(io, tableId, 5);
           
           // Émettre le changement de tour
@@ -1219,6 +1378,8 @@ exports.setupSocket = (io) => {
             currentPlayerId: nextPlayerUser._id.toString(),
             currentPlayerName: `${nextPlayerUser.firstName} ${nextPlayerUser.lastName}`
           });
+          
+          console.log(`✅ Power ${powerType} completed for player ${userId} - Game timer started for next player`);
         } else {
           console.error(`⚠️ Power completion mismatch: active=${JSON.stringify(activePower)}, received=${userId}/${powerType}`);
         }
