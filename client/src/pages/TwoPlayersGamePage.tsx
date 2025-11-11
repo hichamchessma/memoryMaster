@@ -256,6 +256,8 @@ const TwoPlayersGamePage: React.FC = () => {
   const isInPenaltyRef = React.useRef(false);
   const drawnCardRef = React.useRef<{value: number, isFlipped: boolean} | null>(null);
   const myPlayerInfoRef = React.useRef<{name: string; isReal: boolean; userId: string} | null>(null);
+  // Référence pour le timer de Bombom (déclenchement automatique de ShowTime)
+  const bombomTimerRef = React.useRef<NodeJS.Timeout | null>(null);
   // Références visuelles
   const discardRef = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
@@ -1373,6 +1375,7 @@ const TwoPlayersGamePage: React.FC = () => {
       setTimeout(() => setQuickDiscardFlash(null), 1000);
     };
     
+    
     // Écouter le prompt Bombom (quand le tour revient au joueur qui a déclaré Bombom)
     const handleBombomPrompt = (data: any) => {
       console.log('🍬 Bombom prompt received:', data);
@@ -1389,6 +1392,12 @@ const TwoPlayersGamePage: React.FC = () => {
         console.log('🍬 Stopping game timer for Bombom prompt');
         clearInterval(timerRef.current);
         timerRef.current = null;
+      }
+      
+      // Arrêter un éventuel timer Bombom précédent
+      if (bombomTimerRef.current) {
+        clearTimeout(bombomTimerRef.current);
+        bombomTimerRef.current = null;
       }
       
       // Désactiver l'état de tour du joueur pour bloquer les actions
@@ -1410,6 +1419,14 @@ const TwoPlayersGamePage: React.FC = () => {
         // Sinon, afficher le prompt ShowTime
         console.log('🍬 Showing ShowTime prompt for player', player);
         setShowShowTimePrompt(true);
+        
+        // Démarrer un timer de 5 secondes pour déclencher automatiquement ShowTime si le joueur ne fait rien
+        console.log('🕔 Starting 5-second timer for automatic ShowTime');
+        bombomTimerRef.current = setTimeout(() => {
+          console.log('🕔 Bombom prompt timeout - Triggering ShowTime automatically');
+          setShowShowTimePrompt(false);
+          setTimeout(() => triggerShowTime(), 50);
+        }, 5000); // 5 secondes
       }
     };
     
@@ -2146,6 +2163,13 @@ const TwoPlayersGamePage: React.FC = () => {
     console.log('🔄 Cancelling Bombom declaration');
     console.log('  → myPlayerKey:', myPlayerKey);
     console.log('  → bombomCancelUsed:', bombomCancelUsed);
+    
+    // Arrêter le timer Bombom s'il est en cours
+    if (bombomTimerRef.current) {
+      console.log('🕔 Stopping Bombom auto-ShowTime timer');
+      clearTimeout(bombomTimerRef.current);
+      bombomTimerRef.current = null;
+    }
     
     // Mettre à jour l'état local
     setBombomCancelUsed(prev => ({ ...prev, [myPlayerKey]: true }));
@@ -3315,6 +3339,13 @@ const TwoPlayersGamePage: React.FC = () => {
             {!bombomCancelUsed[amIPlayer1 ? 'player1' : 'player2'] ? (
               <div className="space-y-2">
                 <button onClick={() => {
+                  // Arrêter le timer Bombom s'il est en cours
+                  if (bombomTimerRef.current) {
+                    console.log('🕔 Stopping Bombom auto-ShowTime timer (user clicked ShowTime)');
+                    clearTimeout(bombomTimerRef.current);
+                    bombomTimerRef.current = null;
+                  }
+                  
                   // Fermer d'abord le message
                   setShowShowTimePrompt(false);
                   // Puis déclencher ShowTime après une courte pause
@@ -3325,6 +3356,13 @@ const TwoPlayersGamePage: React.FC = () => {
             ) : (
               <div className="space-y-2">
                 <button onClick={() => {
+                  // Arrêter le timer Bombom s'il est en cours
+                  if (bombomTimerRef.current) {
+                    console.log('🕔 Stopping Bombom auto-ShowTime timer (user clicked ShowTime)');
+                    clearTimeout(bombomTimerRef.current);
+                    bombomTimerRef.current = null;
+                  }
+                  
                   // Fermer d'abord le message
                   setShowShowTimePrompt(false);
                   // Puis déclencher ShowTime après une courte pause
