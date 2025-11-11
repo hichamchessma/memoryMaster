@@ -228,6 +228,10 @@ const TwoPlayersGamePage: React.FC = () => {
   const [isMemorizationPhase, setIsMemorizationPhase] = React.useState(false);
   const [memorizedCardsCount, setMemorizedCardsCount] = React.useState(0);
   const [memorizedCardIndexes, setMemorizedCardIndexes] = React.useState<number[]>([]);
+  // Variable pour suivre si le tour est passé à l'adversaire après une déclaration Bombom
+  const [bombomTurnPassedToOpponent, setBombomTurnPassedToOpponent] = React.useState<boolean>(false);
+  // Joueur qui a déclaré Bombom en dernier
+  const [lastBombomPlayer, setLastBombomPlayer] = React.useState<'player1' | 'player2' | null>(null);
   // Zone à laisser visible pendant la pénalité
   const [penaltyPlayer, setPenaltyPlayer] = React.useState<'player1' | 'player2' | null>(null);
   const [faultyCardIndex, setFaultyCardIndex] = React.useState<number | null>(null);
@@ -561,6 +565,31 @@ const TwoPlayersGamePage: React.FC = () => {
         console.error('⚠️ Unknown player ID:', currentPlayerId);
         console.error('  → This should NEVER happen!');
         return;
+      }
+      
+      // LOGIQUE BOMBOM: Suivre le cadre vert (joueur actif)
+      if (bombomDeclaredBy) {
+        console.log('🍬 BOMBOM TRACKING:');
+        console.log(`  → Bombom déclaré par: ${bombomDeclaredBy}`);
+        console.log(`  → Joueur actuel: ${currentPlayer}`);
+        console.log(`  → Tour passé à l'adversaire: ${bombomTurnPassedToOpponent}`);
+        
+        if (bombomDeclaredBy !== currentPlayer && !bombomTurnPassedToOpponent) {
+          // Le tour est passé à l'adversaire pour la première fois
+          console.log('🍬 Le tour est passé à l\'adversaire après déclaration Bombom');
+          setBombomTurnPassedToOpponent(true);
+        } 
+        else if (bombomDeclaredBy === currentPlayer && bombomTurnPassedToOpponent) {
+          // Le tour est revenu au joueur qui a déclaré Bombom
+          console.log('🍬 LE TOUR EST REVENU AU JOUEUR QUI A DÉCLARÉ BOMBOM!');
+          console.log('🍬 AFFICHAGE DU PROMPT SHOWTIME!');
+          
+          // Afficher le prompt ShowTime
+          setShowShowTimePrompt(true);
+          
+          // Réinitialiser le suivi
+          setBombomTurnPassedToOpponent(false);
+        }
       }
       
       if (isMyTurn) {
@@ -1344,6 +1373,22 @@ const TwoPlayersGamePage: React.FC = () => {
       setTimeout(() => setQuickDiscardFlash(null), 1000);
     };
     
+    // Écouter le prompt Bombom (quand le tour revient au joueur qui a déclaré Bombom)
+    const handleBombomPrompt = (data: any) => {
+      console.log('🍬 Bombom prompt received:', data);
+      const { player, playerId } = data;
+      
+      // Vérifier si c'est bien pour ce joueur
+      if (playerId && playerId !== tableData?.currentUserId) {
+        console.log('🍬 Bombom prompt not for this player, ignoring');
+        return;
+      }
+      
+      // Afficher le prompt ShowTime
+      console.log('🍬 Showing ShowTime prompt for player', player);
+      setShowShowTimePrompt(true);
+    };
+    
     // Écouter la fin des pouvoirs des cartes figures
     const handlePowerCompleted = (data: any) => {
       console.log('👑 Power completed event received:', data);
@@ -1501,6 +1546,7 @@ const TwoPlayersGamePage: React.FC = () => {
     socket.on('game:king_swap_cards', handleKingSwapCards);
     socket.on('game:timer_update', handleTimerUpdate);
     socket.on('game:bombom_declared', handleBombomDeclared);
+    socket.on('game:bombom_prompt', handleBombomPrompt);
 
     return () => {
       // Retirer TOUS les listeners sans passer les handlers
@@ -1522,6 +1568,7 @@ const TwoPlayersGamePage: React.FC = () => {
       socket.off('game:king_swap_cards');
       socket.off('game:timer_update');
       socket.off('game:bombom_declared');
+      socket.off('game:bombom_prompt');
       socket.emit('leaveTableRoom', tableData.tableId);
       hasJoinedRoom.current = false; // Réinitialiser pour permettre de rejoindre si on revient
     };
@@ -1889,7 +1936,7 @@ const TwoPlayersGamePage: React.FC = () => {
     
     // Vérifier si le joueur peut déclarer Bombom
     if (!canDeclareBombomFor(player)) {
-      console.log('🚨 Impossible de déclarer Bombom:', { 
+      console.log('🔴 Impossible de déclarer Bombom:', { 
         player, 
         gamePhase, 
         isPlayerTurn, 
@@ -1901,17 +1948,16 @@ const TwoPlayersGamePage: React.FC = () => {
       return;
     }
     
-    console.log('✅ Déclaration Bombom acceptée pour', player);
-    
     // Mettre à jour l'état pour indiquer que Bombom a été déclaré
     setBombomDeclaredBy(player);
+    // Réinitialiser le suivi du tour passé à l'adversaire
+    setBombomTurnPassedToOpponent(false);
     
-    // Notifier le serveur de la déclaration de Bombom
-    if (socket) {
-      console.log('💬 Envoi de l\'event game:bombom_declared au serveur');
+    // Informer le serveur de la déclaration Bombom
+    if (socket && tableData?.tableId) {
       socket.emit('game:bombom_declared', {
-        tableId: tableData?.tableId,
-        userId: tableData?.currentUserId,
+        tableId: tableData.tableId,
+        userId: tableData.currentUserId,
         player: player
       });
     }

@@ -10,6 +10,32 @@ const activeConnections = new Map();
 const activeTimers = new Map();
 
 /**
+ * Trouver un socket par userId
+ * @param {Object} io - Instance Socket.IO
+ * @param {String} userId - ID de l'utilisateur
+ * @returns {Object|null} Socket correspondant ou null
+ */
+function getSocketByUserId(io, userId) {
+  if (!io || !userId) return null;
+  
+  // Parcourir tous les sockets connectés
+  const connectedSockets = Array.from(io.sockets.sockets.values());
+  
+  // Chercher un socket avec le userId correspondant dans auth
+  const socket = connectedSockets.find(s => {
+    return s.handshake && s.handshake.auth && s.handshake.auth.userId === userId;
+  });
+  
+  if (socket) {
+    console.log(`  ✅ Mapped userId ${userId} to socket ${socket.id}`);
+  } else {
+    console.log(`  ⚠️ No socket found for userId ${userId}`);
+  }
+  
+  return socket || null;
+}
+
+/**
  * Démarrer le timer de mémorisation (2 secondes)
  * Ce timer n'existe que pendant la phase de mémorisation initiale
  */
@@ -1127,6 +1153,27 @@ exports.setupSocket = (io) => {
         // Ceci arrêtera automatiquement tous les autres timers
         startGameTimer(io, tableId, 5);
         
+        // Vérifier si un joueur a déclaré Bombom et si le tour revient à ce joueur
+        const bombomPlayer = game.players.find(p => p.hasBombom === true);
+        if (bombomPlayer && bombomPlayer.user._id.toString() === nextPlayerUser._id.toString()) {
+          console.log(`🍬 BOMBOM: Le tour revient au joueur qui a déclaré Bombom: ${nextPlayerUser.firstName} ${nextPlayerUser.lastName}`);
+          
+          // Déterminer si c'est player1 ou player2
+          const playerPosition = game.players.indexOf(bombomPlayer) === 0 ? 'player1' : 'player2';
+          
+          // Émettre l'événement bombom_prompt au joueur concerné
+          const playerSocket = getSocketByUserId(io, nextPlayerUser._id.toString());
+          if (playerSocket) {
+            console.log(`🍬 Émission de game:bombom_prompt à ${nextPlayerUser._id}`);
+            playerSocket.emit('game:bombom_prompt', {
+              player: playerPosition,
+              playerId: nextPlayerUser._id.toString()
+            });
+          } else {
+            console.log(`⚠️ Socket non trouvé pour le joueur ${nextPlayerUser._id}`);
+          }
+        }
+        
         // Émettre le changement de tour
         io.to(`table_${tableId}`).emit('game:turn_changed', {
           currentPlayerId: nextPlayerUser._id.toString(),
@@ -1404,8 +1451,20 @@ exports.setupSocket = (io) => {
           return socket.emit('error', { message: 'Joueur non trouvé dans la partie' });
         }
         
+        // Réinitialiser le statut Bombom pour tous les joueurs
+        game.players.forEach((p, idx) => {
+          if (idx !== playerIndex) {
+            if (p.hasBombom) {
+              console.log(`🍬 Réinitialisation du statut Bombom pour le joueur ${p.user.firstName} ${p.user.lastName}`);
+              p.hasBombom = false;
+            }
+          }
+        });
+        
         // Mettre à jour le statut Bombom du joueur
         game.players[playerIndex].hasBombom = true;
+        console.log(`🍬 Bombom state initialized: declaredBy=${player}, player=${game.players[playerIndex].user.firstName} ${game.players[playerIndex].user.lastName}`);
+        
         await game.save();
         
         // Notifier tous les joueurs de la table
