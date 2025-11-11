@@ -1384,14 +1384,28 @@ const TwoPlayersGamePage: React.FC = () => {
         return;
       }
       
+      // Arrêter tous les timers pour éviter les conflits
+      if (timerRef.current) {
+        console.log('🍬 Stopping game timer for Bombom prompt');
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      
+      // Désactiver l'état de tour du joueur pour bloquer les actions
+      setIsPlayerTurn(false);
+      
       // Vérifier si l'annulation a déjà été utilisée
-      const currentPlayer = amIPlayer1 ? 'player1' : 'player2';
-      const canCancel = !bombomCancelUsed[currentPlayer];
+      const myPlayerKey = amIPlayer1 ? 'player1' : 'player2';
+      const canCancel = !bombomCancelUsed[myPlayerKey];
+      console.log('🍬 Bombom cancel state:', { myPlayerKey, canCancel, bombomCancelUsed });
       
       if (!canCancel) {
         // Si l'annulation a déjà été utilisée, déclencher ShowTime directement
         console.log('🍬 Annulation déjà utilisée, déclenchement automatique de ShowTime');
-        triggerShowTime();
+        // Fermer d'abord le prompt s'il est ouvert
+        setShowShowTimePrompt(false);
+        // Puis déclencher ShowTime après une courte pause
+        setTimeout(() => triggerShowTime(), 50);
       } else {
         // Sinon, afficher le prompt ShowTime
         console.log('🍬 Showing ShowTime prompt for player', player);
@@ -2122,14 +2136,19 @@ const TwoPlayersGamePage: React.FC = () => {
   }, [canDeclareBombomFor, socket, tableData]);
 
   const handleCancelBombom = React.useCallback(() => {
+    // Déterminer quel joueur je suis
+    const myPlayerKey = amIPlayer1 ? 'player1' : 'player2';
+    
     // Annuler seulement lors du prompt au retour du tour, et seulement une fois par joueur
-    if (!showShowTimePrompt || bombomDeclaredBy !== currentPlayer) return;
-    if (bombomCancelUsed[currentPlayer]) return;
+    if (!showShowTimePrompt) return;
+    if (bombomCancelUsed[myPlayerKey]) return;
     
     console.log('🔄 Cancelling Bombom declaration');
+    console.log('  → myPlayerKey:', myPlayerKey);
+    console.log('  → bombomCancelUsed:', bombomCancelUsed);
     
     // Mettre à jour l'état local
-    setBombomCancelUsed(prev => ({ ...prev, [currentPlayer]: true }));
+    setBombomCancelUsed(prev => ({ ...prev, [myPlayerKey]: true }));
     setBombomDeclaredBy(null);
     setShowShowTimePrompt(false);
     
@@ -3286,14 +3305,14 @@ const TwoPlayersGamePage: React.FC = () => {
         </div>
       )}
       {/* Prompt ShowTime suite à Bombom */}
-      {showShowTimePrompt && bombomDeclaredBy === currentPlayer && (
+      {showShowTimePrompt && (
         // Console.log déjà ajouté ailleurs
         <div className="absolute inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/70" />
           <div className="relative z-10 px-6 py-5 rounded-2xl bg-yellow-400 text-gray-900 border-4 border-white shadow-2xl text-center w-[min(90%,420px)]">
             <div className="text-4xl mb-2">🎬</div>
             <div className="text-xl font-extrabold mb-3">ShowTime déclenché par Bombom</div>
-            {!bombomCancelUsed[currentPlayer] ? (
+            {!bombomCancelUsed[amIPlayer1 ? 'player1' : 'player2'] ? (
               <div className="space-y-2">
                 <button onClick={() => {
                   // Fermer d'abord le message
