@@ -1432,6 +1432,33 @@ exports.setupSocket = (io) => {
       }
     });
     
+    // Gérer l'arrêt de tous les timers (lors du ShowTime)
+    socket.on('game:stop_timers', async (data) => {
+      const { tableId, userId } = data;
+      console.log(`⏹️ Stop all timers request - tableId: ${tableId}, userId: ${userId}`);
+      
+      try {
+        const game = await Game.findById(tableId);
+        if (!game) {
+          console.error('⚠️ Game not found for stop timers:', tableId);
+          return socket.emit('error', { message: 'Table non trouvée' });
+        }
+        
+        // Arrêter tous les timers
+        console.log(`⏹️ Stopping all timers for table ${tableId}`);
+        stopAllTimers(tableId);
+        
+        // Notifier tous les joueurs que les timers ont été arrêtés
+        io.to(`table_${tableId}`).emit('game:timers_stopped', {
+          message: 'Tous les timers ont été arrêtés (ShowTime)'  
+        });
+        
+        console.log(`✅ All timers stopped for table ${tableId}`);
+      } catch (error) {
+        console.error(`❌ Error stopping timers:`, error);
+      }
+    });
+    
     // Gérer la déclaration de Bombom
     socket.on('game:bombom_declared', async (data) => {
       const { tableId, userId, player } = data;

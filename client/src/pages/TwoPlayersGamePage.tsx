@@ -1384,9 +1384,19 @@ const TwoPlayersGamePage: React.FC = () => {
         return;
       }
       
-      // Afficher le prompt ShowTime
-      console.log('🍬 Showing ShowTime prompt for player', player);
-      setShowShowTimePrompt(true);
+      // Vérifier si l'annulation a déjà été utilisée
+      const currentPlayer = amIPlayer1 ? 'player1' : 'player2';
+      const canCancel = !bombomCancelUsed[currentPlayer];
+      
+      if (!canCancel) {
+        // Si l'annulation a déjà été utilisée, déclencher ShowTime directement
+        console.log('🍬 Annulation déjà utilisée, déclenchement automatique de ShowTime');
+        triggerShowTime();
+      } else {
+        // Sinon, afficher le prompt ShowTime
+        console.log('🍬 Showing ShowTime prompt for player', player);
+        setShowShowTimePrompt(true);
+      }
     };
     
     // Écouter la fin des pouvoirs des cartes figures
@@ -1431,6 +1441,27 @@ const TwoPlayersGamePage: React.FC = () => {
       setTimeLeft(5); // Valeur par défaut du timer de jeu
     };
 
+    // Écouter l'arrêt des timers (lors du ShowTime)
+    const handleTimersStopped = (data: any) => {
+      console.log('⏹️ Timers stopped event received:', data);
+      
+      // Arrêter tous les timers locaux
+      if (timerRef.current) {
+        console.log('⏹️ Stopping local game timer');
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      
+      if (beforeRoundTimerRef.current) {
+        console.log('⏹️ Stopping local memorization timer');
+        clearInterval(beforeRoundTimerRef.current);
+        beforeRoundTimerRef.current = null;
+      }
+      
+      // Figer l'affichage du timer
+      setTimeLeft(0);
+    };
+    
     // Écouter les mises à jour des timers
     const handleTimerUpdate = (data: any) => {
       console.log('⏱️ Timer update:', data);
@@ -1446,6 +1477,12 @@ const TwoPlayersGamePage: React.FC = () => {
         console.log('⏸️ Stopping local memorization timer due to server timer update');
         clearInterval(beforeRoundTimerRef.current);
         beforeRoundTimerRef.current = null;
+      }
+      
+      // Ne pas mettre à jour les timers si ShowTime est en cours
+      if (showShowTimePrompt) {
+        console.log('🍬 ShowTime prompt actif, ignorer la mise à jour des timers');
+        return;
       }
       
       setTimerPhase(phase);
@@ -1547,6 +1584,7 @@ const TwoPlayersGamePage: React.FC = () => {
     socket.on('game:timer_update', handleTimerUpdate);
     socket.on('game:bombom_declared', handleBombomDeclared);
     socket.on('game:bombom_prompt', handleBombomPrompt);
+    socket.on('game:timers_stopped', handleTimersStopped);
 
     return () => {
       // Retirer TOUS les listeners sans passer les handlers
@@ -1569,6 +1607,7 @@ const TwoPlayersGamePage: React.FC = () => {
       socket.off('game:timer_update');
       socket.off('game:bombom_declared');
       socket.off('game:bombom_prompt');
+      socket.off('game:timers_stopped');
       socket.emit('leaveTableRoom', tableData.tableId);
       hasJoinedRoom.current = false; // Réinitialiser pour permettre de rejoindre si on revient
     };
@@ -1763,25 +1802,95 @@ const TwoPlayersGamePage: React.FC = () => {
 
   // Déclenche ShowTime: révèle toutes les cartes, calcule le gagnant (score le plus bas gagne), affiche et enregistre les scores
   const triggerShowTime = React.useCallback(async () => {
-    // Révéler toutes les cartes
+    console.log('🍬 Déclenchement de ShowTime!');
+    
+    // Arrêter TOUS les timers (locaux et serveur)
+    if (timerRef.current) {
+      console.log('⏹️ Arrêt du timer local de jeu');
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    
+    if (beforeRoundTimerRef.current) {
+      console.log('⏹️ Arrêt du timer local de mémorisation');
+      clearInterval(beforeRoundTimerRef.current);
+      beforeRoundTimerRef.current = null;
+    }
+    
+    // Informer le serveur d'arrêter les timers
+    if (socket && tableData?.tableId) {
+      console.log('💬 Demande au serveur d\'arrêter les timers');
+      socket.emit('game:stop_timers', {
+        tableId: tableData.tableId,
+        userId: tableData.currentUserId
+      });
+    }
+    
+    // Révéler toutes les cartes avec un petit délai pour l'animation
+    console.log('📎 Révélation des cartes...');
     setPlayer1Cards(prev => prev.map(c => ({ ...c, isFlipped: true })));
     setPlayer2Cards(prev => prev.map(c => ({ ...c, isFlipped: true })));
-
-    // Stopper timers
-    if (timerRef.current) clearInterval(timerRef.current);
-    if (beforeRoundTimerRef.current) clearInterval(beforeRoundTimerRef.current);
-
-    // Calculer les totaux
-    const p1Total = (player1Cards || []).reduce((sum, c) => sum + getCardScore(c.value), 0);
-    const p2Total = (player2Cards || []).reduce((sum, c) => sum + getCardScore(c.value), 0);
-
+    
+    // Attendre que les cartes soient retournées avant de calculer
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Animation de calcul des points
+    console.log('📊 Calcul des points...');
+    
+    // Calculer les points carte par carte avec animation
+    let p1Total = 0;
+    let p2Total = 0;
+    
+    // Afficher un message pour le début du calcul
+    setQuickDiscardFlash('Calcul des points...');
+    await new Promise(resolve => setTimeout(resolve, 800));
+    
+    // Calculer et afficher les points du joueur 1
+    for (const card of player1Cards) {
+      if (card.value !== -1) {
+        const points = getCardScore(card.value);
+        p1Total += points;
+        setQuickDiscardFlash(`Joueur 1: +${points} points (${p1Total} total)`);
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+    }
+    
+    // Afficher le total du joueur 1
+    setQuickDiscardFlash(`Joueur 1: ${p1Total} points au total`);
+    await new Promise(resolve => setTimeout(resolve, 800));
+    
+    // Calculer et afficher les points du joueur 2
+    for (const card of player2Cards) {
+      if (card.value !== -1) {
+        const points = getCardScore(card.value);
+        p2Total += points;
+        setQuickDiscardFlash(`Joueur 2: +${points} points (${p2Total} total)`);
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+    }
+    
+    // Afficher le total du joueur 2
+    setQuickDiscardFlash(`Joueur 2: ${p2Total} points au total`);
+    await new Promise(resolve => setTimeout(resolve, 800));
+    
+    // Déterminer le gagnant (le joueur avec le MOINS de points gagne)
     let winnerKey: 'player1' | 'player2' | null = null;
-    if (p1Total < p2Total) winnerKey = 'player1';
-    else if (p2Total < p1Total) winnerKey = 'player2';
-    else winnerKey = null; // égalité
-
+    if (p1Total < p2Total) {
+      winnerKey = 'player1';
+      setQuickDiscardFlash(`Joueur 1 gagne avec ${p1Total} points contre ${p2Total}!`);
+    } else if (p2Total < p1Total) {
+      winnerKey = 'player2';
+      setQuickDiscardFlash(`Joueur 2 gagne avec ${p2Total} points contre ${p1Total}!`);
+    } else {
+      setQuickDiscardFlash(`Égalité! ${p1Total} points partout!`);
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    setQuickDiscardFlash(null);
+    
     // Affichage overlay victoire/égalité
     if (winnerKey) {
+      console.log(`🏆 Le gagnant est: ${winnerKey} avec ${winnerKey === 'player1' ? p1Total : p2Total} points`);
       setWinner(winnerKey);
       setShowVictory(true);
     }
@@ -1803,7 +1912,7 @@ const TwoPlayersGamePage: React.FC = () => {
       }
       setShowScoreboard(true);
     }, 2500);
-  }, [player1Cards, player2Cards]);
+  }, [player1Cards, player2Cards, socket, tableData]);
   
   // Mettre à jour la référence quand la fonction change
   React.useEffect(() => {
@@ -3142,12 +3251,22 @@ const TwoPlayersGamePage: React.FC = () => {
             <div className="text-xl font-extrabold mb-3">ShowTime déclenché par Bombom</div>
             {!bombomCancelUsed[currentPlayer] ? (
               <div className="space-y-2">
-                <button onClick={() => triggerShowTime()} className="w-full bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg text-sm font-semibold shadow border-2 border-white">Lancer ShowTime</button>
+                <button onClick={() => {
+                  // Fermer d'abord le message
+                  setShowShowTimePrompt(false);
+                  // Puis déclencher ShowTime après une courte pause
+                  setTimeout(() => triggerShowTime(), 50);
+                }} className="w-full bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg text-sm font-semibold shadow border-2 border-white">Lancer ShowTime</button>
                 <button onClick={handleCancelBombom} className="w-full bg-gray-800 hover:bg-gray-900 text-white px-3 py-2 rounded-lg text-sm font-semibold shadow border-2 border-white">Annuler Bombom (une seule fois)</button>
               </div>
             ) : (
               <div className="space-y-2">
-                <button onClick={() => triggerShowTime()} className="w-full bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg text-sm font-semibold shadow border-2 border-white">Lancer ShowTime</button>
+                <button onClick={() => {
+                  // Fermer d'abord le message
+                  setShowShowTimePrompt(false);
+                  // Puis déclencher ShowTime après une courte pause
+                  setTimeout(() => triggerShowTime(), 50);
+                }} className="w-full bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg text-sm font-semibold shadow border-2 border-white">Lancer ShowTime</button>
                 <div className="text-sm mt-2">Annulation déjà utilisée. ShowTime est obligatoire.</div>
               </div>
             )}
