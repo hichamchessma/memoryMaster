@@ -1843,11 +1843,25 @@ const TwoPlayersGamePage: React.FC = () => {
   // Gestionnaire pour l'événement game:showtime (envoyé par le serveur à tous les joueurs)
   const handleShowTime = React.useCallback(async (data: any) => {
     console.log('🍬 ShowTime event received:', data);
-    const { player1Cards: p1Cards, player2Cards: p2Cards, player1Id, player2Id, initiatedBy } = data;
+    const { player1Cards: p1Cards, player2Cards: p2Cards, player1Id } = data;
     
-    // Mettre à jour les cartes avec les vraies valeurs
-    setPlayer1Cards(p1Cards.map((c: any) => ({ ...c, isFlipped: true })));
-    setPlayer2Cards(p2Cards.map((c: any) => ({ ...c, isFlipped: true })));
+    // Déterminer si je suis player1 ou player2 dans la partie
+    const myUserId = tableData?.currentUserId;
+    const iAmPlayer1 = myUserId === player1Id;
+    
+    // IMPORTANT: Chaque joueur doit toujours voir ses propres cartes en bas (player2)
+    // et les cartes adverses en haut (player1), même après le ShowTime
+    if (iAmPlayer1) {
+      // Si je suis player1, mes cartes sont p1Cards et doivent être affichées en bas (player2)
+      console.log('🍬 Je suis player1, mes cartes sont affichées en bas');
+      setPlayer2Cards(p1Cards.map((c: any) => ({ ...c, isFlipped: true })));
+      setPlayer1Cards(p2Cards.map((c: any) => ({ ...c, isFlipped: true })));
+    } else {
+      // Si je suis player2, mes cartes sont p2Cards et doivent être affichées en bas (player2)
+      console.log('🍬 Je suis player2, mes cartes sont affichées en bas');
+      setPlayer1Cards(p1Cards.map((c: any) => ({ ...c, isFlipped: true })));
+      setPlayer2Cards(p2Cards.map((c: any) => ({ ...c, isFlipped: true })));
+    }
     
     // Attendre que les cartes soient retournées avant de calculer
     await new Promise(resolve => setTimeout(resolve, 1000));
@@ -1863,42 +1877,48 @@ const TwoPlayersGamePage: React.FC = () => {
     setQuickDiscardFlash('Calcul des points...');
     await new Promise(resolve => setTimeout(resolve, 800));
     
-    // Calculer et afficher les points du joueur 1
+    // Calculer et afficher les points du joueur 1 (cartes du serveur)
     for (const card of p1Cards) {
       if (card.value !== -1) {
         const points = getCardScore(card.value);
         p1Total += points;
-        setQuickDiscardFlash(`Joueur 1: +${points} points (${p1Total} total)`);
+        // Adapter l'affichage en fonction de qui je suis
+        const displayName = iAmPlayer1 ? 'Toi' : 'Adversaire';
+        setQuickDiscardFlash(`${displayName}: +${points} points (${p1Total} total)`);
         await new Promise(resolve => setTimeout(resolve, 300));
       }
     }
     
     // Afficher le total du joueur 1
-    setQuickDiscardFlash(`Joueur 1: ${p1Total} points au total`);
+    const player1DisplayName = iAmPlayer1 ? 'Toi' : 'Adversaire';
+    setQuickDiscardFlash(`${player1DisplayName}: ${p1Total} points au total`);
     await new Promise(resolve => setTimeout(resolve, 800));
     
-    // Calculer et afficher les points du joueur 2
+    // Calculer et afficher les points du joueur 2 (cartes du serveur)
     for (const card of p2Cards) {
       if (card.value !== -1) {
         const points = getCardScore(card.value);
         p2Total += points;
-        setQuickDiscardFlash(`Joueur 2: +${points} points (${p2Total} total)`);
+        // Adapter l'affichage en fonction de qui je suis
+        const displayName = iAmPlayer1 ? 'Adversaire' : 'Toi';
+        setQuickDiscardFlash(`${displayName}: +${points} points (${p2Total} total)`);
         await new Promise(resolve => setTimeout(resolve, 300));
       }
     }
     
     // Afficher le total du joueur 2
-    setQuickDiscardFlash(`Joueur 2: ${p2Total} points au total`);
+    const player2DisplayName = iAmPlayer1 ? 'Adversaire' : 'Toi';
+    setQuickDiscardFlash(`${player2DisplayName}: ${p2Total} points au total`);
     await new Promise(resolve => setTimeout(resolve, 800));
     
     // Déterminer le gagnant (le joueur avec le MOINS de points gagne)
     let winnerKey: 'player1' | 'player2' | null = null;
     if (p1Total < p2Total) {
       winnerKey = 'player1';
-      setQuickDiscardFlash(`Joueur 1 gagne avec ${p1Total} points contre ${p2Total}!`);
+      setQuickDiscardFlash(`${player1DisplayName} gagne avec ${p1Total} points contre ${p2Total}!`);
     } else if (p2Total < p1Total) {
       winnerKey = 'player2';
-      setQuickDiscardFlash(`Joueur 2 gagne avec ${p2Total} points contre ${p1Total}!`);
+      setQuickDiscardFlash(`${player2DisplayName} gagne avec ${p2Total} points contre ${p1Total}!`);
     } else {
       setQuickDiscardFlash(`Égalité! ${p1Total} points partout!`);
     }
@@ -1907,16 +1927,19 @@ const TwoPlayersGamePage: React.FC = () => {
     setQuickDiscardFlash(null);
     
     // Déterminer si le joueur actuel a gagné ou perdu
-    const currentUserId = tableData?.currentUserId;
     let iWon = false;
     
-    if (winnerKey === 'player1' && player1Id === currentUserId) iWon = true;
-    if (winnerKey === 'player2' && player2Id === currentUserId) iWon = true;
+    if (winnerKey === 'player1' && iAmPlayer1) iWon = true;
+    if (winnerKey === 'player2' && !iAmPlayer1) iWon = true;
     
     // Affichage overlay victoire/égalité personnalisé
     if (winnerKey) {
       console.log(`🏆 Le gagnant est: ${winnerKey} avec ${winnerKey === 'player1' ? p1Total : p2Total} points`);
-      setWinner(winnerKey);
+      console.log(`🏆 Le joueur actuel a ${iWon ? 'gagné' : 'perdu'} la manche`);
+      
+      // Utiliser iWon pour déterminer quel joueur a gagné
+      // Cela permet d'afficher le bon message même si les cartes sont inversées
+      setWinner(iWon ? (iAmPlayer1 ? 'player1' : 'player2') : (iAmPlayer1 ? 'player2' : 'player1'));
       setShowVictory(true);
     }
 
