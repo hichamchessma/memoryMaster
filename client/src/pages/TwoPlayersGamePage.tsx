@@ -1375,6 +1375,30 @@ const TwoPlayersGamePage: React.FC = () => {
       setTimeout(() => setQuickDiscardFlash(null), 1000);
     };
     
+    // Écouter l'annulation de Bombom
+    const handleBombomCancelled = (data: any) => {
+      console.log('🍬 Bombom cancelled event received:', data);
+      const { playerId, player } = data;
+      
+      // Ne pas traiter notre propre événement (déjà appliqué localement)
+      if (playerId === tableData?.currentUserId) {
+        console.log('  → Ignoring my own bombom cancellation event');
+        return;
+      }
+      
+      console.log('  → Processing bombom cancellation from other player');
+      
+      // Mettre à jour l'état local pour réinitialiser le Bombom
+      setBombomDeclaredBy(null);
+      
+      // Mettre à jour l'état d'annulation pour ce joueur
+      setBombomCancelUsed(prev => ({ ...prev, [player]: true }));
+      
+      // Afficher un message temporaire
+      const who = player === 'player1' ? 'Joueur 1' : 'Joueur 2';
+      setQuickDiscardFlash(`${who} a annulé son Bombom!`);
+      setTimeout(() => setQuickDiscardFlash(null), 1000);
+    };
     
     // Écouter le prompt Bombom (quand le tour revient au joueur qui a déclaré Bombom)
     const handleBombomPrompt = (data: any) => {
@@ -1614,6 +1638,7 @@ const TwoPlayersGamePage: React.FC = () => {
     socket.on('game:king_swap_cards', handleKingSwapCards);
     socket.on('game:timer_update', handleTimerUpdate);
     socket.on('game:bombom_declared', handleBombomDeclared);
+    socket.on('game:bombom_cancelled', handleBombomCancelled);
     socket.on('game:bombom_prompt', handleBombomPrompt);
     socket.on('game:timers_stopped', handleTimersStopped);
     socket.on('game:showtime', handleShowTime);
@@ -1638,6 +1663,7 @@ const TwoPlayersGamePage: React.FC = () => {
       socket.off('game:king_swap_cards');
       socket.off('game:timer_update');
       socket.off('game:bombom_declared');
+      socket.off('game:bombom_cancelled');
       socket.off('game:bombom_prompt');
       socket.off('game:timers_stopped');
       socket.off('game:showtime');
@@ -2186,8 +2212,16 @@ const TwoPlayersGamePage: React.FC = () => {
       timerRef.current = null;
     }
     
-    // Demander au serveur de démarrer un nouveau tour
+    // IMPORTANT: Informer le serveur que le Bombom a été annulé
     if (tableData?.tableId && tableData?.currentUserId && socket) {
+      console.log('🍬 Emitting game:cancel_bombom to server');
+      socket.emit('game:cancel_bombom', {
+        tableId: tableData.tableId,
+        userId: tableData.currentUserId,
+        player: myPlayerKey
+      });
+      
+      // Puis demander au serveur de démarrer un nouveau tour
       console.log('💬 Emitting game:start_turn to server');
       socket.emit('game:start_turn', {
         tableId: tableData.tableId,
@@ -2197,7 +2231,7 @@ const TwoPlayersGamePage: React.FC = () => {
     } else {
       // Mode local seulement (fallback)
       console.log('⚠️ No tableData or socket available, using local timer');
-      setTimeLeft(7);
+      startTurnTimer();
     }
   }, [showShowTimePrompt, bombomDeclaredBy, currentPlayer, bombomCancelUsed, socket, tableData]);
 

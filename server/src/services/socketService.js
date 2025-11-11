@@ -1611,6 +1611,48 @@ exports.setupSocket = (io) => {
       }
     });
     
+    // Gérer l'annulation de Bombom
+    socket.on('game:cancel_bombom', async (data) => {
+      const { tableId, userId, player } = data;
+      console.log(`🍬 Bombom cancelled - tableId: ${tableId}, userId: ${userId}, player: ${player}`);
+      
+      try {
+        const game = await Game.findById(tableId).populate('players.user');
+        if (!game) {
+          console.error('⚠️ Game not found for bombom cancellation:', tableId);
+          return socket.emit('error', { message: 'Table non trouvée' });
+        }
+        
+        // Trouver l'index du joueur qui annule son Bombom
+        const playerIndex = game.players.findIndex(p => p.user._id.toString() === userId);
+        if (playerIndex === -1) {
+          console.error(`⚠️ Player ${userId} not found in game ${tableId}`);
+          return socket.emit('error', { message: 'Joueur non trouvé dans la partie' });
+        }
+        
+        // Vérifier que c'est bien ce joueur qui avait déclaré Bombom
+        if (game.players[playerIndex].hasBombom) {
+          // Réinitialiser le statut Bombom du joueur
+          game.players[playerIndex].hasBombom = false;
+          console.log(`🍬 Bombom cancelled for player: ${game.players[playerIndex].user.firstName} ${game.players[playerIndex].user.lastName}`);
+          
+          await game.save();
+          
+          // Notifier tous les joueurs de la table
+          io.to(`table_${tableId}`).emit('game:bombom_cancelled', {
+            playerId: userId,
+            player: player
+          });
+          
+          console.log(`✅ Bombom cancellation broadcast to all players in table ${tableId}`);
+        } else {
+          console.log(`⚠️ Player ${userId} tried to cancel Bombom but didn't have one declared`);
+        }
+      } catch (error) {
+        console.error(`❌ Error handling bombom cancellation:`, error);
+      }
+    });
+    
     // Gérer la fin de l'utilisation des pouvoirs des cartes figures (J, Q, K)
     socket.on('game:power_completed', async (data) => {
       const { tableId, userId, powerType } = data;
