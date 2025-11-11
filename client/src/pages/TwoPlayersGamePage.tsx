@@ -1585,6 +1585,7 @@ const TwoPlayersGamePage: React.FC = () => {
     socket.on('game:bombom_declared', handleBombomDeclared);
     socket.on('game:bombom_prompt', handleBombomPrompt);
     socket.on('game:timers_stopped', handleTimersStopped);
+    socket.on('game:showtime', handleShowTime);
 
     return () => {
       // Retirer TOUS les listeners sans passer les handlers
@@ -1608,6 +1609,7 @@ const TwoPlayersGamePage: React.FC = () => {
       socket.off('game:bombom_declared');
       socket.off('game:bombom_prompt');
       socket.off('game:timers_stopped');
+      socket.off('game:showtime');
       socket.emit('leaveTableRoom', tableData.tableId);
       hasJoinedRoom.current = false; // Réinitialiser pour permettre de rejoindre si on revient
     };
@@ -1824,12 +1826,28 @@ const TwoPlayersGamePage: React.FC = () => {
         tableId: tableData.tableId,
         userId: tableData.currentUserId
       });
+      
+      // Informer le serveur de déclencher le ShowTime pour tous les joueurs
+      console.log('🍬 Émission de game:trigger_showtime au serveur');
+      socket.emit('game:trigger_showtime', {
+        tableId: tableData.tableId,
+        userId: tableData.currentUserId
+      });
     }
     
-    // Révéler toutes les cartes avec un petit délai pour l'animation
-    console.log('📎 Révélation des cartes...');
-    setPlayer1Cards(prev => prev.map(c => ({ ...c, isFlipped: true })));
-    setPlayer2Cards(prev => prev.map(c => ({ ...c, isFlipped: true })));
+    // Nettoyer état Bombom
+    setBombomDeclaredBy(null);
+    setShowShowTimePrompt(false);
+  }, [socket, tableData]);
+  
+  // Gestionnaire pour l'événement game:showtime (envoyé par le serveur à tous les joueurs)
+  const handleShowTime = React.useCallback(async (data: any) => {
+    console.log('🍬 ShowTime event received:', data);
+    const { player1Cards: p1Cards, player2Cards: p2Cards, player1Id, player2Id, initiatedBy } = data;
+    
+    // Mettre à jour les cartes avec les vraies valeurs
+    setPlayer1Cards(p1Cards.map((c: any) => ({ ...c, isFlipped: true })));
+    setPlayer2Cards(p2Cards.map((c: any) => ({ ...c, isFlipped: true })));
     
     // Attendre que les cartes soient retournées avant de calculer
     await new Promise(resolve => setTimeout(resolve, 1000));
@@ -1846,7 +1864,7 @@ const TwoPlayersGamePage: React.FC = () => {
     await new Promise(resolve => setTimeout(resolve, 800));
     
     // Calculer et afficher les points du joueur 1
-    for (const card of player1Cards) {
+    for (const card of p1Cards) {
       if (card.value !== -1) {
         const points = getCardScore(card.value);
         p1Total += points;
@@ -1860,7 +1878,7 @@ const TwoPlayersGamePage: React.FC = () => {
     await new Promise(resolve => setTimeout(resolve, 800));
     
     // Calculer et afficher les points du joueur 2
-    for (const card of player2Cards) {
+    for (const card of p2Cards) {
       if (card.value !== -1) {
         const points = getCardScore(card.value);
         p2Total += points;
@@ -1888,16 +1906,19 @@ const TwoPlayersGamePage: React.FC = () => {
     await new Promise(resolve => setTimeout(resolve, 1500));
     setQuickDiscardFlash(null);
     
-    // Affichage overlay victoire/égalité
+    // Déterminer si le joueur actuel a gagné ou perdu
+    const currentUserId = tableData?.currentUserId;
+    let iWon = false;
+    
+    if (winnerKey === 'player1' && player1Id === currentUserId) iWon = true;
+    if (winnerKey === 'player2' && player2Id === currentUserId) iWon = true;
+    
+    // Affichage overlay victoire/égalité personnalisé
     if (winnerKey) {
       console.log(`🏆 Le gagnant est: ${winnerKey} avec ${winnerKey === 'player1' ? p1Total : p2Total} points`);
       setWinner(winnerKey);
       setShowVictory(true);
     }
-
-    // Nettoyer état Bombom
-    setBombomDeclaredBy(null);
-    setShowShowTimePrompt(false);
 
     // Après 2.5s, mettre à jour scores et afficher scoreboard
     setTimeout(() => {
@@ -1912,7 +1933,7 @@ const TwoPlayersGamePage: React.FC = () => {
       }
       setShowScoreboard(true);
     }, 2500);
-  }, [player1Cards, player2Cards, socket, tableData]);
+  }, [tableData]);
   
   // Mettre à jour la référence quand la fonction change
   React.useEffect(() => {
@@ -3278,9 +3299,11 @@ const TwoPlayersGamePage: React.FC = () => {
         <div className="absolute inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/70" />
           <div className="relative z-10 px-8 py-6 rounded-2xl bg-yellow-400 text-gray-900 border-4 border-white shadow-2xl text-center">
-            <div className="text-5xl mb-2">🏆</div>
+            <div className="text-5xl mb-2">{(winner === 'player1' && amIPlayer1) || (winner === 'player2' && !amIPlayer1) ? '🏆' : '😢'}</div>
             <div className="text-2xl font-extrabold">
-              {winner === 'player1' ? (myPlayerInfo?.name || 'Moi') : (opponentInfo?.name || 'Adversaire')} a gagné !
+              {(winner === 'player1' && amIPlayer1) || (winner === 'player2' && !amIPlayer1) 
+                ? 'Tu as gagné cette manche !' 
+                : 'Tu as perdu cette manche !'}
             </div>
           </div>
         </div>

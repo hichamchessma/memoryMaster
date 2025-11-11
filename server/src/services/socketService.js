@@ -1459,6 +1459,48 @@ exports.setupSocket = (io) => {
       }
     });
     
+    // Gérer le déclenchement du ShowTime (synchroniser entre les joueurs)
+    socket.on('game:trigger_showtime', async (data) => {
+      const { tableId, userId } = data;
+      console.log(`🍬 ShowTime triggered - tableId: ${tableId}, userId: ${userId}`);
+      
+      try {
+        const game = await Game.findById(tableId).populate('players.user');
+        if (!game) {
+          console.error('⚠️ Game not found for ShowTime:', tableId);
+          return socket.emit('error', { message: 'Table non trouvée' });
+        }
+        
+        // Trouver l'index du joueur qui a déclenché ShowTime
+        const playerIndex = game.players.findIndex(p => p.user._id.toString() === userId);
+        if (playerIndex === -1) {
+          console.error(`⚠️ Player ${userId} not found in game ${tableId}`);
+          return socket.emit('error', { message: 'Joueur non trouvé dans la partie' });
+        }
+        
+        // Récupérer les cartes des deux joueurs pour les envoyer aux deux joueurs
+        const player1Cards = game.players[0].cards;
+        const player2Cards = game.players[1].cards;
+        
+        // Déterminer qui est le joueur 1 et le joueur 2 dans la partie
+        const player1Id = game.players[0].user._id.toString();
+        const player2Id = game.players[1].user._id.toString();
+        
+        // Envoyer l'événement ShowTime à tous les joueurs de la table
+        io.to(`table_${tableId}`).emit('game:showtime', {
+          player1Cards: player1Cards,
+          player2Cards: player2Cards,
+          player1Id: player1Id,
+          player2Id: player2Id,
+          initiatedBy: userId
+        });
+        
+        console.log(`✅ ShowTime broadcast to all players in table ${tableId}`);
+      } catch (error) {
+        console.error(`❌ Error handling ShowTime:`, error);
+      }
+    });
+    
     // Gérer la déclaration de Bombom
     socket.on('game:bombom_declared', async (data) => {
       const { tableId, userId, player } = data;
