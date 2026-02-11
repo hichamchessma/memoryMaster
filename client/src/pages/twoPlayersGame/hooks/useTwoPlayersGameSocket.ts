@@ -1,4 +1,13 @@
 ﻿import React from 'react';
+import type {
+  CardsDealtPayload,
+  PlayerJoinedPayload,
+  PlayerQuitPayload,
+  ReadyChangedPayload,
+  TablePlayer,
+  TimerUpdatePayload,
+  TurnChangedPayload,
+} from '../types';
 
 type GamePhase = 'preparation' | 'before_round' | 'player1_turn' | 'player2_turn';
 
@@ -117,7 +126,7 @@ export function useTwoPlayersGameSocket(params: any) {
     hasJoinedRoom.current = true;
 
     // Ã‰couter quand un joueur rejoint la table
-    const handlePlayerJoined = (data: any) => {
+    const handlePlayerJoined = (data: PlayerJoinedPayload) => {
       console.log('ðŸ‘¤ Player joined event received!', data);
       console.log('ðŸ‘¤ Players in table:', data.table?.players);
       
@@ -125,8 +134,8 @@ export function useTwoPlayersGameSocket(params: any) {
         setTablePlayers(data.table.players);
         
         // Mettre Ã  jour les infos des joueurs
-        const currentPlayer = data.table.players.find((p: any) => p._id === tableData.currentUserId);
-        const otherPlayer = data.table.players.find((p: any) => p._id !== tableData.currentUserId);
+        const currentPlayer = data.table.players.find((p: TablePlayer) => p._id === tableData.currentUserId);
+        const otherPlayer = data.table.players.find((p: TablePlayer) => p._id !== tableData.currentUserId);
         
         console.log('ðŸ‘¤ Current player found:', currentPlayer);
         console.log('ðŸ‘¤ Other player found:', otherPlayer);
@@ -158,7 +167,7 @@ export function useTwoPlayersGameSocket(params: any) {
     socket.on('table_updated', handlePlayerJoined);
 
     // Ã‰couter les changements de statut Ready
-    const handleReadyChanged = (data: any) => {
+    const handleReadyChanged = (data: ReadyChangedPayload) => {
       console.log('ðŸŽ® Ready status changed:', data);
       
       if (data.userId === tableData.currentUserId) {
@@ -169,13 +178,13 @@ export function useTwoPlayersGameSocket(params: any) {
     };
 
     // Ã‰couter le dÃ©marrage automatique de la partie
-    const handleAutoStart = (data: any) => {
-      console.log('ðŸš€ Game auto-starting:', data);
+    const handleAutoStart = () => {
+      console.log('ðŸš€ Game auto-starting');
       setGameStarted(true);
     };
 
     // Ã‰couter la distribution des cartes
-    const handleCardsDealt = (data: any) => {
+    const handleCardsDealt = (data: CardsDealtPayload) => {
       console.log('ðŸƒ Cards dealt received:', data);
       
       if (!data.myCards) {
@@ -203,13 +212,13 @@ export function useTwoPlayersGameSocket(params: any) {
       }
       
       // CrÃ©er les cartes avec isFlipped=false (face cachÃ©e)
-      const myCards = data.myCards.map((card: any) => ({
+      const myCards = data.myCards.map((card) => ({
         value: card.value,
         isFlipped: false,
         id: Math.random()
       }));
       
-      const opponentCards = data.opponentCards.map((card: any) => ({
+      const opponentCards = data.opponentCards.map(() => ({
         value: -1, // Face cachÃ©e pour l'adversaire
         isFlipped: false,
         id: Math.random()
@@ -233,8 +242,8 @@ export function useTwoPlayersGameSocket(params: any) {
       // Animation de distribution des cartes (comme dans TrainingPage)
       const DEAL_DELAY = 400;
       const allCards = [
-        ...data.myCards.map((card: any, i: number) => ({ card, player: 'bottom', index: i })),
-        ...data.opponentCards.map((card: any, i: number) => ({ card, player: 'top', index: i }))
+        ...data.myCards.map((card, i: number) => ({ card, player: 'bottom', index: i })),
+        ...data.opponentCards.map((card, i: number) => ({ card, player: 'top', index: i }))
       ];
       
       // Distribuer les cartes une par une avec animation
@@ -286,15 +295,15 @@ export function useTwoPlayersGameSocket(params: any) {
     };
 
     // Ã‰couter quand un joueur quitte
-    const handlePlayerQuit = (data: any) => {
+    const handlePlayerQuit = (data: PlayerQuitPayload) => {
       console.log('ðŸšª Player quit:', data);
-      alert(data.message);
+      alert(data.message || 'Un joueur a quitté la partie');
       // Rediriger vers le dashboard
       navigate('/dashboard');
     };
 
     // Ã‰couter les changements de tour
-    const handleTurnChanged = (data: any) => {
+    const handleTurnChanged = (data: TurnChangedPayload) => {
       console.log('ðŸ”„ Turn changed:', data);
       console.log('ðŸ¬ Ã‰tat Bombom lors du changement de tour:', { bombomDeclaredBy, currentPlayer });
       const { currentPlayerId, currentPlayerName } = data;
@@ -1290,7 +1299,7 @@ export function useTwoPlayersGameSocket(params: any) {
     };
     
     // Ã‰couter les mises Ã  jour des timers
-    const handleTimerUpdate = (data: any) => {
+    const handleTimerUpdate = (data: TimerUpdatePayload) => {
       console.log('â±ï¸ Timer update:', data);
       const { phase, memoTimeLeft: memo, gameTimeLeft: game, choiceTimeLeft: choice } = data;
       
@@ -1444,3 +1453,4 @@ export function useTwoPlayersGameSocket(params: any) {
     };
   }, [socket, tableData?.tableId, tableData?.currentUserId, navigate]);
 }
+

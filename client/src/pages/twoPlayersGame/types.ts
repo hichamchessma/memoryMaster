@@ -57,6 +57,7 @@ export interface CardsDealtPayload {
 
 export interface TurnChangedPayload {
   currentPlayerId: string;
+  currentPlayerName?: string;
   timeLeft?: number;
 }
 
@@ -130,11 +131,15 @@ export interface TimersStoppedPayload {
 }
 
 export interface TimerUpdatePayload {
-  phase: 'memorization' | 'game' | 'choice';
+  phase: 'memorization' | 'game' | 'choice' | 'power_active';
   timeLeft: number;
   memoTimeLeft?: number;
   gameTimeLeft?: number;
   choiceTimeLeft?: number;
+}
+
+export interface PlayerQuitPayload {
+  message?: string;
 }
 
 export interface ShowTimePayload {
