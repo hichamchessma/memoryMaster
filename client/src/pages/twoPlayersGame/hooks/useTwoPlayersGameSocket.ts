@@ -1,5 +1,9 @@
-﻿import React from 'react';
+/* eslint-disable no-irregular-whitespace */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+import React from 'react';
 import type {
+  CardStateLike,
   CardsDealtPayload,
   PlayerJoinedPayload,
   PlayerQuitPayload,
@@ -91,6 +95,7 @@ export function useTwoPlayersGameSocket(params: any) {
     setAnyPowerActive,
     setBombomDeclaredBy,
     setBombomCancelUsed,
+    bombomCancelUsed,
     setLastBombomPlayer,
     setShowScoreboard,
     setIsPowerfulMode,
@@ -124,6 +129,17 @@ export function useTwoPlayersGameSocket(params: any) {
       userId: tableData.currentUserId 
     });
     hasJoinedRoom.current = true;
+
+    const triggerShowTime = () => {
+      if (socket && tableData?.tableId) {
+        socket.emit('game:trigger_showtime', {
+          tableId: tableData.tableId,
+          userId: tableData.currentUserId
+        });
+      }
+      setBombomDeclaredBy(null);
+      setShowShowTimePrompt(false);
+    };
 
     // Ã‰couter quand un joueur rejoint la table
     const handlePlayerJoined = (data: PlayerJoinedPayload) => {
@@ -250,7 +266,7 @@ export function useTwoPlayersGameSocket(params: any) {
       allCards.forEach((item, idx) => {
         setTimeout(() => {
           if (item.player === 'bottom') {
-            setPlayer2Cards(prev => {
+            setPlayer2Cards((prev: CardStateLike[]) => {
               const newCards = [...prev];
               newCards[item.index] = {
                 ...newCards[item.index],
@@ -260,7 +276,7 @@ export function useTwoPlayersGameSocket(params: any) {
               return newCards;
             });
           } else {
-            setPlayer1Cards(prev => {
+            setPlayer1Cards((prev: CardStateLike[]) => {
               const newCards = [...prev];
               newCards[item.index] = {
                 ...newCards[item.index],
@@ -548,7 +564,7 @@ export function useTwoPlayersGameSocket(params: any) {
         // L'adversaire a dÃ©faussÃ©
         if (amIPlayer1) {
           // Je suis player1 (en haut), l'adversaire est player2 et ses cartes sont en BAS (player2Cards)
-          setPlayer2Cards(prev => {
+          setPlayer2Cards((prev: CardStateLike[]) => {
             // CrÃ©er un nouveau tableau avec le bon nombre de cartes
             let updatedCards = [...prev];
             
@@ -582,7 +598,7 @@ export function useTwoPlayersGameSocket(params: any) {
           });
         } else {
           // Je suis player2 (en bas), l'adversaire est player1 et ses cartes sont en HAUT (player1Cards)
-          setPlayer1Cards(prev => {
+          setPlayer1Cards((prev: CardStateLike[]) => {
             // CrÃ©er un nouveau tableau avec le bon nombre de cartes
             let updatedCards = [...prev];
             
@@ -619,7 +635,7 @@ export function useTwoPlayersGameSocket(params: any) {
         // C'est moi qui ai dÃ©faussÃ©
         if (amIPlayer1) {
           // Je suis player1 (en haut)
-          setPlayer1Cards(prev => {
+          setPlayer1Cards((prev: CardStateLike[]) => {
             // CrÃ©er un nouveau tableau avec le bon nombre de cartes
             let updatedCards = [...prev];
             
@@ -653,7 +669,7 @@ export function useTwoPlayersGameSocket(params: any) {
           });
         } else {
           // Je suis player2 (en bas)
-          setPlayer2Cards(prev => {
+          setPlayer2Cards((prev: CardStateLike[]) => {
             // CrÃ©er un nouveau tableau avec le bon nombre de cartes
             let updatedCards = [...prev];
             
@@ -709,7 +725,7 @@ export function useTwoPlayersGameSocket(params: any) {
         // DÃ©terminer quelle liste de cartes mettre Ã  jour en fonction de amIPlayer1
         if (amIPlayer1) {
           // Je suis player1 (en haut), l'adversaire est player2 (en bas)
-          setPlayer2Cards(prev => {
+          setPlayer2Cards((prev: CardStateLike[]) => {
             // CrÃ©er un nouveau tableau avec le bon nombre de cartes
             let updatedCards = [...prev];
             
@@ -747,7 +763,7 @@ export function useTwoPlayersGameSocket(params: any) {
           });
         } else {
           // Je suis player2 (en bas), l'adversaire est player1 (en haut)
-          setPlayer1Cards(prev => {
+          setPlayer1Cards((prev: CardStateLike[]) => {
             // CrÃ©er un nouveau tableau avec le bon nombre de cartes
             let updatedCards = [...prev];
             
@@ -799,7 +815,7 @@ export function useTwoPlayersGameSocket(params: any) {
       // DÃ©terminer quelle liste de cartes mettre Ã  jour en fonction de amIPlayer1
       if (amIPlayer1) {
         // Je suis player1, mes cartes sont dans player1Cards (en haut)
-        setPlayer1Cards(prev => {
+        setPlayer1Cards((prev: CardStateLike[]) => {
           // CrÃ©er un nouveau tableau avec le bon nombre de cartes
           let newCards = [...prev];
           
@@ -828,7 +844,7 @@ export function useTwoPlayersGameSocket(params: any) {
         });
       } else {
         // Je suis player2, mes cartes sont dans player2Cards (en bas)
-        setPlayer2Cards(prev => {
+        setPlayer2Cards((prev: CardStateLike[]) => {
           // CrÃ©er un nouveau tableau avec le bon nombre de cartes
           let newCards = [...prev];
           
@@ -893,7 +909,7 @@ export function useTwoPlayersGameSocket(params: any) {
         if (amIPlayer1) {
           // Je suis player1 (en haut), l'adversaire est player2 (en bas)
           console.log('  â†’ I am player1, updating player2Cards (opponent)');
-          setPlayer2Cards(prev => {
+          setPlayer2Cards((prev: CardStateLike[]) => {
             console.log('  â†’ Inside setPlayer2Cards - Current length:', prev.length);
             
             // CrÃ©er un nouveau tableau avec le bon nombre de cartes
@@ -956,7 +972,7 @@ export function useTwoPlayersGameSocket(params: any) {
         } else {
           // Je suis player2 (en bas), l'adversaire est player1 (en haut)
           console.log('  â†’ I am player2, updating player1Cards (opponent)');
-          setPlayer1Cards(prev => {
+          setPlayer1Cards((prev: CardStateLike[]) => {
             console.log('  â†’ Inside setPlayer1Cards - Current length:', prev.length);
             
             // CrÃ©er un nouveau tableau avec le bon nombre de cartes
@@ -1029,13 +1045,13 @@ export function useTwoPlayersGameSocket(params: any) {
         if (isMe) {
           // C'est moi qui ai la pÃ©nalitÃ© - retourner la carte fautive face cachÃ©e
           // Je suis TOUJOURS affichÃ© en bas (player2Cards)
-          setPlayer2Cards(prev => prev.map((card, idx) => 
+          setPlayer2Cards((prev: CardStateLike[]) => prev.map((card, idx) => 
             idx === cardIndex ? { ...card, isFlipped: false } : card
           ));
         } else {
           // C'est l'adversaire - retourner la carte fautive face cachÃ©e
           // L'adversaire est TOUJOURS affichÃ© en haut (player1Cards)
-          setPlayer1Cards(prev => prev.map((card, idx) => 
+          setPlayer1Cards((prev: CardStateLike[]) => prev.map((card, idx) => 
             idx === cardIndex ? { ...card, isFlipped: false } : card
           ));
         }
@@ -1113,13 +1129,13 @@ export function useTwoPlayersGameSocket(params: any) {
         console.log(`  â†’ Applying swap to ${adjustedPosition} card at index ${idx}, new value: ${newVal}`);
         
         if (adjustedPosition === 'top') {
-          setPlayer1Cards(prev => {
+          setPlayer1Cards((prev: CardStateLike[]) => {
             const next = [...prev];
             next[idx] = { ...next[idx], value: newVal, isFlipped: false };
             return next;
           });
         } else {
-          setPlayer2Cards(prev => {
+          setPlayer2Cards((prev: CardStateLike[]) => {
             const next = [...prev];
             next[idx] = { ...next[idx], value: newVal, isFlipped: false };
             return next;
@@ -1173,7 +1189,7 @@ export function useTwoPlayersGameSocket(params: any) {
       setBombomDeclaredBy(null);
       
       // Mettre Ã  jour l'Ã©tat d'annulation pour ce joueur
-      setBombomCancelUsed(prev => ({ ...prev, [player]: true }));
+      setBombomCancelUsed((prev: { player1: boolean; player2: boolean }) => ({ ...prev, [player]: true }));
       
       // Afficher un message temporaire
       const who = player === 'player1' ? 'Joueur 1' : 'Joueur 2';
@@ -1335,8 +1351,8 @@ export function useTwoPlayersGameSocket(params: any) {
         if (memo === 0) {
           console.log('âœ… Memorization phase ended - Starting game');
           setIsMemorizationPhase(false);
-          setPlayer1Cards(cards => cards.map(c => ({ ...c, isFlipped: false })));
-          setPlayer2Cards(cards => cards.map(c => ({ ...c, isFlipped: false })));
+          setPlayer1Cards((cards: CardStateLike[]) => cards.map((c: CardStateLike) => ({ ...c, isFlipped: false })));
+          setPlayer2Cards((cards: CardStateLike[]) => cards.map((c: CardStateLike) => ({ ...c, isFlipped: false })));
           setMemorizedCardsCount(0);
           setMemorizedCardIndexes([]);
           
@@ -1453,4 +1469,6 @@ export function useTwoPlayersGameSocket(params: any) {
     };
   }, [socket, tableData?.tableId, tableData?.currentUserId, navigate]);
 }
+
+
 
