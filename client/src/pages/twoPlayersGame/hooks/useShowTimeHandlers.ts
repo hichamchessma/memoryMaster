@@ -1,6 +1,24 @@
 import React from 'react';
+import type { CardStateLike, ShowTimePayload, SocketLike, TableDataLike } from '../types';
 
-export function useShowTimeHandlers(params: any) {
+type UseShowTimeHandlersParams = {
+  socket: SocketLike | null;
+  tableData: TableDataLike | null;
+  timerRef: React.MutableRefObject<NodeJS.Timeout | null>;
+  beforeRoundTimerRef: React.MutableRefObject<NodeJS.Timeout | null>;
+  setBombomDeclaredBy: React.Dispatch<React.SetStateAction<null | 'player1' | 'player2'>>;
+  setShowShowTimePrompt: React.Dispatch<React.SetStateAction<boolean>>;
+  setPlayer1Cards: React.Dispatch<React.SetStateAction<CardStateLike[]>>;
+  setPlayer2Cards: React.Dispatch<React.SetStateAction<CardStateLike[]>>;
+  setQuickDiscardFlash: React.Dispatch<React.SetStateAction<string | null>>;
+  setWinner: React.Dispatch<React.SetStateAction<null | 'player1' | 'player2'>>;
+  setShowVictory: React.Dispatch<React.SetStateAction<boolean>>;
+  setScores: React.Dispatch<React.SetStateAction<{ player1: number; player2: number }>>;
+  setShowScoreboard: React.Dispatch<React.SetStateAction<boolean>>;
+  getCardScore: (value: number) => number;
+};
+
+export function useShowTimeHandlers(params: UseShowTimeHandlersParams) {
   const {
     socket,
     tableData,
@@ -57,7 +75,7 @@ export function useShowTimeHandlers(params: any) {
   }, [socket, tableData]);
 
   // Gestionnaire pour l'événement game:showtime (envoyé par le serveur à tous les joueurs)
-  const handleShowTime = React.useCallback(async (data: any) => {
+  const handleShowTime = React.useCallback(async (data: ShowTimePayload) => {
     console.log('🍬 ShowTime event received:', data);
     const { player1Cards: p1Cards, player2Cards: p2Cards, player1Id } = data;
     
@@ -70,13 +88,13 @@ export function useShowTimeHandlers(params: any) {
     if (iAmPlayer1) {
       // Si je suis player1, mes cartes sont p1Cards et doivent être affichées en bas (player2)
       console.log('🍬 Je suis player1, mes cartes sont affichées en bas');
-      setPlayer2Cards(p1Cards.map((c: any) => ({ ...c, isFlipped: true })));
-      setPlayer1Cards(p2Cards.map((c: any) => ({ ...c, isFlipped: true })));
+      setPlayer2Cards(p1Cards.map((c) => ({ ...c, isFlipped: true })));
+      setPlayer1Cards(p2Cards.map((c) => ({ ...c, isFlipped: true })));
     } else {
       // Si je suis player2, mes cartes sont p2Cards et doivent être affichées en bas (player2)
       console.log('🍬 Je suis player2, mes cartes sont affichées en bas');
-      setPlayer1Cards(p1Cards.map((c: any) => ({ ...c, isFlipped: true })));
-      setPlayer2Cards(p2Cards.map((c: any) => ({ ...c, isFlipped: true })));
+      setPlayer1Cards(p1Cards.map((c) => ({ ...c, isFlipped: true })));
+      setPlayer2Cards(p2Cards.map((c) => ({ ...c, isFlipped: true })));
     }
     
     // Attendre que les cartes soient retournées avant de calculer
@@ -165,7 +183,7 @@ export function useShowTimeHandlers(params: any) {
       if (winnerKey) {
         const loserKey: 'player1' | 'player2' = winnerKey === 'player1' ? 'player2' : 'player1';
         const loserTotal = loserKey === 'player1' ? p1Total : p2Total;
-        setScores((prev: any) => ({
+        setScores((prev) => ({
           player1: prev.player1 + (loserKey === 'player1' ? loserTotal : 0),
           player2: prev.player2 + (loserKey === 'player2' ? loserTotal : 0)
         }));
