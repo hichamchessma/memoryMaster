@@ -258,6 +258,7 @@ module.exports = function initSocket(io) {
         const table = await Table.findById(tableId);
         if (!table?.gameState) return;
         const gs = table.gameState;
+        if (!gs.powers) gs.powers = {};
         if (gs.activePower || gs.powers[socket.userId]?.j) return;
 
         stopTimers(tableId);
@@ -300,6 +301,7 @@ module.exports = function initSocket(io) {
         const table = await Table.findById(tableId);
         if (!table?.gameState) return;
         const gs = table.gameState;
+        if (!gs.powers) gs.powers = {};
         if (gs.activePower || gs.powers[socket.userId]?.q) return;
 
         stopTimers(tableId);
@@ -341,6 +343,7 @@ module.exports = function initSocket(io) {
         const table = await Table.findById(tableId);
         if (!table?.gameState) return;
         const gs = table.gameState;
+        if (!gs.powers) gs.powers = {};
         if (gs.activePower || gs.powers[socket.userId]?.k) return;
 
         stopTimers(tableId);
@@ -349,9 +352,10 @@ module.exports = function initSocket(io) {
 
         const hand1 = gs.hands[userId1];
         const hand2 = gs.hands[userId2];
+        if (!hand1 || !hand2) return socket.emit('error', { message: 'Cartes invalides' });
         [hand1[idx1], hand2[idx2]] = [hand2[idx2], hand1[idx1]];
 
-        gs.discardPile.unshift(gs.drawnCard);
+        if (gs.drawnCard) gs.discardPile.unshift(gs.drawnCard);
         gs.drawnCard = null;
         gs.activePower = null;
         gs.drawPhase = true;
@@ -686,16 +690,19 @@ module.exports = function initSocket(io) {
   function sanitizeState(gs, players) {
     return {
       phase: gs.phase,
-      drawPhase: gs.drawPhase,          // ← CRITIQUE : manquait
-      discardPile: gs.discardPile.slice(0, 3),
-      deckCount: gs.deck.length,
-      turnOrder: gs.turnOrder,
-      currentTurnIndex: gs.currentTurnIndex,
-      bombomBy: gs.bombomBy,
-      scores: gs.scores,
-      winner: gs.winner,
+      drawPhase: !!gs.drawPhase,
+      discardPile: (gs.discardPile || []).slice(0, 3),
+      deckCount: (gs.deck || []).length,
+      turnOrder: gs.turnOrder || [],
+      currentTurnIndex: gs.currentTurnIndex || 0,
+      bombomBy: gs.bombomBy || null,
+      bombomCancelUsed: gs.bombomCancelUsed || {},
+      activePower: gs.activePower || null,
+      powers: gs.powers || {},
+      scores: gs.scores || {},
+      winner: gs.winner || null,
       handSizes: Object.fromEntries(
-        Object.entries(gs.hands).map(([uid, h]) => [uid, h.length])
+        Object.entries(gs.hands || {}).map(([uid, h]) => [uid, Array.isArray(h) ? h.length : 0])
       ),
     };
   }
