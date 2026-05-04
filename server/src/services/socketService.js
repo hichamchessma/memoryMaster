@@ -10,10 +10,9 @@ const timers = {};  // tableId -> { memo, draw, choice }
 
 function stopTimers(tableId) {
   if (timers[tableId]) {
-    clearTimeout(timers[tableId].memo);
-    clearTimeout(timers[tableId].draw);
-    clearTimeout(timers[tableId].choice);
+    clearTimeout(timers[tableId].tick);
     clearInterval(timers[tableId].tick);
+    clearTimeout(timers[tableId].decide);
     delete timers[tableId];
   }
 }
@@ -510,11 +509,9 @@ module.exports = function initSocket(io) {
     Table.findByIdAndUpdate(tableId, { gameState: gs, status: 'playing' }).then(() => {
       io.to(tableId).emit('game:started', { players: table.players });
 
-      // Memorization phase
       const memoDuration = gs.memoDuration;
       let remaining = Math.ceil(memoDuration / 1000);
 
-      // Send each player their hand (hidden from others)
       for (const player of table.players) {
         const sock = getSocketById(io, player.socketId);
         if (sock) sock.emit('game:dealt', {
@@ -524,11 +521,13 @@ module.exports = function initSocket(io) {
       }
 
       timers[tableId] = {};
-      timers[tableId].tick = setInterval(() => {
+      const memoTick = setInterval(() => {
+        if (!timers[tableId]) { clearInterval(memoTick); return; }
         remaining--;
         io.to(tableId).emit('game:timer', { phase: 'memorization', remaining });
         if (remaining <= 0) {
-          clearInterval(timers[tableId].tick);
+          clearInterval(memoTick);
+          if (!timers[tableId]) return;
           gs.phase = 'playing';
           Table.findByIdAndUpdate(tableId, { 'gameState.phase': 'playing' }).then(() => {
             io.to(tableId).emit('game:phaseChange', { phase: 'playing' });
@@ -537,30 +536,34 @@ module.exports = function initSocket(io) {
           });
         }
       }, 1000);
+      timers[tableId].tick = memoTick;
     });
   }
 
   const DRAW_TIME = 10;
   const CHOICE_TIME = 15;
+  const BOT_DRAW_DELAY   = 2500;  // délai avant que le bot pioche
+  const BOT_DECIDE_DELAY = 2000;  // délai avant que le bot décide
 
   function startDrawTimer(io, table, tableId) {
     stopTimers(tableId);
-    let remaining = DRAW_TIME;
-    const gs = table.gameState;
-    if (!gs || gs.phase !== 'playing') return;
+    if (!table?.gameState || table.gameState.phase !== 'playing') return;
 
+    const gs = table.gameState;
     const currentPlayerId = gs.turnOrder[gs.currentTurnIndex];
+    let remaining = DRAW_TIME;
+
     io.to(tableId).emit('game:timer', { phase: 'draw', remaining, currentTurn: currentPlayerId });
 
-    // ── Bot draws automatically after 1.5s ──────────────────────────────────
+    // ── Bot turn ─────────────────────────────────────────────────────────────
     if (currentPlayerId === BOT_ID) {
       timers[tableId] = {};
-      timers[tableId].tick = setTimeout(async () => {
+      const botTimeout = setTimeout(async () => {
+        if (!timers[tableId]) return;
         const t = await Table.findById(tableId);
         if (!t?.gameState || t.gameState.phase !== 'playing') return;
         const botGs = t.gameState;
 
-        // BomBom check before drawing
         if (!botGs.bombomBy && botShouldBombom(botGs.hands[BOT_ID] || [])) {
           botGs.bombomBy = BOT_ID;
           t.markModified('gameState');
@@ -568,7 +571,6 @@ module.exports = function initSocket(io) {
           io.to(tableId).emit('game:bombomDeclared', { userId: BOT_ID });
         }
 
-        // Draw card
         const card = botGs.deck.shift();
         if (!card) return;
         botGs.drawnCard = card;
@@ -577,8 +579,8 @@ module.exports = function initSocket(io) {
         await t.save();
         io.to(tableId).emit('game:state', sanitizeState(botGs, t.players));
 
-        // Bot decides replace or discard after 1.5s
-        setTimeout(async () => {
+        // Bot decide after BOT_DECIDE_DELAY
+        const decideTimeout = setTimeout(async () => {
           const t2 = await Table.findById(tableId);
           if (!t2?.gameState || !t2.gameState.drawnCard) return;
           const gs2 = t2.gameState;
@@ -600,18 +602,25 @@ module.exports = function initSocket(io) {
           io.to(tableId).emit('game:state', sanitizeState(gs2, t2.players));
           checkBombomTrigger(io, t2, tableId);
           startDrawTimer(io, t2, tableId);
-        }, 1500);
-      }, 1500);
+        }, BOT_DECIDE_DELAY);
+
+        if (timers[tableId]) timers[tableId].decide = decideTimeout;
+        else clearTimeout(decideTimeout);
+      }, BOT_DRAW_DELAY);
+
+      timers[tableId].tick = botTimeout;
       return;
     }
 
-    // ── Human player turn ────────────────────────────────────────────────────
+    // ── Human turn ────────────────────────────────────────────────────────────
     timers[tableId] = {};
-    timers[tableId].tick = setInterval(async () => {
+    const drawTick = setInterval(async () => {
+      if (!timers[tableId]) { clearInterval(drawTick); return; }
       remaining--;
       io.to(tableId).emit('game:timer', { phase: 'draw', remaining, currentTurn: currentPlayerId });
       if (remaining <= 0) {
-        clearInterval(timers[tableId].tick);
+        clearInterval(drawTick);
+        if (!timers[tableId]) return;
         const t = await Table.findById(tableId);
         if (!t?.gameState || t.gameState.phase !== 'playing') return;
         const card = t.gameState.deck.shift();
@@ -626,6 +635,7 @@ module.exports = function initSocket(io) {
         startDrawTimer(io, t, tableId);
       }
     }, 1000);
+    timers[tableId].tick = drawTick;
   }
 
   function startChoiceTimer(io, table, tableId) {
@@ -636,12 +646,13 @@ module.exports = function initSocket(io) {
     io.to(tableId).emit('game:timer', { phase: 'choice', remaining, currentTurn: gs.turnOrder[gs.currentTurnIndex] });
 
     timers[tableId] = {};
-    timers[tableId].tick = setInterval(async () => {
+    const choiceTick = setInterval(async () => {
+      if (!timers[tableId]) { clearInterval(choiceTick); return; }
       remaining--;
       io.to(tableId).emit('game:timer', { phase: 'choice', remaining, currentTurn: gs.turnOrder[gs.currentTurnIndex] });
       if (remaining <= 0) {
-        clearInterval(timers[tableId].tick);
-        // Auto discard drawn card
+        clearInterval(choiceTick);
+        if (!timers[tableId]) return;
         const t = await Table.findById(tableId);
         if (!t?.gameState || !t.gameState.drawnCard) return;
         t.gameState.discardPile.unshift(t.gameState.drawnCard);
@@ -655,6 +666,7 @@ module.exports = function initSocket(io) {
         startDrawTimer(io, t, tableId);
       }
     }, 1000);
+    timers[tableId].tick = choiceTick;
   }
 
   function sanitizeState(gs, players) {
