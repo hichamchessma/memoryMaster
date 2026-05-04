@@ -22,11 +22,24 @@ export default function LobbyView({ onJoinGame, user }: Props) {
   const [creating, setCreating] = useState<2|3|4|null>(null)
   const qc = useQueryClient()
 
+  const [vsBot, setVsBot] = useState(false)
+
   const { data: tables = [], isLoading } = useQuery<Table[]>({
     queryKey: ['tables'],
     queryFn: () => api.get('/tables').then(r => r.data.data),
     refetchInterval: 4000,
   })
+
+  const playVsBot = async () => {
+    setVsBot(true)
+    try {
+      const { data } = await api.post('/tables/vs-bot')
+      toast.success('Partie contre le Bot créée !')
+      onJoinGame(data.data._id)
+    } catch {
+      toast.error('Impossible de créer la partie')
+    } finally { setVsBot(false) }
+  }
 
   const createTable = async (max: 2|3|4) => {
     setCreating(max)
@@ -64,6 +77,18 @@ export default function LobbyView({ onJoinGame, user }: Props) {
       <div className="glass rounded-2xl p-6">
         <h3 className="text-white font-gaming font-bold text-xl mb-4">✨ Créer une table</h3>
         <div className="flex flex-wrap gap-3">
+          {/* Bot button — highlighted */}
+          <button onClick={playVsBot} disabled={vsBot}
+            className="relative overflow-hidden font-bold rounded-xl px-6 py-3 text-white transition-all duration-300 flex items-center gap-2"
+            style={{ background: 'linear-gradient(135deg, #10b981, #059669)', boxShadow: '0 4px 20px rgba(16,185,129,0.4)' }}>
+            {vsBot
+              ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Création...</>
+              : <>🤖 Jouer contre le Bot</>
+            }
+          </button>
+
+          <div className="w-px bg-purple-800/50 self-stretch mx-1"/>
+
           {([2,3,4] as const).map(n => (
             <button key={n} onClick={() => createTable(n)} disabled={creating !== null}
               className={`btn-primary px-6 py-3 flex items-center gap-2 ${creating === n ? 'opacity-70' : ''}`}>
@@ -74,6 +99,7 @@ export default function LobbyView({ onJoinGame, user }: Props) {
             </button>
           ))}
         </div>
+        <p className="text-xs text-slate-500 mt-3">🤖 Le bot joue automatiquement — parfait pour s'entraîner seul</p>
       </div>
 
       {/* Tables en attente */}

@@ -27,9 +27,16 @@ export default function HomeView({ onPlay, user }: Props) {
             {user.firstName} <span className="text-yellow-400">👑</span>
           </h2>
           <p className="text-slate-400 mb-6">Prêt à dominer la table ?</p>
-          <button onClick={onPlay} className="btn-gold text-base px-8 py-3">
-            ⚡ Jouer maintenant
-          </button>
+          <div className="flex gap-3 flex-wrap">
+            <button onClick={onPlay} className="btn-gold text-base px-8 py-3">
+              ⚡ Jouer maintenant
+            </button>
+            <button onClick={onPlay}
+              className="font-bold rounded-xl px-6 py-3 text-white transition-all duration-300 flex items-center gap-2"
+              style={{ background: 'linear-gradient(135deg, #10b981, #059669)', boxShadow: '0 4px 20px rgba(16,185,129,0.3)' }}>
+              🤖 Jouer contre le Bot
+            </button>
+          </div>
         </div>
       </div>
 

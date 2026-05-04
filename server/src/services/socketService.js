@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const {
   createGameState, getCardScore, calcScore, canQuickDiscard, shuffle, buildDeck
 } = require('./gameService');
+const { BOT_ID, botDecideReplace, botShouldBombom, botQuickDiscard } = require('./botService');
 
 const timers = {};  // tableId -> { memo, draw, choice }
 
@@ -518,24 +519,74 @@ module.exports = function initSocket(io) {
     const gs = table.gameState;
     if (!gs || gs.phase !== 'playing') return;
 
-    io.to(tableId).emit('game:timer', { phase: 'draw', remaining, currentTurn: gs.turnOrder[gs.currentTurnIndex] });
+    const currentPlayerId = gs.turnOrder[gs.currentTurnIndex];
+    io.to(tableId).emit('game:timer', { phase: 'draw', remaining, currentTurn: currentPlayerId });
 
+    // ── Bot draws automatically after 1.5s ──────────────────────────────────
+    if (currentPlayerId === BOT_ID) {
+      timers[tableId] = {};
+      timers[tableId].tick = setTimeout(async () => {
+        const t = await Table.findById(tableId);
+        if (!t?.gameState || t.gameState.phase !== 'playing') return;
+        const botGs = t.gameState;
+
+        // BomBom check before drawing
+        if (!botGs.bombomBy && botShouldBombom(botGs.hands[BOT_ID] || [])) {
+          botGs.bombomBy = BOT_ID;
+          t.markModified('gameState');
+          await t.save();
+          io.to(tableId).emit('game:bombomDeclared', { userId: BOT_ID });
+        }
+
+        // Draw card
+        const card = botGs.deck.shift();
+        if (!card) return;
+        botGs.drawnCard = card;
+        botGs.drawPhase = false;
+        t.markModified('gameState');
+        await t.save();
+        io.to(tableId).emit('game:state', sanitizeState(botGs, t.players));
+
+        // Bot decides replace or discard after 1.5s
+        setTimeout(async () => {
+          const t2 = await Table.findById(tableId);
+          if (!t2?.gameState || !t2.gameState.drawnCard) return;
+          const gs2 = t2.gameState;
+          const hand = gs2.hands[BOT_ID] || [];
+          const replaceIdx = botDecideReplace(hand, gs2.drawnCard);
+
+          if (replaceIdx !== null) {
+            const old = hand[replaceIdx];
+            hand[replaceIdx] = gs2.drawnCard;
+            gs2.discardPile.unshift(old);
+          } else {
+            gs2.discardPile.unshift(gs2.drawnCard);
+          }
+          gs2.drawnCard = null;
+          gs2.drawPhase = true;
+          advanceTurn(gs2);
+          t2.markModified('gameState');
+          await t2.save();
+          io.to(tableId).emit('game:state', sanitizeState(gs2, t2.players));
+          checkBombomTrigger(io, t2, tableId);
+          startDrawTimer(io, t2, tableId);
+        }, 1500);
+      }, 1500);
+      return;
+    }
+
+    // ── Human player turn ────────────────────────────────────────────────────
     timers[tableId] = {};
     timers[tableId].tick = setInterval(async () => {
       remaining--;
-      io.to(tableId).emit('game:timer', { phase: 'draw', remaining, currentTurn: gs.turnOrder[gs.currentTurnIndex] });
+      io.to(tableId).emit('game:timer', { phase: 'draw', remaining, currentTurn: currentPlayerId });
       if (remaining <= 0) {
         clearInterval(timers[tableId].tick);
-        // Auto draw top card
         const t = await Table.findById(tableId);
         if (!t?.gameState || t.gameState.phase !== 'playing') return;
         const card = t.gameState.deck.shift();
         if (!card) return;
-        t.gameState.drawnCard = card;
-        t.gameState.drawPhase = false;
-        // Auto discard
         t.gameState.discardPile.unshift(card);
-        t.gameState.drawnCard = null;
         t.gameState.drawPhase = true;
         advanceTurn(t.gameState);
         t.markModified('gameState');
