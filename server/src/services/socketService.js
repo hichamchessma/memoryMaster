@@ -6,7 +6,8 @@ const {
 } = require('./gameService');
 const { BOT_ID, botDecideReplace, botShouldBombom, botQuickDiscard } = require('./botService');
 
-const timers = {};  // tableId -> { memo, draw, choice }
+const timers = {};       // tableId -> { tick, decide }
+const starting = new Set(); // guard contre double startGame
 
 function stopTimers(tableId) {
   if (timers[tableId]) {
@@ -72,10 +73,10 @@ module.exports = function initSocket(io) {
         socket.join(tableId);
         io.to(tableId).emit('table:updated', table);
 
-        // Démarrer si tous prêts (cas bot) — guard contre double start
-        if (hasBot && table.status === 'waiting' && table.players.every(p => p.isReady)) {
-          table.status = 'starting'; // bloquer tout appel supplémentaire
-          await table.save();
+        // Démarrer si tous prêts (cas bot) — guard en mémoire
+        const tid = table._id.toString();
+        if (hasBot && table.status === 'waiting' && table.players.every(p => p.isReady) && !starting.has(tid)) {
+          starting.add(tid);
           setTimeout(() => startGame(io, table), 1500);
         }
       } catch (err) {
@@ -116,11 +117,10 @@ module.exports = function initSocket(io) {
         await table.save();
         io.to(tableId).emit('table:updated', table);
 
-        const allReady = table.players.length >= 2
-          && table.players.every(p => p.isReady);
-        if (allReady) {
-          table.status = 'starting';
-          await table.save();
+        const tid2 = table._id.toString();
+        const allReady = table.players.length >= 2 && table.players.every(p => p.isReady);
+        if (allReady && !starting.has(tid2)) {
+          starting.add(tid2);
           startGame(io, table);
         }
       } catch (err) {
@@ -508,6 +508,7 @@ module.exports = function initSocket(io) {
 
   function startGame(io, table) {
     const tableId = table._id.toString();
+    starting.delete(tableId); // libérer le guard
     const gs = createGameState(table.players);
     table.gameState = gs;
     table.status = 'playing';

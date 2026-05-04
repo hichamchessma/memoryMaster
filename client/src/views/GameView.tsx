@@ -263,6 +263,22 @@ export default function GameView({ tableId, user, onLeave }: Props) {
   // ── Waiting room ───────────────────────────────────────────────────────────
   if (!gameStarted) {
     const me = players.find(p => p.userId === user._id)
+    const hasBot = players.some(p => p.userId === 'BOT_PLAYER_001')
+    const allReady = players.length >= 2 && players.every(p => p.isReady)
+
+    // Partie bot + tout le monde prêt → démarrage imminent, afficher loading
+    if (hasBot && allReady) {
+      return (
+        <div className="flex items-center justify-center h-full">
+          <div className="glass rounded-2xl p-10 text-center space-y-4">
+            <div className="w-12 h-12 border-4 border-purple-500/30 border-t-purple-500 rounded-full animate-spin mx-auto"/>
+            <p className="text-white font-bold text-lg">Démarrage de la partie...</p>
+            <p className="text-slate-400 text-sm">Préparation des cartes</p>
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div className="flex items-center justify-center h-full p-6 animate-fade-in">
         <div className="glass rounded-2xl p-8 max-w-md w-full text-center space-y-6">
