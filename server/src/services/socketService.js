@@ -72,9 +72,11 @@ module.exports = function initSocket(io) {
         socket.join(tableId);
         io.to(tableId).emit('table:updated', table);
 
-        // Démarrer si tous prêts (cas bot) — délai pour que le client s'établisse
-        if (hasBot && table.players.every(p => p.isReady)) {
-          setTimeout(() => startGame(io, table), 1200);
+        // Démarrer si tous prêts (cas bot) — guard contre double start
+        if (hasBot && table.status === 'waiting' && table.players.every(p => p.isReady)) {
+          table.status = 'starting'; // bloquer tout appel supplémentaire
+          await table.save();
+          setTimeout(() => startGame(io, table), 1500);
         }
       } catch (err) {
         socket.emit('error', { message: err.message });
@@ -107,7 +109,7 @@ module.exports = function initSocket(io) {
     socket.on('table:ready', async ({ tableId }) => {
       try {
         const table = await Table.findById(tableId);
-        if (!table) return;
+        if (!table || table.status !== 'waiting') return;
         const slot = table.players.find(p => p.userId === socket.userId);
         if (!slot) return;
         slot.isReady = !slot.isReady;
@@ -116,7 +118,11 @@ module.exports = function initSocket(io) {
 
         const allReady = table.players.length >= 2
           && table.players.every(p => p.isReady);
-        if (allReady) startGame(io, table);
+        if (allReady) {
+          table.status = 'starting';
+          await table.save();
+          startGame(io, table);
+        }
       } catch (err) {
         socket.emit('error', { message: err.message });
       }

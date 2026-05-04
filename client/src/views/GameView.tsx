@@ -54,40 +54,48 @@ export default function GameView({ tableId, user, onLeave }: Props) {
   const phase = gs?.phase ?? 'waiting'
   const topDiscard = gs?.discardPile?.[0] ?? null
 
-  // ── Socket events ──────────────────────────────────────────────────────────
+  // ── Socket events — ne dépend QUE de socket et tableId ───────────────────
   useEffect(() => {
     if (!socket) return
 
     socket.emit('table:join', { tableId })
-
-    // Demander l'état courant si partie déjà en cours (reconnexion / bot)
     socket.emit('game:requestState', { tableId })
 
     socket.on('table:updated', (table: { players: Player[] }) => setPlayers(table.players))
 
     socket.on('game:started', ({ players: p }: { players: Player[] }) => {
-      setPlayers(p); setGameStarted(true)
+      setPlayers(p)
+      setGameStarted(true)
     })
 
-    socket.on('game:dealt', ({ myHand: h }: { myHand: Card[] }) => {
-      setMyHand(h.map(c => ({ ...c, isFlipped: false })))
+    socket.on('game:dealt', ({ myHand: h, players: p }: { myHand: Card[]; players: Player[] }) => {
+      setMyHand(h.map(c => ({ ...c, isFlipped: true })))  // face visible pendant mémo
+      if (p) setPlayers(p)
     })
 
-    socket.on('game:state', (state: GameState) => setGs(state))
+    socket.on('game:state', (state: GameState) => {
+      setGs(state)
+      // Cacher les cartes après mémo
+      if (state.phase === 'playing') {
+        setMyHand(prev => prev.map(c => ({ ...c, isFlipped: false })))
+      }
+    })
 
-    socket.on('game:timer', ({ phase: p, remaining, currentTurn }: any) => {
+    socket.on('game:timer', ({ phase: p, remaining }: any) => {
       const max = p === 'memorization' ? 7 : p === 'draw' ? 10 : 15
       setTimer({ phase: p as TimerPhase, remaining, max })
-      void currentTurn
     })
 
     socket.on('game:phaseChange', ({ phase: p }: { phase: Phase }) => {
       setGs(prev => prev ? { ...prev, phase: p } : prev)
+      if (p === 'playing') {
+        setMyHand(prev => prev.map(c => ({ ...c, isFlipped: false })))
+      }
     })
 
     socket.on('game:drawn', ({ card }: { card: Card }) => {
       setDrawnCard(card)
-      toast(`Vous avez pioché: ${getRankLabel(card.value)}`, { icon: '🃏', duration: 2000 })
+      toast(`Vous piochez : ${getRankLabel(card.value)}`, { icon: '🃏', duration: 2000 })
     })
 
     socket.on('game:revealCard', ({ card, duration }: { card: Card; duration: number }) => {
@@ -96,29 +104,38 @@ export default function GameView({ tableId, user, onLeave }: Props) {
       revealTimeout.current = setTimeout(() => setRevealedCard(null), duration)
     })
 
-    socket.on('game:penalty', ({ penaltyCards }: { userId: string; penaltyCards: number }) => {
+    socket.on('game:penalty', ({ penaltyCards }: { penaltyCards: number }) => {
       setPenalty(`+${penaltyCards} cartes de pénalité !`)
       setTimeout(() => setPenalty(null), 2500)
     })
 
     socket.on('game:quickDiscarded', ({ userId, card }: { userId: string; card: Card }) => {
-      const who = players.find(p => p.userId === userId)?.firstName || 'Joueur'
-      toast(`${who} défausse ${getRankLabel(card.value)} !`, { icon: '💨', duration: 1500 })
+      setPlayers(prev => {
+        const who = prev.find(p => p.userId === userId)?.firstName || 'Joueur'
+        toast(`${who} défausse ${getRankLabel(card.value)} !`, { icon: '💨', duration: 1500 })
+        return prev
+      })
       if (userId === user._id) {
         setMyHand(prev => prev.filter(c => c.id !== card.id))
       }
     })
 
     socket.on('game:powerActivated', ({ userId, power }: { userId: string; power: string }) => {
-      const who = players.find(p => p.userId === userId)?.firstName || 'Joueur'
-      const labels = { jack: 'Valet 👁 (sa carte)', queen: 'Dame 👁 (carte adverse)', king: 'Roi ↔ (échange)' }
-      toast(`${who} joue: ${labels[power as keyof typeof labels] || power}`, { icon: '✨', duration: 2500 })
+      setPlayers(prev => {
+        const who = prev.find(p => p.userId === userId)?.firstName || 'Joueur'
+        const labels: Record<string, string> = { jack: 'Valet 👁', queen: 'Dame 👁', king: 'Roi ↔' }
+        toast(`${who} joue : ${labels[power] || power}`, { icon: '✨', duration: 2500 })
+        return prev
+      })
       setPowerMode(null)
     })
 
     socket.on('game:bombomDeclared', ({ userId }: { userId: string }) => {
-      const who = players.find(p => p.userId === userId)?.firstName || 'Joueur'
-      toast.error(`💣 ${who} a déclaré BomBom !`, { duration: 3000 })
+      setPlayers(prev => {
+        const who = prev.find(p => p.userId === userId)?.firstName || 'Bot'
+        toast.error(`💣 ${who} a déclaré BomBom !`, { duration: 3000 })
+        return prev
+      })
     })
 
     socket.on('game:bombomPrompt', ({ canCancel }: { canCancel: boolean }) => {
@@ -141,7 +158,7 @@ export default function GameView({ tableId, user, onLeave }: Props) {
       socket.off('game:bombomDeclared'); socket.off('game:bombomPrompt')
       socket.off('game:showtime'); socket.off('error')
     }
-  }, [socket, tableId, user._id, players])
+  }, [socket, tableId, user._id])
 
   // ── Actions ────────────────────────────────────────────────────────────────
   const toggleReady = () => socket?.emit('table:ready', { tableId })
@@ -334,11 +351,25 @@ export default function GameView({ tableId, user, onLeave }: Props) {
         </div>
       )}
 
-      {/* ── Turn indicator ── */}
-      {gs && phase === 'playing' && (
+      {/* ── Turn indicator — affiché uniquement en phase de jeu ── */}
+      {gs && (phase === 'playing') && (
         <div className="flex-shrink-0 px-4 py-1">
-          <div className={`text-center text-xs font-bold py-1.5 rounded-lg ${myTurn ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-purple-900/30 text-purple-300'}`}>
-            {myTurn ? '⚡ C\'est votre tour !' : `⏳ Tour de ${players.find(p => p.userId === gs.turnOrder[gs.currentTurnIndex])?.firstName || '...'}`}
+          <div className={`text-center text-xs font-bold py-1.5 rounded-lg ${
+            myTurn
+              ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+              : 'bg-purple-900/30 text-purple-300'
+          }`}>
+            {myTurn
+              ? `⚡ C'est votre tour ! ${gs.drawPhase ? '— Cliquez le deck pour piocher' : '— Choisissez une action'}`
+              : `⏳ Tour de ${players.find(p => p.userId === gs.turnOrder[gs.currentTurnIndex])?.firstName || 'Bot'}`
+            }
+          </div>
+        </div>
+      )}
+      {phase === 'memorization' && (
+        <div className="flex-shrink-0 px-4 py-1">
+          <div className="text-center text-xs font-bold py-1.5 rounded-lg bg-cyan-900/30 text-cyan-300 border border-cyan-500/30">
+            🧠 Mémorisez vos cartes !
           </div>
         </div>
       )}
