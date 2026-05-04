@@ -62,9 +62,21 @@ module.exports = function initSocket(io) {
           slot.socketId = socket.id;
         }
 
+        // Si table avec bot → marquer le joueur humain comme prêt automatiquement
+        const hasBot = table.players.some(p => p.userId === BOT_ID);
+        if (hasBot) {
+          const humanSlot = table.players.find(p => p.userId === socket.userId);
+          if (humanSlot) humanSlot.isReady = true;
+        }
+
         await table.save();
         socket.join(tableId);
         io.to(tableId).emit('table:updated', table);
+
+        // Démarrer immédiatement si tous prêts (cas bot)
+        if (hasBot && table.players.every(p => p.isReady)) {
+          setTimeout(() => startGame(io, table), 500);
+        }
       } catch (err) {
         socket.emit('error', { message: err.message });
       }
