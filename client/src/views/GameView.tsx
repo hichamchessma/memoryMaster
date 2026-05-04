@@ -17,6 +17,7 @@ type TimerPhase = 'memorization' | 'draw' | 'choice' | null
 
 interface GameState {
   phase: Phase
+  drawPhase: boolean
   discardPile: Card[]
   deckCount: number
   turnOrder: string[]
@@ -48,6 +49,8 @@ export default function GameView({ tableId, user, onLeave }: Props) {
   const [kingStep, setKingStep] = useState<{userId: string; idx: number}|null>(null)
   const [bombomPrompt, setBombomPrompt] = useState(false)
   const [penalty, setPenalty] = useState<string|null>(null)
+  const [botThinking, setBotThinking] = useState<string|null>(null)
+  const [deckPulse, setDeckPulse] = useState(false)
   const revealTimeout = useRef<ReturnType<typeof setTimeout>|null>(null)
 
   const myTurn = gs ? gs.turnOrder[gs.currentTurnIndex] === user._id : false
@@ -146,6 +149,19 @@ export default function GameView({ tableId, user, onLeave }: Props) {
     socket.on('game:showtime', (data: ShowtimeData) => {
       setShowtimeData(data)
       setDrawnCard(null)
+      setBotThinking(null)
+    })
+
+    socket.on('game:botAction', ({ action }: { action: string; card?: Card }) => {
+      if (action === 'draw') {
+        setBotThinking('🤖 Bot pioche...')
+      } else if (action === 'replace') {
+        setBotThinking('🤖 Bot remplace une carte')
+        setTimeout(() => setBotThinking(null), 1500)
+      } else if (action === 'discard') {
+        setBotThinking('🤖 Bot défausse')
+        setTimeout(() => setBotThinking(null), 1500)
+      }
     })
 
     socket.on('error', ({ message }: { message: string }) => toast.error(message))
@@ -156,13 +172,26 @@ export default function GameView({ tableId, user, onLeave }: Props) {
       socket.off('game:drawn'); socket.off('game:revealCard'); socket.off('game:penalty')
       socket.off('game:quickDiscarded'); socket.off('game:powerActivated')
       socket.off('game:bombomDeclared'); socket.off('game:bombomPrompt')
-      socket.off('game:showtime'); socket.off('error')
+      socket.off('game:showtime'); socket.off('game:botAction'); socket.off('error')
     }
   }, [socket, tableId, user._id])
 
   // ── Actions ────────────────────────────────────────────────────────────────
+  // Pulse le deck quand c'est mon tour de piocher
+  useEffect(() => {
+    if (myTurn && gs?.drawPhase && phase === 'playing') {
+      setDeckPulse(true)
+    } else {
+      setDeckPulse(false)
+    }
+  }, [myTurn, gs?.drawPhase, phase])
+
   const toggleReady = () => socket?.emit('table:ready', { tableId })
-  const drawCard = () => { if (myTurn && gs?.drawPhase) socket?.emit('game:draw', { tableId }) }
+  const drawCard = () => {
+    if (!myTurn || !gs?.drawPhase || phase !== 'playing') return
+    socket?.emit('game:draw', { tableId })
+    setDeckPulse(false)
+  }
 
   const clickMyCard = useCallback((card: Card, idx: number) => {
     if (!socket || !gs) return
@@ -376,8 +405,10 @@ export default function GameView({ tableId, user, onLeave }: Props) {
               : 'bg-purple-900/30 text-purple-300'
           }`}>
             {myTurn
-              ? `⚡ C'est votre tour ! ${gs.drawPhase ? '— Cliquez le deck pour piocher' : '— Choisissez une action'}`
-              : `⏳ Tour de ${players.find(p => p.userId === gs.turnOrder[gs.currentTurnIndex])?.firstName || 'Bot'}`
+              ? gs.drawPhase
+                ? '⚡ Votre tour — Cliquez le deck pour piocher'
+                : '⚡ Votre tour — Remplacez une carte ou défaussez'
+              : `⏳ Tour de ${players.find(p => p.userId === gs.turnOrder[gs.currentTurnIndex])?.firstName || '🤖 Bot'}`
             }
           </div>
         </div>
@@ -417,21 +448,38 @@ export default function GameView({ tableId, user, onLeave }: Props) {
         </div>
       </div>
 
+      {/* ── Bot thinking indicator ── */}
+      {botThinking && (
+        <div className="flex-shrink-0 px-4">
+          <div className="flex items-center gap-2 px-4 py-2 rounded-xl glass-2 border border-purple-500/30 w-fit mx-auto">
+            <div className="w-3 h-3 rounded-full bg-purple-400 animate-pulse"/>
+            <span className="text-sm text-purple-300 font-medium">{botThinking}</span>
+          </div>
+        </div>
+      )}
+
       {/* ── Center: Deck + Discard ── */}
       <div className="flex-1 flex items-center justify-center gap-8 px-4">
 
         {/* Deck */}
         <div className="text-center">
-          <button onClick={drawCard}
-            disabled={!myTurn || !gs?.drawPhase || phase !== 'playing'}
-            className={`w-20 h-28 rounded-xl overflow-hidden transition-all ${
-              myTurn && gs?.drawPhase && phase === 'playing'
-                ? 'hover:scale-105 hover:-translate-y-2 card-glow cursor-pointer ring-2 ring-purple-500'
-                : 'opacity-60 cursor-not-allowed'
-            }`}>
+          <button
+            onClick={drawCard}
+            className={`w-20 h-28 rounded-xl overflow-hidden transition-all duration-200 relative ${
+              deckPulse
+                ? 'cursor-pointer ring-4 ring-yellow-400 scale-105 -translate-y-2 shadow-[0_0_24px_rgba(251,191,36,0.7)]'
+                : myTurn && gs?.drawPhase && phase === 'playing'
+                  ? 'cursor-pointer ring-2 ring-purple-400 hover:scale-105 hover:-translate-y-1'
+                  : 'opacity-50 cursor-default'
+            }`}
+          >
             <img src={getCardBack()} alt="Deck" className="w-full h-full object-cover"/>
+            {deckPulse && (
+              <div className="absolute inset-0 rounded-xl animate-ping bg-yellow-400/20 pointer-events-none"/>
+            )}
           </button>
           <p className="text-xs text-slate-400 mt-1">{gs?.deckCount ?? 0} cartes</p>
+          {deckPulse && <p className="text-xs text-yellow-400 font-bold mt-0.5 animate-pulse">Cliquez !</p>}
         </div>
 
         {/* BomBom button */}

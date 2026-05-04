@@ -527,6 +527,9 @@ module.exports = function initSocket(io) {
         });
       }
 
+      // Envoyer l'état initial pendant la mémo (pour le deck count)
+      io.to(tableId).emit('game:state', sanitizeState(gs, table.players));
+
       timers[tableId] = {};
       const memoTick = setInterval(() => {
         if (!timers[tableId]) { clearInterval(memoTick); return; }
@@ -584,6 +587,8 @@ module.exports = function initSocket(io) {
         botGs.drawPhase = false;
         t.markModified('gameState');
         await t.save();
+        // Notifier le client que le bot pioche (pour animation)
+        io.to(tableId).emit('game:botAction', { action: 'draw', card: { value: card.value } });
         io.to(tableId).emit('game:state', sanitizeState(botGs, t.players));
 
         // Bot decide after BOT_DECIDE_DELAY
@@ -593,6 +598,7 @@ module.exports = function initSocket(io) {
           const gs2 = t2.gameState;
           const hand = gs2.hands[BOT_ID] || [];
           const replaceIdx = botDecideReplace(hand, gs2.drawnCard);
+          const action = replaceIdx !== null ? 'replace' : 'discard';
 
           if (replaceIdx !== null) {
             const old = hand[replaceIdx];
@@ -606,6 +612,7 @@ module.exports = function initSocket(io) {
           advanceTurn(gs2);
           t2.markModified('gameState');
           await t2.save();
+          io.to(tableId).emit('game:botAction', { action });
           io.to(tableId).emit('game:state', sanitizeState(gs2, t2.players));
           checkBombomTrigger(io, t2, tableId);
           startDrawTimer(io, t2, tableId);
@@ -677,9 +684,9 @@ module.exports = function initSocket(io) {
   }
 
   function sanitizeState(gs, players) {
-    // Don't send card values of opponents (face-down) — client handles reveals
     return {
       phase: gs.phase,
+      drawPhase: gs.drawPhase,          // ← CRITIQUE : manquait
       discardPile: gs.discardPile.slice(0, 3),
       deckCount: gs.deck.length,
       turnOrder: gs.turnOrder,
