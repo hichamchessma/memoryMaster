@@ -87,6 +87,8 @@ export default function GameView({ tableId, user, onLeave }: Props) {
     socket.on('game:state', (state: GameState) => {
       setGs(state)
       setBotThinking(null)
+      // Si drawPhase repasse à true → le tour est passé, effacer la carte piochée
+      if (state.drawPhase) setDrawnCard(null)
       if (state.phase === 'playing') {
         setMyHand(prev => prev.map(c => ({ ...c, isFlipped: false })))
       }
@@ -111,6 +113,11 @@ export default function GameView({ tableId, user, onLeave }: Props) {
       setRevealedCard(card)
       if (revealTimeout.current) clearTimeout(revealTimeout.current)
       revealTimeout.current = setTimeout(() => setRevealedCard(null), duration)
+    })
+
+    socket.on('game:penaltyCards', ({ cards }: { cards: Card[] }) => {
+      // Ajouter les vraies cartes de pénalité (face cachée) à la main
+      setMyHand(prev => [...prev, ...cards.map(c => ({ ...c, isFlipped: false }))])
     })
 
     socket.on('game:penalty', ({ penaltyCards }: { penaltyCards: number }) => {
@@ -165,8 +172,8 @@ export default function GameView({ tableId, user, onLeave }: Props) {
 
     return () => {
       ['table:updated','game:started','game:dealt','game:state','game:timer','game:phaseChange',
-       'game:drawn','game:revealCard','game:penalty','game:quickDiscarded','game:powerActivated',
-       'game:bombomDeclared','game:bombomPrompt','game:showtime','game:botAction','error']
+       'game:drawn','game:revealCard','game:penaltyCards','game:penalty','game:quickDiscarded',
+       'game:powerActivated','game:bombomDeclared','game:bombomPrompt','game:showtime','game:botAction','error']
         .forEach(ev => socket.off(ev))
       if (revealTimeout.current) clearTimeout(revealTimeout.current)
       if (penaltyTimeout.current) clearTimeout(penaltyTimeout.current)
@@ -211,12 +218,19 @@ export default function GameView({ tableId, user, onLeave }: Props) {
   const confirmShowtime = () => { setBombomPrompt(false); socket?.emit('game:showtime', { tableId }) }
   const cancelBombom = () => { setBombomPrompt(false); socket?.emit('game:cancelBombom', { tableId }) }
 
-  const playAgain = () => {
+  const resetGame = () => {
     setShowtimeData(null); setGameStarted(false); setMyHand([]); setGs(null)
     setDrawnCard(null); setPowerMode(null); setKingStep(null)
     setBombomPrompt(false); setPenalty(null); setBotThinking(null); setDeckPulse(false)
-    setTimer({ phase: null, remaining: 0, max: 10 })
-    setRevealedCard(null)
+    setTimer({ phase: null, remaining: 0, max: 10 }); setRevealedCard(null)
+  }
+
+  const playAgain = () => { resetGame() }
+
+  const quitGame = () => {
+    socket?.emit('table:leave', { tableId })
+    resetGame()
+    onLeave()
   }
 
   const clickMyCard = useCallback((card: Card, idx: number) => {
@@ -293,7 +307,7 @@ export default function GameView({ tableId, user, onLeave }: Props) {
           </div>
           <div className="flex gap-3">
             <button onClick={playAgain} className="btn-primary flex-1 py-3">🔄 Rejouer</button>
-            <button onClick={onLeave} className="btn-outline flex-1 py-3">← Salon</button>
+            <button onClick={() => { resetGame(); onLeave() }} className="btn-outline flex-1 py-3">← Salon</button>
           </div>
         </div>
       </div>
@@ -517,9 +531,9 @@ export default function GameView({ tableId, user, onLeave }: Props) {
 
       {/* ── Drawn card panel ── */}
       {drawnCard && myTurn && (
-        <div className="flex-shrink-0 px-4 py-2 animate-slide-up">
+        <div className="flex-shrink-0 px-4 py-2 card-draw-anim">
           <div className="glass-2 rounded-xl p-3 flex items-center gap-4 border border-yellow-500/30">
-            <div className="w-14 h-20 rounded-lg overflow-hidden flex-shrink-0 card-gold-glow">
+            <div className="w-14 h-20 rounded-lg overflow-hidden flex-shrink-0 card-gold-glow card-draw-anim">
               <img src={getCardImage(drawnCard.value)} alt="" className="w-full h-full object-cover"/>
             </div>
             <div className="flex-1">
@@ -570,9 +584,10 @@ export default function GameView({ tableId, user, onLeave }: Props) {
             const isHighlighted = isPowerClickable || isReplaceMode
             const isKingSelected = powerMode === 'king' && kingStep?.userId === user._id && kingStep.idx === idx
 
+            const isNew = idx >= myHand.length - 2 && penalty !== null
             return (
               <button key={card.id || idx} onClick={() => clickMyCard(card, idx)}
-                className={`w-16 h-24 rounded-xl overflow-hidden transition-all flex-shrink-0 relative ${
+                className={`w-16 h-24 rounded-xl overflow-hidden transition-all flex-shrink-0 relative ${isNew ? 'card-pop-anim' : ''} ${
                   isKingSelected
                     ? 'ring-4 ring-yellow-400 scale-105 -translate-y-2 cursor-crosshair'
                     : isHighlighted
@@ -595,9 +610,10 @@ export default function GameView({ tableId, user, onLeave }: Props) {
         </div>
       </div>
 
-      {/* ── Leave ── */}
-      <button onClick={onLeave} className="absolute top-2 right-4 text-xs text-slate-500 hover:text-red-400 transition-colors z-10">
-        Quitter
+      {/* ── Quit button ── */}
+      <button onClick={quitGame}
+        className="absolute top-2 right-4 z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-red-400 border border-red-800/40 bg-red-900/20 hover:bg-red-900/50 hover:text-red-300 transition-all">
+        🚪 Quitter
       </button>
     </div>
   )

@@ -224,15 +224,15 @@ module.exports = function initSocket(io) {
         const top = gs.discardPile[0];
 
         if (!canQuickDiscard(card.value, top)) {
-          // Penalty: add 2 cards
+          // Penalty: add 2 cards from deck
           const penalty = gs.deck.splice(0, 2);
           hand.push(...penalty);
           table.markModified('gameState');
           await table.save();
-          io.to(tableId).emit('game:penalty', {
-            userId: socket.userId,
-            penaltyCards: penalty.length,
-          });
+          // Envoyer les vraies cartes au joueur pénalisé
+          const penSocket = getSocketById(io, table.players.find(p => p.userId === socket.userId)?.socketId);
+          if (penSocket) penSocket.emit('game:penaltyCards', { cards: penalty });
+          io.to(tableId).emit('game:penalty', { userId: socket.userId, penaltyCards: penalty.length });
           io.to(tableId).emit('game:state', sanitizeState(gs, table.players));
           return;
         }

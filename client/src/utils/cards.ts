@@ -1,5 +1,5 @@
 const SUITS = ['c', 'd', 'h', 's'] as const
-const RANKS = ['a', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'j', 'q', 'k'] as const
+const RANKS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'j', 'q', 'k'] as const
 
 export function getCardImage(value: number): string {
   if (value === -1) return ''
