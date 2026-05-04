@@ -1,0 +1,194 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Google Fonts ── */
+@import url('https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600;700;900&family=Inter:wght@400;500;600&display=swap');
+
+/* ── Root variables ── */
+:root {
+  --bg-dark:      #0a0a14;
+  --bg-surface:   rgba(18, 18, 36, 0.85);
+  --bg-surface2:  rgba(28, 28, 56, 0.7);
+  --border-glow:  rgba(124, 58, 237, 0.35);
+  --gold:         #fbbf24;
+  --purple:       #7c3aed;
+  --cyan:         #22d3ee;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--bg-dark);
+  color: #f1f5f9;
+  overflow-x: hidden;
+}
+
+/* ── Game background ── */
+.game-bg {
+  background-image: url('/background-memorymasters.jpg');
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+}
+
+/* ── Glassmorphism panels ── */
+.glass {
+  background: var(--bg-surface);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-glow);
+}
+
+.glass-2 {
+  background: var(--bg-surface2);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(124, 58, 237, 0.2);
+}
+
+/* ── Buttons ── */
+.btn-primary {
+  @apply relative overflow-hidden font-bold rounded-xl px-6 py-3 text-white transition-all duration-300;
+  background: linear-gradient(135deg, #7c3aed, #4f46e5);
+  box-shadow: 0 4px 20px rgba(124, 58, 237, 0.4);
+}
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(124, 58, 237, 0.6);
+}
+.btn-primary:active { transform: translateY(0); }
+
+.btn-gold {
+  @apply relative overflow-hidden font-bold rounded-xl px-6 py-3 text-gray-900 transition-all duration-300;
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  box-shadow: 0 4px 20px rgba(251, 191, 36, 0.35);
+}
+.btn-gold:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(251, 191, 36, 0.55);
+}
+
+.btn-outline {
+  @apply font-semibold rounded-xl px-6 py-3 transition-all duration-300;
+  border: 1px solid rgba(124, 58, 237, 0.5);
+  color: #a78bfa;
+  background: transparent;
+}
+.btn-outline:hover {
+  border-color: #7c3aed;
+  background: rgba(124, 58, 237, 0.1);
+  color: #fff;
+}
+
+.btn-danger {
+  @apply font-bold rounded-xl px-6 py-3 text-white transition-all duration-300;
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  box-shadow: 0 4px 16px rgba(239, 68, 68, 0.35);
+}
+.btn-danger:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(239, 68, 68, 0.5);
+}
+
+/* ── Input fields ── */
+.input-field {
+  @apply w-full rounded-xl px-4 py-3 text-white font-medium transition-all duration-200;
+  background: rgba(18, 18, 36, 0.8);
+  border: 1px solid rgba(124, 58, 237, 0.3);
+  outline: none;
+}
+.input-field:focus {
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
+}
+.input-field::placeholder { color: #64748b; }
+
+/* ── Card ── */
+.card-container {
+  perspective: 800px;
+}
+.card-inner {
+  transition: transform 0.5s ease;
+  transform-style: preserve-3d;
+  position: relative;
+}
+.card-inner.flipped { transform: rotateY(180deg); }
+.card-front, .card-back {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.card-back { transform: rotateY(180deg); }
+
+.card-glow {
+  box-shadow: 0 0 16px rgba(124, 58, 237, 0.5), 0 0 32px rgba(124, 58, 237, 0.2);
+}
+.card-gold-glow {
+  box-shadow: 0 0 16px rgba(251, 191, 36, 0.6), 0 0 32px rgba(251, 191, 36, 0.3);
+}
+.card-active {
+  border: 2px solid #fbbf24;
+  animation: pulseGold 2s ease-in-out infinite;
+}
+
+@keyframes pulseGold {
+  0%,100% { box-shadow: 0 0 8px rgba(251,191,36,.4); }
+  50%      { box-shadow: 0 0 24px rgba(251,191,36,.8); }
+}
+
+/* ── ELO badge ── */
+.elo-badge {
+  @apply inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-bold;
+  background: linear-gradient(135deg, #fbbf2422, #f59e0b22);
+  border: 1px solid #fbbf2455;
+  color: #fbbf24;
+}
+
+/* ── Sidebar ── */
+.sidebar-link {
+  @apply flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-slate-400;
+  font-weight: 500;
+}
+.sidebar-link:hover {
+  background: rgba(124, 58, 237, 0.1);
+  color: #a78bfa;
+}
+.sidebar-link.active {
+  background: rgba(124, 58, 237, 0.2);
+  color: #fff;
+  border-left: 3px solid #7c3aed;
+}
+
+/* ── Timer bar ── */
+.timer-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #22d3ee, #7c3aed);
+  transition: width 1s linear;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+::-webkit-scrollbar-thumb { background: rgba(124,58,237,0.4); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(124,58,237,0.7); }
+
+/* ── Shine effect on cards ── */
+.card-shine::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.08) 0%, transparent 60%);
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+/* ── Toaster override ── */
+.toast-gaming {
+  font-family: 'Exo 2', sans-serif;
+  border-radius: 12px !important;
+}

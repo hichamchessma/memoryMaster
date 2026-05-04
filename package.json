@@ -1,0 +1,14 @@
+{
+  "name": "memorymaster-pro",
+  "version": "2.0.0",
+  "description": "Memory Master Pro - Professional Card Game Platform",
+  "scripts": {
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "cd server && npm run dev",
+    "client": "cd client && npm run dev",
+    "install-all": "npm install && cd server && npm install && cd ../client && npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.1"
+  }
+}
