@@ -31,9 +31,11 @@ exports.createTable = async (req, res) => {
 
 exports.getTables = async (_req, res) => {
   try {
-    const tables = await Table.find({ status: { $in: ['waiting', 'playing'] } })
-      .sort({ createdAt: -1 })
-      .limit(50);
+    // Exclure les tables bot du lobby public
+    const tables = await Table.find({
+      status: { $in: ['waiting', 'playing'] },
+      'players.userId': { $ne: 'BOT_PLAYER_001' },
+    }).sort({ createdAt: -1 }).limit(50);
     res.json({ success: true, data: tables });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

@@ -60,6 +60,9 @@ export default function GameView({ tableId, user, onLeave }: Props) {
 
     socket.emit('table:join', { tableId })
 
+    // Demander l'état courant si partie déjà en cours (reconnexion / bot)
+    socket.emit('game:requestState', { tableId })
+
     socket.on('table:updated', (table: { players: Player[] }) => setPlayers(table.players))
 
     socket.on('game:started', ({ players: p }: { players: Player[] }) => {

@@ -73,9 +73,9 @@ module.exports = function initSocket(io) {
         socket.join(tableId);
         io.to(tableId).emit('table:updated', table);
 
-        // Démarrer immédiatement si tous prêts (cas bot)
+        // Démarrer si tous prêts (cas bot) — délai pour que le client s'établisse
         if (hasBot && table.players.every(p => p.isReady)) {
-          setTimeout(() => startGame(io, table), 500);
+          setTimeout(() => startGame(io, table), 1200);
         }
       } catch (err) {
         socket.emit('error', { message: err.message });
@@ -397,6 +397,24 @@ module.exports = function initSocket(io) {
       } catch (err) {
         socket.emit('error', { message: err.message });
       }
+    });
+
+    // ── Resync state (reconnexion / bot) ────────────────────────────────────
+    socket.on('game:requestState', async ({ tableId }) => {
+      try {
+        const table = await Table.findById(tableId);
+        if (!table?.gameState) return;
+        const gs = table.gameState;
+        if (gs.phase === 'finished') return;
+
+        // Renvoyer l'état de jeu au client qui demande
+        socket.emit('game:started', { players: table.players });
+        socket.emit('game:dealt', {
+          myHand: gs.hands[socket.userId] || [],
+          players: table.players,
+        });
+        socket.emit('game:state', sanitizeState(gs, table.players));
+      } catch {}
     });
 
     // ── Trigger ShowTime manually ────────────────────────────────────────────

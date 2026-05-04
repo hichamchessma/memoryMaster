@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import { io, Socket } from 'socket.io-client'
 import { useAuth } from './AuthContext'
 
@@ -6,20 +6,28 @@ const Ctx = createContext<Socket | null>(null)
 
 export function SocketProvider({ children }: { children: ReactNode }) {
   const { token } = useAuth()
-  const socketRef = useRef<Socket | null>(null)
+  const [socket, setSocket] = useState<Socket | null>(null)
 
   useEffect(() => {
-    if (!token) { socketRef.current?.disconnect(); socketRef.current = null; return }
+    if (!token) {
+      setSocket(prev => { prev?.disconnect(); return null })
+      return
+    }
 
-    const socket = io('http://localhost:5001', {
+    const s = io('http://localhost:5001', {
       auth: { token },
       transports: ['websocket'],
     })
-    socketRef.current = socket
-    return () => { socket.disconnect(); socketRef.current = null }
+
+    s.on('connect', () => setSocket(s))
+
+    return () => {
+      s.disconnect()
+      setSocket(null)
+    }
   }, [token])
 
-  return <Ctx.Provider value={socketRef.current}>{children}</Ctx.Provider>
+  return <Ctx.Provider value={socket}>{children}</Ctx.Provider>
 }
 
 export function useSocket() {
