@@ -102,8 +102,10 @@ export default function GameView({ tableId, user, onLeave }: Props) {
   const [flyingCards, setFlyingCards] = useState<FlyCard[]>([])
   const [newCardIdxs, setNewCardIdxs] = useState<Set<number>>(new Set())
   const [deckPulse, setDeckPulse] = useState(false)
-  // Carte retournée face visible après une mauvaise défausse rapide
   const [penaltyReveal, setPenaltyReveal] = useState<{ userId: string; cardValue: number; cardIndex: number } | null>(null)
+  // Geler l'affichage de la défausse pendant qu'une carte vole vers elle
+  const [discardFrozen, setDiscardFrozen] = useState(false)
+  const [frozenDiscard, setFrozenDiscard] = useState<Card | null>(null)
 
   // DOM refs for flying card positions
   const deckRef = useRef<HTMLButtonElement>(null)
@@ -116,10 +118,14 @@ export default function GameView({ tableId, user, onLeave }: Props) {
   const penaltyTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const myHandLenRef = useRef(0)
   myHandLenRef.current = myHand.length
+  // Ref pour accéder à gs dans les callbacks sans le mettre en dépendance
+  const gsRef = useRef<GameState | null>(null)
+  gsRef.current = gs
 
   const myTurn = gs ? gs.turnOrder[gs.currentTurnIndex] === user._id : false
   const phase = gs?.phase ?? 'waiting'
-  const topDiscard = gs?.discardPile?.[0] ?? null
+  // Affichage gelé pendant l'animation d'une carte qui vole vers la défausse
+  const topDiscard = discardFrozen ? frozenDiscard : (gs?.discardPile?.[0] ?? null)
   const myPowers = gs?.powers?.[user._id] ?? {}
   const opponents = players.filter(p => p.userId !== user._id)
 
@@ -142,10 +148,10 @@ export default function GameView({ tableId, user, onLeave }: Props) {
   }, [])
 
   // Fallback positions (approx based on typical layout)
-  const getDeckPos = useCallback(() => getPos(deckRef) ?? { x: window.innerWidth / 2 - 120, y: window.innerHeight * 0.52 }, [])
-  const getDiscardPos = useCallback(() => getPos(discardRef) ?? { x: window.innerWidth / 2 + 120, y: window.innerHeight * 0.52 }, [])
-  const getDrawnAreaPos = useCallback(() => getPos(drawnAreaRef) ?? { x: window.innerWidth / 2, y: window.innerHeight * 0.45 }, [])
-  const getOppHandPos = useCallback(() => getPos(oppHandRef) ?? { x: window.innerWidth / 2, y: window.innerHeight * 0.22 }, [])
+  const getDeckPos     = useCallback(() => getPos(deckRef)     ?? { x: window.innerWidth / 2 - 120, y: window.innerHeight * 0.52 }, [])
+  const getDiscardPos  = useCallback(() => getPos(discardRef)  ?? { x: window.innerWidth / 2 + 120, y: window.innerHeight * 0.52 }, [])
+  const getDrawnAreaPos= useCallback(() => getPos(drawnAreaRef)?? { x: window.innerWidth / 2,       y: window.innerHeight * 0.45 }, [])
+  const getOppHandPos  = useCallback(() => getPos(oppHandRef)  ?? { x: window.innerWidth / 2,       y: window.innerHeight * 0.22 }, [])
   const getMyHandCardPos = useCallback((idx: number) => {
     const r = myHandRef.current?.getBoundingClientRect()
     if (!r) return { x: window.innerWidth / 2, y: window.innerHeight * 0.82 }
@@ -155,6 +161,16 @@ export default function GameView({ tableId, user, onLeave }: Props) {
     const startX = r.left + r.width / 2 - totalW / 2 + cardW / 2
     return { x: startX + idx * (cardW + 8), y: r.top + r.height / 2 }
   }, [])
+
+  // ── Helper : faire voler une carte VERS la défausse en gelant l'affichage ──
+  // La défausse ne se met à jour visuellement qu'à l'arrivée de la carte animée
+  const flyToDiscard = useCallback((value: number | null, from: { x: number; y: number }, delay = 0) => {
+    const currentTop = gsRef.current?.discardPile?.[0] ?? null
+    setFrozenDiscard(currentTop)   // geler à la valeur actuelle
+    setDiscardFrozen(true)
+    addFlyCard(value, from, getDiscardPos(), delay)
+    setTimeout(() => setDiscardFrozen(false), delay + 680) // dégeler après l'arrivée
+  }, [addFlyCard, getDiscardPos])
 
   // ── Socket events ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -298,16 +314,12 @@ export default function GameView({ tableId, user, onLeave }: Props) {
       const oppPos     = getOppHandPos()
 
       if (action === 'draw') {
-        // Card flies from deck to center "hold" area (face down — we don't know the card)
         addFlyCard(null, deckPos, drawnPos)
       } else if (action === 'discard') {
-        // Held card flies to discard (face down)
-        addFlyCard(null, drawnPos, discardPos)
+        flyToDiscard(null, drawnPos)
       } else if (action === 'replace') {
-        // New card enters bot hand (deck → hand area)
         addFlyCard(null, drawnPos, oppPos, 0)
-        // Old card exits bot hand → discard
-        addFlyCard(null, oppPos, discardPos, 200)
+        flyToDiscard(null, oppPos, 250) // l'ancienne carte du bot part vers la défausse
       }
     })
 
@@ -324,7 +336,7 @@ export default function GameView({ tableId, user, onLeave }: Props) {
       if (revealTimeout.current) clearTimeout(revealTimeout.current)
       if (penaltyTimeout.current) clearTimeout(penaltyTimeout.current)
     }
-  }, [socket, tableId, user._id, addFlyCard, getDeckPos, getDiscardPos, getDrawnAreaPos, getOppHandPos, getMyHandCardPos]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [socket, tableId, user._id, addFlyCard, flyToDiscard, getDeckPos, getDiscardPos, getDrawnAreaPos, getOppHandPos, getMyHandCardPos]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setDeckPulse(myTurn && !!gs?.drawPhase && phase === 'playing')
@@ -340,10 +352,7 @@ export default function GameView({ tableId, user, onLeave }: Props) {
 
   const discardDrawn = () => {
     if (!drawnCard) return
-    // Animate: drawn card → discard
-    const from = getDrawnAreaPos()
-    const to   = getDiscardPos()
-    addFlyCard(null, from, to)
+    flyToDiscard(drawnCard.value, getDrawnAreaPos())
     setDrawnCard(null)
     setTimeout(() => socket?.emit('game:discard', { tableId }), 200)
     setPowerMode(null); setKingStep(null)
@@ -400,13 +409,12 @@ export default function GameView({ tableId, user, onLeave }: Props) {
 
     // Remplacer avec la carte piochée → animate: drawn → my hand, my hand old → discard
     if (!gs.drawPhase && drawnCard && myTurn && !powerMode) {
-      const drawnPos  = getDrawnAreaPos()
-      const handPos   = getMyHandCardPos(idx)
-      const discardPos = getDiscardPos()
-      // New card flies to hand
+      const drawnPos = getDrawnAreaPos()
+      const handPos  = getMyHandCardPos(idx)
+      // Nouvelle carte vole vers la main
       addFlyCard(drawnCard.value, drawnPos, handPos, 0)
-      // Old card flies to discard
-      addFlyCard(card.value, handPos, discardPos, 150)
+      // Ancienne carte vole vers la défausse (avec gel de l'affichage)
+      flyToDiscard(card.value, handPos, 150)
       // Update state after animation
       setMyHand(prev => { const h = [...prev]; h[idx] = { ...drawnCard, isFlipped: false }; return h })
       setDrawnCard(null)
@@ -414,13 +422,9 @@ export default function GameView({ tableId, user, onLeave }: Props) {
       return
     }
 
-    // Défausse rapide — animé côté client immédiatement, serveur valide ensuite
+    // Défausse rapide
     if (gs.phase === 'playing') {
-      const from = getMyHandCardPos(idx)
-      const to   = getDiscardPos()
-      // On anime optimistiquement (card vole vers défausse)
-      // Si pénalité le serveur émet game:penaltyReveal qui stoppe l'effet
-      addFlyCard(card.value, from, to)
+      flyToDiscard(card.value, getMyHandCardPos(idx))
       socket.emit('game:quickDiscard', { tableId, cardIndex: idx })
     }
   }, [socket, gs, phase, powerMode, kingStep, drawnCard, myTurn, tableId, user._id, memoRevealed, addFlyCard, getDrawnAreaPos, getMyHandCardPos, getDiscardPos])
