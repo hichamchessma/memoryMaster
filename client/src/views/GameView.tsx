@@ -103,9 +103,15 @@ export default function GameView({ tableId, user, onLeave }: Props) {
   const [newCardIdxs, setNewCardIdxs] = useState<Set<number>>(new Set())
   const [deckPulse, setDeckPulse] = useState(false)
   const [penaltyReveal, setPenaltyReveal] = useState<{ userId: string; cardValue: number; cardIndex: number } | null>(null)
-  // Geler l'affichage de la défausse pendant qu'une carte vole vers elle
   const [discardFrozen, setDiscardFrozen] = useState(false)
   const [frozenDiscard, setFrozenDiscard] = useState<Card | null>(null)
+  // ── Debug panel ──────────────────────────────────────────────────────────
+  const [showDebug, setShowDebug] = useState(false)
+  const [powerfulMode, setPowerfulMode] = useState(false)
+  const [showForceMenu, setShowForceMenu] = useState(false)
+  const [forcedLabel, setForcedLabel] = useState<string | null>(null)
+  const [allHandsData, setAllHandsData] = useState<Record<string, Card[]> | null>(null)
+  const [debugScores, setDebugScores] = useState<{ scores: Record<string,number>; hands: Record<string,Card[]>; players: Player[] } | null>(null)
 
   // DOM refs for flying card positions
   const deckRef = useRef<HTMLButtonElement>(null)
@@ -327,11 +333,33 @@ export default function GameView({ tableId, user, onLeave }: Props) {
       toast.error(message); setPowerMode(null); setKingStep(null)
     })
 
+    // ── Debug handlers ────────────────────────────────────────────────────
+    socket.on('debug:allHands', ({ hands }: { hands: Record<string, Card[]> }) => {
+      setAllHandsData(hands)
+      setTimeout(() => setAllHandsData(null), 3000)
+      // Retourner aussi ma propre main face visible
+      const myCards = hands[user._id]
+      if (myCards) setMyHand(myCards.map(c => ({ ...c, isFlipped: true })))
+      setTimeout(() => setMyHand(prev => prev.map(c => ({ ...c, isFlipped: false }))), 3000)
+    })
+    socket.on('debug:cardForced', ({ label }: { label: string }) => {
+      toast.success(`✅ Prochaine pioche : ${label}`, { duration: 2000 })
+      setForcedLabel(label)
+      setShowForceMenu(false)
+    })
+    socket.on('debug:handUpdated', ({ hand }: { hand: Card[] }) => {
+      setMyHand(hand.map(c => ({ ...c, isFlipped: false })))
+    })
+    socket.on('debug:scoresResult', (data: { scores: Record<string,number>; hands: Record<string,Card[]>; players: Player[] }) => {
+      setDebugScores(data)
+    })
+
     return () => {
       ['table:updated','game:started','game:dealt','game:state','game:timer','game:phaseChange',
        'game:drawn','game:revealCard','game:penaltyCards','game:penalty','game:penaltyReveal',
        'game:quickDiscarded','game:powerActivated','game:bombomDeclared','game:bombomPrompt',
-       'game:showtime','game:botAction','error']
+       'game:showtime','game:botAction','error',
+       'debug:allHands','debug:cardForced','debug:handUpdated','debug:scoresResult']
         .forEach(ev => socket.off(ev))
       if (revealTimeout.current) clearTimeout(revealTimeout.current)
       if (penaltyTimeout.current) clearTimeout(penaltyTimeout.current)
@@ -419,6 +447,13 @@ export default function GameView({ tableId, user, onLeave }: Props) {
       setMyHand(prev => { const h = [...prev]; h[idx] = { ...drawnCard, isFlipped: false }; return h })
       setDrawnCard(null)
       socket.emit('game:replace', { tableId, cardIndex: idx })
+      return
+    }
+
+    // ── Powerful mode (DEBUG) : clic = supprimer la carte ──
+    if (powerfulMode) {
+      flyToDiscard(card.value, getMyHandCardPos(idx))
+      socket.emit('debug:removeCard', { tableId, cardIndex: idx })
       return
     }
 
@@ -756,9 +791,97 @@ export default function GameView({ tableId, user, onLeave }: Props) {
 
       {/* ── Quit ── */}
       <button onClick={quitGame}
-        className="absolute top-2 right-4 z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-red-400 border border-red-800/40 bg-red-900/20 hover:bg-red-900/50 transition-all">
+        className="absolute top-2 right-14 z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-red-400 border border-red-800/40 bg-red-900/20 hover:bg-red-900/50 transition-all">
         🚪 Quitter
       </button>
+
+      {/* ── DEBUG panel ── */}
+      <div className="absolute top-2 right-4 z-20">
+        <button onClick={() => setShowDebug(d => !d)}
+          className={`w-8 h-8 rounded-full text-xs font-bold border transition-all ${showDebug ? 'bg-purple-600 border-purple-400 text-white' : 'bg-slate-700/80 border-slate-500/40 text-slate-300 hover:bg-slate-600'}`}
+          title="Panel debug">🔧</button>
+
+        {showDebug && (
+          <div className="absolute right-0 top-10 glass rounded-xl border border-purple-500/30 p-4 w-72 shadow-2xl space-y-3 text-xs">
+            <p className="font-bold text-purple-300 text-sm">🔧 Debug / Test</p>
+
+            <button onClick={() => socket?.emit('debug:revealAll', { tableId })}
+              className="w-full py-2 rounded-lg bg-purple-700/50 hover:bg-purple-600/70 text-white font-bold transition-all">
+              👁 Révéler toutes les cartes (3s)
+            </button>
+
+            <button onClick={() => setPowerfulMode(m => !m)}
+              className={`w-full py-2 rounded-lg font-bold transition-all ${powerfulMode ? 'bg-red-600/70 text-white' : 'bg-yellow-700/50 text-yellow-200 hover:bg-yellow-600/70'}`}>
+              ⚡ Powerful mode {powerfulMode ? '(ON — clic = supprime)' : '(OFF)'}
+            </button>
+
+            <div>
+              <button onClick={() => setShowForceMenu(m => !m)}
+                className="w-full py-2 rounded-lg bg-emerald-700/50 hover:bg-emerald-600/70 text-white font-bold transition-all">
+                🎯 Forcer prochaine carte {forcedLabel ? `(${forcedLabel} ✓)` : ''}
+              </button>
+              {showForceMenu && (
+                <div className="mt-2 grid grid-cols-5 gap-1">
+                  {['A','2','3','4','5','6','7','8','9','10','J','Q','K','Jok1','Jok2'].map(lbl => (
+                    <button key={lbl} onClick={() => socket?.emit('debug:forceCard', { tableId, label: lbl })}
+                      className={`py-1 rounded text-xs font-bold border transition-all ${
+                        forcedLabel === lbl
+                          ? 'bg-emerald-500 border-emerald-400 text-white'
+                          : 'border-slate-600 bg-slate-800/70 text-slate-300 hover:bg-slate-700'
+                      }`}>
+                      {lbl}
+                    </button>
+                  ))}
+                  {forcedLabel && (
+                    <button onClick={() => setForcedLabel(null)}
+                      className="col-span-5 py-1 rounded text-xs text-red-400 border border-red-700/40 hover:bg-red-900/30">
+                      ✕ Annuler force
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <button onClick={() => socket?.emit('debug:scores', { tableId })}
+              className="w-full py-2 rounded-lg bg-amber-700/50 hover:bg-amber-600/70 text-white font-bold transition-all">
+              📊 Voir scores actuels
+            </button>
+
+            {debugScores && (
+              <div className="rounded-lg bg-slate-800/80 p-2 space-y-1">
+                <p className="font-bold text-slate-300 mb-1">Scores actuels :</p>
+                {debugScores.players.map(p => {
+                  const hand = debugScores.hands[p.userId] || []
+                  const score = debugScores.scores[p.userId] ?? '?'
+                  return (
+                    <div key={p.userId} className="flex items-start gap-2 flex-wrap">
+                      <span className="text-white font-bold">{p.firstName}:</span>
+                      <span className="text-slate-400 flex-1">{hand.map(c => `${getRankLabel(c.value)}(${getCardScore(c.value)})`).join(' ')}</span>
+                      <span className="font-bold text-yellow-400">{score}pts</span>
+                    </div>
+                  )
+                })}
+                <button onClick={() => setDebugScores(null)} className="text-slate-500 hover:text-slate-300 w-full text-center mt-1">✕ Fermer</button>
+              </div>
+            )}
+
+            {allHandsData && (
+              <div className="rounded-lg bg-slate-800/80 p-2">
+                <p className="font-bold text-slate-300 mb-1">Toutes les mains :</p>
+                {players.map(p => {
+                  const hand = allHandsData[p.userId] || []
+                  return (
+                    <div key={p.userId}>
+                      <span className="text-slate-400 font-bold">{p.firstName}: </span>
+                      <span className="text-white">{hand.map(c => getRankLabel(c.value)).join(', ')}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

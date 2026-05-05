@@ -457,6 +457,76 @@ module.exports = function initSocket(io) {
       } catch {}
     });
 
+    // ══════════════════════════════════════════════════════════════════════════
+    // ── DEBUG / TEST events (à supprimer en production) ─────────────────────
+    // ══════════════════════════════════════════════════════════════════════════
+
+    // Révéler toutes les mains à tout le monde 3s
+    socket.on('debug:revealAll', async ({ tableId }) => {
+      try {
+        const table = await Table.findById(tableId);
+        if (!table?.gameState) return;
+        io.to(tableId).emit('debug:allHands', { hands: table.gameState.hands });
+      } catch {}
+    });
+
+    // Forcer la prochaine carte piochée (mettre label en tête de deck)
+    socket.on('debug:forceCard', async ({ tableId, label }) => {
+      try {
+        const table = await Table.findById(tableId);
+        if (!table?.gameState) return;
+        const gs = table.gameState;
+        const rankMap = { 'A':0,'2':1,'3':2,'4':3,'5':4,'6':5,'7':6,'8':7,'9':8,'10':9,'J':10,'Q':11,'K':12 };
+        let idx = -1;
+        if (label === 'Jok1') {
+          idx = gs.deck.findIndex((c) => c.value >= 104 && c.value <= 109);
+        } else if (label === 'Jok2') {
+          idx = gs.deck.findIndex((c) => c.value >= 110 && c.value <= 115);
+        } else {
+          const rank = rankMap[label];
+          if (rank !== undefined) idx = gs.deck.findIndex((c) => c.value % 13 === rank);
+        }
+        if (idx > 0) {
+          const [card] = gs.deck.splice(idx, 1);
+          gs.deck.unshift(card);
+          table.markModified('gameState');
+          await table.save();
+          socket.emit('debug:cardForced', { label });
+        }
+      } catch {}
+    });
+
+    // Supprimer une carte de la main du joueur
+    socket.on('debug:removeCard', async ({ tableId, cardIndex }) => {
+      try {
+        const table = await Table.findById(tableId);
+        if (!table?.gameState) return;
+        const gs = table.gameState;
+        const hand = gs.hands[socket.userId];
+        if (!hand || cardIndex >= hand.length) return;
+        const [removed] = hand.splice(cardIndex, 1);
+        gs.discardPile.unshift(removed);
+        table.markModified('gameState');
+        await table.save();
+        socket.emit('debug:handUpdated', { hand });
+        io.to(tableId).emit('game:state', sanitizeState(gs, table.players));
+      } catch {}
+    });
+
+    // Scores instantanés (sans déclencher showtime)
+    socket.on('debug:scores', async ({ tableId }) => {
+      try {
+        const table = await Table.findById(tableId);
+        if (!table?.gameState) return;
+        const gs = table.gameState;
+        const { calcScore } = require('./gameService');
+        const scores = {};
+        for (const uid of gs.turnOrder) scores[uid] = calcScore(gs.hands[uid] || []);
+        socket.emit('debug:scoresResult', { scores, hands: gs.hands, players: table.players });
+      } catch {}
+    });
+    // ══════════════════════════════════════════════════════════════════════════
+
     // ── Trigger ShowTime manually ────────────────────────────────────────────
     socket.on('game:showtime', async ({ tableId }) => {
       try {
