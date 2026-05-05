@@ -102,6 +102,8 @@ export default function GameView({ tableId, user, onLeave }: Props) {
   const [flyingCards, setFlyingCards] = useState<FlyCard[]>([])
   const [newCardIdxs, setNewCardIdxs] = useState<Set<number>>(new Set())
   const [deckPulse, setDeckPulse] = useState(false)
+  // Carte retournée face visible après une mauvaise défausse rapide
+  const [penaltyReveal, setPenaltyReveal] = useState<{ userId: string; cardValue: number; cardIndex: number } | null>(null)
 
   // DOM refs for flying card positions
   const deckRef = useRef<HTMLButtonElement>(null)
@@ -214,14 +216,17 @@ export default function GameView({ tableId, user, onLeave }: Props) {
         const newLen = prev.length
         const added = cards.map(c => ({ ...c, isFlipped: false }))
         const idxs = new Set(Array.from({ length: added.length }, (_, i) => newLen + i))
-        setNewCardIdxs(idxs)
-        setTimeout(() => setNewCardIdxs(new Set()), 900)
-        // Fly penalty cards from deck to hand positions
+        // Fly chaque carte de pénalité depuis le deck vers sa position dans la main (décalé)
         added.forEach((_, i) => {
           const from = getDeckPos()
-          const to = getMyHandCardPos(newLen + i)
-          addFlyCard(null, from, to, i * 150)
+          const to   = getMyHandCardPos(newLen + i)
+          addFlyCard(null, from, to, i * 250)
         })
+        // Marquer les nouvelles cartes après l'arrivée des animations
+        setTimeout(() => {
+          setNewCardIdxs(idxs)
+          setTimeout(() => setNewCardIdxs(new Set()), 1200)
+        }, 500 + added.length * 250)
         return [...prev, ...added]
       })
     })
@@ -234,8 +239,34 @@ export default function GameView({ tableId, user, onLeave }: Props) {
 
     socket.on('game:quickDiscarded', ({ userId, card }: { userId: string; card: Card }) => {
       const name = userId === BOT_ID ? '🤖 Bot' : players.find(p => p.userId === userId)?.firstName || ''
-      toast(`${name} défausse ${getRankLabel(card.value)} !`, { icon: '💨', duration: 1500 })
-      if (userId === user._id) setMyHand(prev => prev.filter(c => c.id !== card.id))
+      toast(`${name} défausse ${getRankLabel(card.value)} !`, { icon: '💨', duration: 1200 })
+      if (userId === user._id) {
+        // Animer la carte vers la défausse puis la retirer de la main
+        // (la position vient de myHandRef — la carte a déjà disparu visuellement grâce au fly)
+        setMyHand(prev => prev.filter(c => c.id !== card.id))
+      } else {
+        // Pour un adversaire : faire voler une carte cachée depuis sa main vers la défausse
+        const from = getOppHandPos()
+        const to   = getDiscardPos()
+        addFlyCard(card.value, from, to)
+      }
+    })
+
+    // Mauvaise défausse rapide : retourner la carte fautive pour que tout le monde la voie
+    socket.on('game:penaltyReveal', ({ userId, cardValue, cardIndex }: { userId: string; cardValue: number; cardIndex: number }) => {
+      setPenaltyReveal({ userId, cardValue, cardIndex })
+      if (userId === user._id) {
+        // Retourner la carte fautive dans ma main
+        setMyHand(prev => prev.map((c, i) => i === cardIndex ? { ...c, isFlipped: true } : c))
+        setTimeout(() => {
+          setMyHand(prev => prev.map((c, i) => i === cardIndex ? { ...c, isFlipped: false } : c))
+          setPenaltyReveal(null)
+        }, 1500)
+      } else {
+        // Pour l'adversaire : afficher la carte fautive en overlay
+        setRevealedCard({ id: 'penalty-reveal', value: cardValue, isFlipped: true })
+        setTimeout(() => { setRevealedCard(null); setPenaltyReveal(null) }, 1500)
+      }
     })
 
     socket.on('game:powerActivated', ({ userId, power }: { userId: string; power: string }) => {
@@ -286,8 +317,9 @@ export default function GameView({ tableId, user, onLeave }: Props) {
 
     return () => {
       ['table:updated','game:started','game:dealt','game:state','game:timer','game:phaseChange',
-       'game:drawn','game:revealCard','game:penaltyCards','game:penalty','game:quickDiscarded',
-       'game:powerActivated','game:bombomDeclared','game:bombomPrompt','game:showtime','game:botAction','error']
+       'game:drawn','game:revealCard','game:penaltyCards','game:penalty','game:penaltyReveal',
+       'game:quickDiscarded','game:powerActivated','game:bombomDeclared','game:bombomPrompt',
+       'game:showtime','game:botAction','error']
         .forEach(ev => socket.off(ev))
       if (revealTimeout.current) clearTimeout(revealTimeout.current)
       if (penaltyTimeout.current) clearTimeout(penaltyTimeout.current)
@@ -382,8 +414,13 @@ export default function GameView({ tableId, user, onLeave }: Props) {
       return
     }
 
-    // Défausse rapide
+    // Défausse rapide — animé côté client immédiatement, serveur valide ensuite
     if (gs.phase === 'playing') {
+      const from = getMyHandCardPos(idx)
+      const to   = getDiscardPos()
+      // On anime optimistiquement (card vole vers défausse)
+      // Si pénalité le serveur émet game:penaltyReveal qui stoppe l'effet
+      addFlyCard(card.value, from, to)
       socket.emit('game:quickDiscard', { tableId, cardIndex: idx })
     }
   }, [socket, gs, phase, powerMode, kingStep, drawnCard, myTurn, tableId, user._id, memoRevealed, addFlyCard, getDrawnAreaPos, getMyHandCardPos, getDiscardPos])
@@ -516,6 +553,21 @@ export default function GameView({ tableId, user, onLeave }: Props) {
               <img src={getCardImage(revealedCard.value)} alt="" className="w-full h-full object-cover"/>
             </div>
             <p className="text-yellow-400 font-bold">{getRankLabel(revealedCard.value)} — {getCardScore(revealedCard.value)} pts</p>
+          </div>
+        </div>
+      )}
+
+      {/* Pénalité : carte fautive + message ⚠️ */}
+      {penaltyReveal && penaltyReveal.userId !== user._id && (
+        <div className="absolute inset-0 z-35 flex items-center justify-center pointer-events-none">
+          <div className="flex flex-col items-center gap-3 animate-fade-in">
+            <div className="text-3xl animate-bounce">🚨</div>
+            <div className="w-24 h-32 rounded-xl overflow-hidden shadow-2xl border-4 border-red-500 card-draw-anim">
+              <img src={getCardImage(penaltyReveal.cardValue)} alt="" className="w-full h-full object-cover"/>
+            </div>
+            <div className="px-4 py-2 rounded-xl bg-red-600/90 border border-red-400 text-white font-bold text-sm">
+              Mauvaise défausse !
+            </div>
           </div>
         </div>
       )}

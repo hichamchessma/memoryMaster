@@ -224,12 +224,22 @@ module.exports = function initSocket(io) {
         const top = gs.discardPile[0];
 
         if (!canQuickDiscard(card.value, top)) {
-          // Penalty: add 2 cards from deck
+          // 1. Révéler la carte fautive à tous (tout le monde la voit se retourner)
+          io.to(tableId).emit('game:penaltyReveal', {
+            userId: socket.userId,
+            cardValue: card.value,
+            cardIndex,
+          });
+
+          // 2. Attendre 1.5s (temps de voir la carte) puis appliquer la pénalité
+          await new Promise(r => setTimeout(r, 1500));
+
           const penalty = gs.deck.splice(0, 2);
           hand.push(...penalty);
           table.markModified('gameState');
           await table.save();
-          // Envoyer les vraies cartes au joueur pénalisé
+
+          // 3. Envoyer les vraies cartes au joueur pénalisé
           const penSocket = getSocketById(io, table.players.find(p => p.userId === socket.userId)?.socketId);
           if (penSocket) penSocket.emit('game:penaltyCards', { cards: penalty });
           io.to(tableId).emit('game:penalty', { userId: socket.userId, penaltyCards: penalty.length });
@@ -242,6 +252,7 @@ module.exports = function initSocket(io) {
         gs.discardPile.unshift(card);
         table.markModified('gameState');
         await table.save();
+        // Notif avec la valeur de la carte pour l'animation de vol côté client
         io.to(tableId).emit('game:quickDiscarded', { userId: socket.userId, card });
         io.to(tableId).emit('game:state', sanitizeState(gs, table.players));
 
