@@ -6,16 +6,13 @@ import api from '../lib/api'
 
 interface Card { id: string; value: number; isFlipped: boolean }
 interface Player { userId: string; firstName: string; lastName: string; elo: number; isHost: boolean; isReady: boolean }
-
 interface Props {
   tableId: string
   user: { _id: string; firstName: string; lastName: string; elo: number }
   onLeave: () => void
 }
-
 type Phase = 'waiting' | 'memorization' | 'playing' | 'showtime' | 'finished'
 type TimerPhase = 'memorization' | 'draw' | 'choice' | null
-
 interface GameState {
   phase: Phase; drawPhase: boolean; discardPile: Card[]; deckCount: number
   turnOrder: string[]; currentTurnIndex: number; bombomBy: string | null
@@ -23,29 +20,63 @@ interface GameState {
   powers: Record<string, { j?: boolean; q?: boolean; k?: boolean }>
   scores: Record<string, number>; winner: string | null; handSizes: Record<string, number>
 }
-
 interface ShowtimeData {
-  hands: Record<string, Card[]>; scores: Record<string, number>
-  winner: string; players: Player[]
+  hands: Record<string, Card[]>; scores: Record<string, number>; winner: string; players: Player[]
 }
 
 const BOT_ID = 'BOT_PLAYER_001'
 
-// ── Card component with 3D flip ────────────────────────────────────────────
-function GameCard({ card, onClick, size = 'md', highlight = false, selected = false, glowing = false, disabled = false }: {
-  card: Card; onClick?: () => void; size?: 'sm' | 'md' | 'lg'; highlight?: boolean; selected?: boolean; glowing?: boolean; disabled?: boolean
-}) {
-  const sizes = { sm: 'w-14 h-20', md: 'w-16 h-24', lg: 'w-24 h-36' }
+// ── Flying card system ─────────────────────────────────────────────────────
+interface FlyCard { id: string; value: number | null; fromX: number; fromY: number; toX: number; toY: number }
+
+function FlyingCardItem({ data, onDone }: { data: FlyCard; onDone: () => void }) {
+  const [moved, setMoved] = useState(false)
+  useEffect(() => {
+    const raf1 = requestAnimationFrame(() => {
+      const raf2 = requestAnimationFrame(() => setMoved(true))
+      return () => cancelAnimationFrame(raf2)
+    })
+    const t = setTimeout(onDone, 700)
+    return () => { cancelAnimationFrame(raf1); clearTimeout(t) }
+  }, [onDone])
+
   return (
-    <div
-      className={`card-3d-container ${sizes[size]} flex-shrink-0 cursor-${disabled ? 'default' : 'pointer'}`}
-      onClick={disabled ? undefined : onClick}
-    >
-      <div className={`card-3d-inner ${card.isFlipped ? 'flipped' : ''} ${highlight ? 'ring-2 ring-emerald-400 ring-offset-1 ring-offset-transparent rounded-xl' : ''} ${selected ? 'ring-4 ring-yellow-400 ring-offset-1 ring-offset-transparent rounded-xl scale-110' : ''} ${glowing ? 'shadow-[0_0_20px_rgba(251,191,36,0.7)]' : ''}`}>
+    <div style={{
+      position: 'fixed',
+      left: (moved ? data.toX : data.fromX) - 32,
+      top:  (moved ? data.toY : data.fromY) - 48,
+      width: 64, height: 96,
+      transition: moved ? 'left 0.55s cubic-bezier(0.34,1.1,0.64,1), top 0.55s cubic-bezier(0.34,1.1,0.64,1)' : 'none',
+      borderRadius: 12, overflow: 'hidden', pointerEvents: 'none',
+      boxShadow: '0 12px 40px rgba(0,0,0,0.7), 0 0 20px rgba(124,58,237,0.4)',
+      zIndex: 9999,
+    }}>
+      <img
+        src={data.value !== null ? getCardImage(data.value) : getCardBack()}
+        className="w-full h-full object-cover"
+        alt=""
+      />
+    </div>
+  )
+}
+
+// ── 3D flip card ────────────────────────────────────────────────────────────
+function GameCard({ card, onClick, size = 'md', highlight = false, selected = false, glowing = false }: {
+  card: Card; onClick?: () => void; size?: 'sm' | 'md' | 'lg'
+  highlight?: boolean; selected?: boolean; glowing?: boolean
+}) {
+  const sizes = { sm: 'w-12 h-16', md: 'w-16 h-24', lg: 'w-24 h-36' }
+  return (
+    <div className={`card-3d-container ${sizes[size]} cursor-pointer`} onClick={onClick}>
+      <div className={`card-3d-inner ${card.isFlipped ? 'flipped' : ''} ${
+        highlight ? 'ring-2 ring-emerald-400 rounded-xl' : ''} ${
+        selected ? 'ring-4 ring-yellow-400 rounded-xl scale-110 -translate-y-2' : ''} ${
+        glowing ? 'shadow-[0_0_24px_rgba(251,191,36,0.8)]' : ''}`
+      }>
         <div className="card-3d-back rounded-xl overflow-hidden">
           <img src={getCardBack()} alt="" className="w-full h-full object-cover"/>
         </div>
-        <div className="card-3d-front rounded-xl overflow-hidden shadow-lg">
+        <div className="card-3d-front rounded-xl overflow-hidden shadow-md">
           <img src={getCardImage(card.value)} alt={getRankLabel(card.value)} className="w-full h-full object-cover"/>
         </div>
       </div>
@@ -66,24 +97,64 @@ export default function GameView({ tableId, user, onLeave }: Props) {
   const [kingStep, setKingStep] = useState<{ userId: string; idx: number } | null>(null)
   const [bombomPrompt, setBombomPrompt] = useState(false)
   const [penalty, setPenalty] = useState<string | null>(null)
-  const [botThinking, setBotThinking] = useState<string | null>(null)
-  const [deckPulse, setDeckPulse] = useState(false)
   const [revealedCard, setRevealedCard] = useState<Card | null>(null)
-  // Mémorisation : le joueur peut révéler jusqu'à 2 cartes en cliquant
   const [memoRevealed, setMemoRevealed] = useState<Set<number>>(new Set())
-  // Nouvelle carte apparue (pour animation)
+  const [flyingCards, setFlyingCards] = useState<FlyCard[]>([])
   const [newCardIdxs, setNewCardIdxs] = useState<Set<number>>(new Set())
+  const [deckPulse, setDeckPulse] = useState(false)
+
+  // DOM refs for flying card positions
+  const deckRef = useRef<HTMLButtonElement>(null)
+  const discardRef = useRef<HTMLDivElement>(null)
+  const drawnAreaRef = useRef<HTMLDivElement>(null)
+  const myHandRef = useRef<HTMLDivElement>(null)
+  const oppHandRef = useRef<HTMLDivElement>(null)
 
   const revealTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const penaltyTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const botThinkingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const myHandLenRef = useRef(0)
+  myHandLenRef.current = myHand.length
 
   const myTurn = gs ? gs.turnOrder[gs.currentTurnIndex] === user._id : false
   const phase = gs?.phase ?? 'waiting'
   const topDiscard = gs?.discardPile?.[0] ?? null
   const myPowers = gs?.powers?.[user._id] ?? {}
+  const opponents = players.filter(p => p.userId !== user._id)
 
-  // ── Socket events ────────────────────────────────────────────────────────
+  // ── Flying card helpers ───────────────────────────────────────────────────
+  const getPos = (ref: React.RefObject<HTMLElement | null>) => {
+    const r = ref.current?.getBoundingClientRect()
+    if (r) return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
+    return null
+  }
+
+  const addFlyCard = useCallback((value: number | null, from: { x: number; y: number }, to: { x: number; y: number }, delay = 0) => {
+    const id = `${Date.now()}-${Math.random()}`
+    setTimeout(() => {
+      setFlyingCards(prev => [...prev, { id, value, fromX: from.x, fromY: from.y, toX: to.x, toY: to.y }])
+    }, delay)
+  }, [])
+
+  const removeFlyCard = useCallback((id: string) => {
+    setFlyingCards(prev => prev.filter(c => c.id !== id))
+  }, [])
+
+  // Fallback positions (approx based on typical layout)
+  const getDeckPos = useCallback(() => getPos(deckRef) ?? { x: window.innerWidth / 2 - 120, y: window.innerHeight * 0.52 }, [])
+  const getDiscardPos = useCallback(() => getPos(discardRef) ?? { x: window.innerWidth / 2 + 120, y: window.innerHeight * 0.52 }, [])
+  const getDrawnAreaPos = useCallback(() => getPos(drawnAreaRef) ?? { x: window.innerWidth / 2, y: window.innerHeight * 0.45 }, [])
+  const getOppHandPos = useCallback(() => getPos(oppHandRef) ?? { x: window.innerWidth / 2, y: window.innerHeight * 0.22 }, [])
+  const getMyHandCardPos = useCallback((idx: number) => {
+    const r = myHandRef.current?.getBoundingClientRect()
+    if (!r) return { x: window.innerWidth / 2, y: window.innerHeight * 0.82 }
+    const count = myHandLenRef.current || 4
+    const cardW = 68
+    const totalW = count * cardW + (count - 1) * 8
+    const startX = r.left + r.width / 2 - totalW / 2 + cardW / 2
+    return { x: startX + idx * (cardW + 8), y: r.top + r.height / 2 }
+  }, [])
+
+  // ── Socket events ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!socket) return
 
@@ -97,7 +168,6 @@ export default function GameView({ tableId, user, onLeave }: Props) {
     })
 
     socket.on('game:dealt', ({ myHand: h, players: p }: { myHand: Card[]; players?: Player[] }) => {
-      // Cartes face cachée au départ — joueur choisit lesquelles voir (max 2)
       setMyHand(h.map(c => ({ ...c, isFlipped: false })))
       setMemoRevealed(new Set())
       if (p) setPlayers(p)
@@ -105,7 +175,6 @@ export default function GameView({ tableId, user, onLeave }: Props) {
 
     socket.on('game:state', (state: GameState) => {
       setGs(state)
-      setBotThinking(null)
       if (state.drawPhase) setDrawnCard(null)
       if (state.phase === 'playing') {
         setMyHand(prev => prev.map(c => ({ ...c, isFlipped: false })))
@@ -126,8 +195,12 @@ export default function GameView({ tableId, user, onLeave }: Props) {
       }
     })
 
+    // Player draws: fly card from deck to center
     socket.on('game:drawn', ({ card }: { card: Card }) => {
-      setDrawnCard(card)
+      const from = getDeckPos()
+      const to = getDrawnAreaPos()
+      addFlyCard(card.value, from, to)
+      setTimeout(() => setDrawnCard(card), 400)
     })
 
     socket.on('game:revealCard', ({ card, duration }: { card: Card; duration: number }) => {
@@ -140,12 +213,16 @@ export default function GameView({ tableId, user, onLeave }: Props) {
       setMyHand(prev => {
         const newLen = prev.length
         const added = cards.map(c => ({ ...c, isFlipped: false }))
-        const next = [...prev, ...added]
-        // Marquer les nouvelles cartes pour animation
         const idxs = new Set(Array.from({ length: added.length }, (_, i) => newLen + i))
         setNewCardIdxs(idxs)
-        setTimeout(() => setNewCardIdxs(new Set()), 800)
-        return next
+        setTimeout(() => setNewCardIdxs(new Set()), 900)
+        // Fly penalty cards from deck to hand positions
+        added.forEach((_, i) => {
+          const from = getDeckPos()
+          const to = getMyHandCardPos(newLen + i)
+          addFlyCard(null, from, to, i * 150)
+        })
+        return [...prev, ...added]
       })
     })
 
@@ -156,7 +233,7 @@ export default function GameView({ tableId, user, onLeave }: Props) {
     })
 
     socket.on('game:quickDiscarded', ({ userId, card }: { userId: string; card: Card }) => {
-      const name = userId === BOT_ID ? '🤖 Bot' : players.find(p => p.userId === userId)?.firstName || 'Joueur'
+      const name = userId === BOT_ID ? '🤖 Bot' : players.find(p => p.userId === userId)?.firstName || ''
       toast(`${name} défausse ${getRankLabel(card.value)} !`, { icon: '💨', duration: 1500 })
       if (userId === user._id) setMyHand(prev => prev.filter(c => c.id !== card.id))
     })
@@ -164,7 +241,7 @@ export default function GameView({ tableId, user, onLeave }: Props) {
     socket.on('game:powerActivated', ({ userId, power }: { userId: string; power: string }) => {
       const name = userId === BOT_ID ? '🤖 Bot' : players.find(p => p.userId === userId)?.firstName || ''
       const labels: Record<string, string> = { jack: 'Valet 👁', queen: 'Dame 👁', king: 'Roi ↔' }
-      toast(`${name} joue : ${labels[power] || power}`, { icon: '✨', duration: 2000 })
+      toast(`${name} : ${labels[power] || power}`, { icon: '✨', duration: 2000 })
       if (userId === user._id) { setPowerMode(null); setKingStep(null) }
     })
 
@@ -179,15 +256,27 @@ export default function GameView({ tableId, user, onLeave }: Props) {
     })
 
     socket.on('game:showtime', (data: ShowtimeData) => {
-      setShowtimeData(data); setDrawnCard(null); setBotThinking(null)
+      setShowtimeData(data); setDrawnCard(null)
     })
 
+    // ── BOT animations ──────────────────────────────────────────────────────
     socket.on('game:botAction', ({ action }: { action: string }) => {
-      if (botThinkingTimeout.current) clearTimeout(botThinkingTimeout.current)
-      const msgs: Record<string, string> = { draw: '🤖 Bot pioche...', replace: '🤖 Bot remplace', discard: '🤖 Bot défausse' }
-      setBotThinking(msgs[action] ?? null)
-      if (action !== 'draw') {
-        botThinkingTimeout.current = setTimeout(() => setBotThinking(null), 1800)
+      const deckPos    = getDeckPos()
+      const discardPos = getDiscardPos()
+      const drawnPos   = getDrawnAreaPos()
+      const oppPos     = getOppHandPos()
+
+      if (action === 'draw') {
+        // Card flies from deck to center "hold" area (face down — we don't know the card)
+        addFlyCard(null, deckPos, drawnPos)
+      } else if (action === 'discard') {
+        // Held card flies to discard (face down)
+        addFlyCard(null, drawnPos, discardPos)
+      } else if (action === 'replace') {
+        // New card enters bot hand (deck → hand area)
+        addFlyCard(null, drawnPos, oppPos, 0)
+        // Old card exits bot hand → discard
+        addFlyCard(null, oppPos, discardPos, 200)
       }
     })
 
@@ -202,36 +291,44 @@ export default function GameView({ tableId, user, onLeave }: Props) {
         .forEach(ev => socket.off(ev))
       if (revealTimeout.current) clearTimeout(revealTimeout.current)
       if (penaltyTimeout.current) clearTimeout(penaltyTimeout.current)
-      if (botThinkingTimeout.current) clearTimeout(botThinkingTimeout.current)
     }
-  }, [socket, tableId, user._id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [socket, tableId, user._id, addFlyCard, getDeckPos, getDiscardPos, getDrawnAreaPos, getOppHandPos, getMyHandCardPos]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setDeckPulse(myTurn && !!gs?.drawPhase && phase === 'playing')
   }, [myTurn, gs?.drawPhase, phase])
 
-  // ── Actions ──────────────────────────────────────────────────────────────
+  // ── Actions ───────────────────────────────────────────────────────────────
   const toggleReady = () => socket?.emit('table:ready', { tableId })
+
   const drawCard = () => {
     if (!myTurn || !gs?.drawPhase || phase !== 'playing') return
     socket?.emit('game:draw', { tableId }); setDeckPulse(false)
   }
+
   const discardDrawn = () => {
     if (!drawnCard) return
-    socket?.emit('game:discard', { tableId })
-    setDrawnCard(null); setPowerMode(null); setKingStep(null)
+    // Animate: drawn card → discard
+    const from = getDrawnAreaPos()
+    const to   = getDiscardPos()
+    addFlyCard(null, from, to)
+    setDrawnCard(null)
+    setTimeout(() => socket?.emit('game:discard', { tableId }), 200)
+    setPowerMode(null); setKingStep(null)
   }
+
   const activatePower = (type: 'jack' | 'queen' | 'king') => {
     setPowerMode(type); setKingStep(null)
   }
+
   const declareBombom = () => socket?.emit('game:bombom', { tableId })
   const confirmShowtime = () => { setBombomPrompt(false); socket?.emit('game:showtime', { tableId }) }
-  const cancelBombom = () => { setBombomPrompt(false); socket?.emit('game:cancelBombom', { tableId }) }
+  const cancelBombom   = () => { setBombomPrompt(false); socket?.emit('game:cancelBombom', { tableId }) }
 
   const resetGame = () => {
     setShowtimeData(null); setGameStarted(false); setMyHand([]); setGs(null)
     setDrawnCard(null); setPowerMode(null); setKingStep(null); setBombomPrompt(false)
-    setPenalty(null); setBotThinking(null); setDeckPulse(false); setRevealedCard(null)
+    setPenalty(null); setDeckPulse(false); setRevealedCard(null); setFlyingCards([])
     setMemoRevealed(new Set()); setTimer({ phase: null, remaining: 0, max: 10 })
   }
 
@@ -241,48 +338,55 @@ export default function GameView({ tableId, user, onLeave }: Props) {
     resetGame(); onLeave()
   }
 
-  // Clic sur une carte en main
   const clickMyCard = useCallback((card: Card, idx: number) => {
     if (!socket) return
 
-    // ── Phase mémorisation : révéler jusqu'à 2 cartes ──
+    // Mémorisation : révéler jusqu'à 2 cartes
     if (phase === 'memorization') {
       if (memoRevealed.has(idx)) {
-        // Re-cacher si déjà révélée
         setMemoRevealed(prev => { const s = new Set(prev); s.delete(idx); return s })
         setMyHand(prev => prev.map((c, i) => i === idx ? { ...c, isFlipped: false } : c))
       } else if (memoRevealed.size < 2) {
         setMemoRevealed(prev => new Set([...prev, idx]))
         setMyHand(prev => prev.map((c, i) => i === idx ? { ...c, isFlipped: true } : c))
       } else {
-        toast('Vous pouvez regarder seulement 2 cartes', { icon: '👀', duration: 1500 })
+        toast('Maximum 2 cartes visibles', { icon: '👀', duration: 1200 })
       }
       return
     }
 
     if (!gs) return
 
-    // Power: Jack
     if (powerMode === 'jack') {
       socket.emit('game:power:jack', { tableId, cardIndex: idx }); setPowerMode(null); return
     }
-    // Power: King
     if (powerMode === 'king') {
       if (!kingStep) { setKingStep({ userId: user._id, idx }); return }
       socket.emit('game:power:king', { tableId, userId1: kingStep.userId, idx1: kingStep.idx, userId2: user._id, idx2: idx })
       setPowerMode(null); setKingStep(null); return
     }
-    // Remplacer avec la carte piochée
+
+    // Remplacer avec la carte piochée → animate: drawn → my hand, my hand old → discard
     if (!gs.drawPhase && drawnCard && myTurn && !powerMode) {
-      socket.emit('game:replace', { tableId, cardIndex: idx })
+      const drawnPos  = getDrawnAreaPos()
+      const handPos   = getMyHandCardPos(idx)
+      const discardPos = getDiscardPos()
+      // New card flies to hand
+      addFlyCard(drawnCard.value, drawnPos, handPos, 0)
+      // Old card flies to discard
+      addFlyCard(card.value, handPos, discardPos, 150)
+      // Update state after animation
       setMyHand(prev => { const h = [...prev]; h[idx] = { ...drawnCard, isFlipped: false }; return h })
-      setDrawnCard(null); return
+      setDrawnCard(null)
+      socket.emit('game:replace', { tableId, cardIndex: idx })
+      return
     }
+
     // Défausse rapide
     if (gs.phase === 'playing') {
       socket.emit('game:quickDiscard', { tableId, cardIndex: idx })
     }
-  }, [socket, gs, phase, powerMode, kingStep, drawnCard, myTurn, tableId, user._id, memoRevealed])
+  }, [socket, gs, phase, powerMode, kingStep, drawnCard, myTurn, tableId, user._id, memoRevealed, addFlyCard, getDrawnAreaPos, getMyHandCardPos, getDiscardPos])
 
   const clickOpponentCard = useCallback((targetUserId: string, idx: number) => {
     if (!socket || !gs) return
@@ -296,12 +400,11 @@ export default function GameView({ tableId, user, onLeave }: Props) {
     }
   }, [socket, gs, powerMode, kingStep, tableId])
 
-  // ── Timer bar ────────────────────────────────────────────────────────────
+  // ── Timer ─────────────────────────────────────────────────────────────────
   const timerPct = timer.max > 0 ? Math.max(0, (timer.remaining / timer.max) * 100) : 0
   const timerColor = timerPct > 50 ? '#22d3ee' : timerPct > 25 ? '#fbbf24' : '#ef4444'
-  const opponents = players.filter(p => p.userId !== user._id)
 
-  // ── ShowTime ─────────────────────────────────────────────────────────────
+  // ── ShowTime ──────────────────────────────────────────────────────────────
   if (showtimeData) {
     const { scores, winner, players: sPlayers } = showtimeData
     const isWinner = winner === user._id
@@ -309,7 +412,7 @@ export default function GameView({ tableId, user, onLeave }: Props) {
     return (
       <div className="flex items-center justify-center h-full p-6 animate-fade-in">
         <div className="glass rounded-3xl p-10 max-w-lg w-full text-center space-y-6">
-          <div className="text-7xl mb-2">{isWinner ? '🏆' : '😢'}</div>
+          <div className="text-7xl">{isWinner ? '🏆' : '😢'}</div>
           <h2 className="text-3xl font-gaming font-black text-white">{isWinner ? 'Victoire !' : 'Défaite'}</h2>
           <div className="space-y-3">
             {sorted.map((p, i) => {
@@ -346,16 +449,14 @@ export default function GameView({ tableId, user, onLeave }: Props) {
     const me = players.find(p => p.userId === user._id)
     const hasBot = players.some(p => p.userId === BOT_ID)
     const allReady = players.length >= 2 && players.every(p => p.isReady)
-    if (hasBot && allReady) {
-      return (
-        <div className="flex items-center justify-center h-full">
-          <div className="glass rounded-2xl p-10 text-center space-y-4">
-            <div className="w-12 h-12 border-4 border-purple-500/30 border-t-purple-500 rounded-full animate-spin mx-auto"/>
-            <p className="text-white font-bold text-lg">Démarrage...</p>
-          </div>
+    if (hasBot && allReady) return (
+      <div className="flex items-center justify-center h-full">
+        <div className="glass rounded-2xl p-10 text-center space-y-4">
+          <div className="w-12 h-12 border-4 border-purple-500/30 border-t-purple-500 rounded-full animate-spin mx-auto"/>
+          <p className="text-white font-bold text-lg">Démarrage...</p>
         </div>
-      )
-    }
+      </div>
+    )
     return (
       <div className="flex items-center justify-center h-full p-6 animate-fade-in">
         <div className="glass rounded-2xl p-8 max-w-md w-full text-center space-y-6">
@@ -363,9 +464,7 @@ export default function GameView({ tableId, user, onLeave }: Props) {
           <div className="space-y-3">
             {players.map(p => (
               <div key={p.userId} className="flex items-center gap-3 glass-2 px-4 py-3 rounded-xl">
-                <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white" style={{ background: 'linear-gradient(135deg,#7c3aed,#4f46e5)' }}>
-                  {p.firstName[0]}
-                </div>
+                <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white" style={{ background: 'linear-gradient(135deg,#7c3aed,#4f46e5)' }}>{p.firstName[0]}</div>
                 <span className="flex-1 text-white text-left">{p.firstName} {p.isHost ? '👑' : ''}</span>
                 <span className={`text-xs font-bold px-2 py-1 rounded-full ${p.isReady ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-slate-700 text-slate-400'}`}>
                   {p.isReady ? 'Prêt ✓' : 'En attente...'}
@@ -374,7 +473,7 @@ export default function GameView({ tableId, user, onLeave }: Props) {
             ))}
           </div>
           <div className="flex gap-3">
-            <button onClick={toggleReady} className={`flex-1 py-3 font-bold rounded-xl transition-all ${me?.isReady ? 'btn-danger' : 'btn-primary'}`}>
+            <button onClick={toggleReady} className={`flex-1 py-3 font-bold rounded-xl ${me?.isReady ? 'btn-danger' : 'btn-primary'}`}>
               {me?.isReady ? '✗ Annuler' : '✓ Je suis prêt !'}
             </button>
             <button onClick={quitGame} className="btn-outline px-4 py-3">←</button>
@@ -384,18 +483,25 @@ export default function GameView({ tableId, user, onLeave }: Props) {
     )
   }
 
-  // ── Game board ────────────────────────────────────────────────────────────
+  // ── Game board ─────────────────────────────────────────────────────────────
   return (
-    <div className="relative h-full flex flex-col overflow-hidden select-none bg-black/20">
+    <div className="relative h-full flex flex-col overflow-hidden select-none">
+
+      {/* ── Flying cards layer ── */}
+      <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 9999 }}>
+        {flyingCards.map(fc => (
+          <FlyingCardItem key={fc.id} data={fc} onDone={() => removeFlyCard(fc.id)}/>
+        ))}
+      </div>
 
       {/* ── Overlays ── */}
       {bombomPrompt && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/75 animate-fade-in">
           <div className="glass rounded-2xl p-8 text-center max-w-sm space-y-4 border border-red-500/40">
             <div className="text-6xl animate-bounce">💣</div>
-            <h3 className="text-xl font-gaming font-black text-white">ShowTime déclenché !</h3>
+            <h3 className="text-xl font-gaming font-black text-white">ShowTime !</h3>
             <div className="flex gap-3">
-              <button onClick={confirmShowtime} className="btn-gold flex-1 py-3 font-bold">🚀 Lancer ShowTime</button>
+              <button onClick={confirmShowtime} className="btn-gold flex-1 py-3">🚀 Lancer</button>
               <button onClick={cancelBombom} className="btn-outline flex-1 py-3">↩ Annuler (1×)</button>
             </div>
           </div>
@@ -405,11 +511,11 @@ export default function GameView({ tableId, user, onLeave }: Props) {
       {revealedCard && (
         <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/60 animate-fade-in">
           <div className="text-center space-y-3">
-            <p className="text-slate-300 text-sm font-medium">Carte révélée pendant 3s</p>
+            <p className="text-slate-300 text-sm">Carte révélée 3s</p>
             <div className="w-32 h-48 mx-auto rounded-xl overflow-hidden shadow-2xl card-draw-anim" style={{ boxShadow: '0 0 40px rgba(251,191,36,0.5)' }}>
               <img src={getCardImage(revealedCard.value)} alt="" className="w-full h-full object-cover"/>
             </div>
-            <p className="text-yellow-400 font-bold text-lg">{getRankLabel(revealedCard.value)} — {getCardScore(revealedCard.value)} pts</p>
+            <p className="text-yellow-400 font-bold">{getRankLabel(revealedCard.value)} — {getCardScore(revealedCard.value)} pts</p>
           </div>
         </div>
       )}
@@ -423,8 +529,8 @@ export default function GameView({ tableId, user, onLeave }: Props) {
       {powerMode && (
         <div className="absolute top-14 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-5 py-2.5 rounded-full font-bold text-sm animate-fade-in shadow-xl"
           style={{ background: powerMode === 'jack' ? '#1d4ed8ee' : powerMode === 'queen' ? '#7c3aedee' : '#d97706ee', color: '#fff' }}>
-          <span>{powerMode === 'jack' ? '👁 Cliquez UNE de VOS cartes' : powerMode === 'queen' ? '👁 Cliquez UNE carte ADVERSE' : kingStep ? '↔ Cliquez la 2e carte' : '↔ Cliquez la 1ère carte'}</span>
-          <button onClick={() => { setPowerMode(null); setKingStep(null) }} className="ml-1 opacity-70 hover:opacity-100 text-white font-bold">✕</button>
+          {powerMode === 'jack' ? '👁 Cliquez UNE de VOS cartes' : powerMode === 'queen' ? '👁 Cliquez UNE carte adverse' : kingStep ? '↔ Cliquez la 2e carte' : '↔ Cliquez la 1ère carte'}
+          <button onClick={() => { setPowerMode(null); setKingStep(null) }} className="opacity-70 hover:opacity-100">✕</button>
         </div>
       )}
 
@@ -447,39 +553,27 @@ export default function GameView({ tableId, user, onLeave }: Props) {
       <div className="flex-shrink-0 px-4 py-1">
         {phase === 'memorization' ? (
           <div className="flex items-center justify-between px-4 py-1.5 rounded-lg bg-cyan-900/30 border border-cyan-500/30">
-            <span className="text-xs font-bold text-cyan-300">🧠 Mémorisez — cliquez jusqu'à 2 de vos cartes pour les voir</span>
+            <span className="text-xs font-bold text-cyan-300">🧠 Cliquez jusqu'à 2 de vos cartes pour les mémoriser</span>
             <span className="text-xs text-cyan-400 font-bold">{memoRevealed.size}/2</span>
           </div>
         ) : phase === 'playing' ? (
           <div className={`text-center text-xs font-bold py-1.5 rounded-lg ${myTurn ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-slate-800/50 text-slate-400'}`}>
             {myTurn
-              ? gs?.drawPhase ? '⚡ Votre tour — Cliquez le deck pour piocher' : '⚡ Votre tour — Cliquez une carte pour remplacer, ou utilisez les actions ci-dessous'
-              : `⏳ Tour de ${players.find(p => p.userId === gs?.turnOrder[gs.currentTurnIndex])?.firstName ?? '🤖 Bot'}`}
+              ? gs?.drawPhase ? '⚡ Votre tour — Cliquez le deck pour piocher' : '⚡ Votre tour — Cliquez votre main pour remplacer, ou choisissez une action'
+              : `⏳ Tour du ${players.find(p => p.userId === gs?.turnOrder[gs.currentTurnIndex])?.firstName ?? '🤖 Bot'}`}
           </div>
         ) : null}
       </div>
 
-      {/* ── Bot thinking ── */}
-      {botThinking && (
-        <div className="flex-shrink-0 flex justify-center px-4">
-          <div className="flex items-center gap-2 px-4 py-1 rounded-full glass-2 border border-purple-500/30">
-            <div className="flex gap-0.5">
-              {[0,1,2].map(i => <div key={i} className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: `${i*0.15}s` }}/>)}
-            </div>
-            <span className="text-xs text-purple-300 font-medium">{botThinking}</span>
-          </div>
-        </div>
-      )}
-
-      {/* ── Opponent(s) ── */}
-      <div className="flex-shrink-0 px-4 py-2 flex justify-center gap-8">
+      {/* ── Opponents ── */}
+      <div ref={oppHandRef} className="flex-shrink-0 px-4 py-2 flex justify-center gap-8">
         {opponents.map(opp => {
           const handSize = gs?.handSizes?.[opp.userId] ?? 4
           const isOppTurn = gs ? gs.turnOrder[gs.currentTurnIndex] === opp.userId : false
           const isPowerTarget = powerMode === 'queen' || powerMode === 'king'
           return (
             <div key={opp.userId} className="text-center">
-              <div className={`text-xs mb-1.5 font-medium ${isOppTurn ? 'text-yellow-400' : 'text-slate-400'}`}>
+              <div className={`text-xs mb-1.5 font-medium ${isOppTurn ? 'text-yellow-400 font-bold' : 'text-slate-400'}`}>
                 {isOppTurn && '▶ '}{opp.firstName} · {handSize} cartes
               </div>
               <div className="flex gap-1.5 justify-center">
@@ -495,12 +589,12 @@ export default function GameView({ tableId, user, onLeave }: Props) {
         })}
       </div>
 
-      {/* ── CENTER: Deck · DrawnCard · Discard ── */}
+      {/* ── CENTER: Deck · Drawn · Discard ── */}
       <div className="flex-1 flex items-center justify-center gap-6 px-4 min-h-0">
 
         {/* Deck */}
         <div className="flex flex-col items-center gap-1">
-          <button onClick={drawCard}
+          <button ref={deckRef} onClick={drawCard}
             className={`w-20 h-28 rounded-xl overflow-hidden relative transition-all duration-300 ${
               deckPulse
                 ? 'scale-110 cursor-pointer shadow-[0_0_32px_rgba(251,191,36,0.8)] ring-4 ring-yellow-400'
@@ -515,60 +609,52 @@ export default function GameView({ tableId, user, onLeave }: Props) {
           {deckPulse && <span className="text-xs text-yellow-400 font-bold animate-pulse">Piocher !</span>}
         </div>
 
-        {/* ── Drawn card (au centre quand piochée) ── */}
-        {drawnCard && myTurn ? (
-          <div className="flex flex-col items-center gap-3 card-draw-anim">
-            <div className="w-28 h-40 rounded-xl overflow-hidden shadow-2xl" style={{ boxShadow: '0 0 32px rgba(251,191,36,0.5)', border: '2px solid rgba(251,191,36,0.5)' }}>
-              <img src={getCardImage(drawnCard.value)} alt="" className="w-full h-full object-cover"/>
+        {/* Drawn card zone (center) */}
+        <div ref={drawnAreaRef} className="flex flex-col items-center gap-2" style={{ minWidth: 140 }}>
+          {drawnCard && myTurn ? (
+            <div className="flex flex-col items-center gap-2 card-draw-anim">
+              <div className="w-28 h-40 rounded-xl overflow-hidden shadow-2xl" style={{ boxShadow: '0 0 32px rgba(251,191,36,0.5)', border: '2px solid rgba(251,191,36,0.4)' }}>
+                <img src={getCardImage(drawnCard.value)} alt="" className="w-full h-full object-cover"/>
+              </div>
+              <p className="text-white font-bold text-xs">{getRankLabel(drawnCard.value)} · {getCardScore(drawnCard.value)} pts</p>
+              <div className="flex gap-1.5 flex-wrap justify-center">
+                <button onClick={discardDrawn} className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-300 border border-slate-600 bg-slate-800/80 hover:bg-slate-700 transition-all hover:scale-105">
+                  ↩ Défausser
+                </button>
+                {isJack(drawnCard.value) && !myPowers.j && (
+                  <button onClick={() => activatePower('jack')} className="px-3 py-1.5 rounded-lg text-xs font-bold text-blue-300 border border-blue-600/60 bg-blue-900/40 hover:bg-blue-800/60 transition-all hover:scale-105">👁 J</button>
+                )}
+                {isQueen(drawnCard.value) && !myPowers.q && (
+                  <button onClick={() => activatePower('queen')} className="px-3 py-1.5 rounded-lg text-xs font-bold text-purple-300 border border-purple-600/60 bg-purple-900/40 hover:bg-purple-800/60 transition-all hover:scale-105">👁 Q</button>
+                )}
+                {isKing(drawnCard.value) && !myPowers.k && (
+                  <button onClick={() => activatePower('king')} className="px-3 py-1.5 rounded-lg text-xs font-bold text-yellow-300 border border-yellow-600/60 bg-yellow-900/40 hover:bg-yellow-800/60 transition-all hover:scale-105">↔ K</button>
+                )}
+              </div>
+              <p className="text-xs text-slate-500">ou cliquez votre main pour remplacer</p>
             </div>
-            <p className="text-white font-bold text-sm">{getRankLabel(drawnCard.value)} · {getCardScore(drawnCard.value)} pts</p>
-            {/* Actions compactes sous la carte */}
-            <div className="flex gap-2 flex-wrap justify-center">
-              <button onClick={discardDrawn} className="px-4 py-2 rounded-xl text-xs font-bold text-slate-300 border border-slate-600 bg-slate-800/80 hover:bg-slate-700 transition-all hover:scale-105">
-                ↩ Défausser
+          ) : (
+            /* BomBom or indicator */
+            myTurn && gs?.drawPhase && !gs.bombomBy && phase === 'playing' ? (
+              <button onClick={declareBombom} className="w-14 h-14 rounded-full bg-gradient-to-br from-red-600 to-orange-500 text-2xl flex items-center justify-center shadow-xl hover:scale-110 transition-all border-2 border-red-400/50">
+                💣
               </button>
-              {isJack(drawnCard.value) && !myPowers.j && (
-                <button onClick={() => activatePower('jack')} className="px-4 py-2 rounded-xl text-xs font-bold text-blue-300 border border-blue-600/60 bg-blue-900/40 hover:bg-blue-800/60 transition-all hover:scale-105">
-                  👁 Valet
-                </button>
-              )}
-              {isQueen(drawnCard.value) && !myPowers.q && (
-                <button onClick={() => activatePower('queen')} className="px-4 py-2 rounded-xl text-xs font-bold text-purple-300 border border-purple-600/60 bg-purple-900/40 hover:bg-purple-800/60 transition-all hover:scale-105">
-                  👁 Dame
-                </button>
-              )}
-              {isKing(drawnCard.value) && !myPowers.k && (
-                <button onClick={() => activatePower('king')} className="px-4 py-2 rounded-xl text-xs font-bold text-yellow-300 border border-yellow-600/60 bg-yellow-900/40 hover:bg-yellow-800/60 transition-all hover:scale-105">
-                  ↔ Roi
-                </button>
-              )}
-            </div>
-            <p className="text-xs text-slate-500">ou cliquez une carte de votre main pour remplacer</p>
-          </div>
-        ) : (
-          /* BomBom button when no drawn card */
-          myTurn && gs?.drawPhase && !gs.bombomBy && phase === 'playing' && (
-            <button onClick={declareBombom}
-              className="w-16 h-16 rounded-full bg-gradient-to-br from-red-600 to-orange-500 text-2xl flex items-center justify-center shadow-xl hover:scale-110 transition-all border-2 border-red-400/50"
-              title="Déclarer BomBom">
-              💣
-            </button>
-          )
-        )}
+            ) : gs?.bombomBy && gs.bombomBy !== user._id ? (
+              <div className="text-center">
+                <div className="text-4xl animate-bounce">💣</div>
+                <span className="text-xs text-red-400 font-bold">BomBom!</span>
+              </div>
+            ) : (
+              <div className="w-14 h-20 rounded-xl border-2 border-dashed border-purple-800/30 opacity-40"/>
+            )
+          )}
+        </div>
 
-        {/* BomBom indicator (opponent declared) */}
-        {gs?.bombomBy && gs.bombomBy !== user._id && !drawnCard && (
-          <div className="flex flex-col items-center gap-1">
-            <div className="text-4xl animate-bounce">💣</div>
-            <span className="text-xs text-red-400 font-bold">BomBom!</span>
-          </div>
-        )}
-
-        {/* Discard pile */}
+        {/* Discard */}
         <div className="flex flex-col items-center gap-1">
-          <div className={`w-20 h-28 rounded-xl overflow-hidden transition-all duration-300 ${topDiscard ? 'shadow-lg' : 'border-2 border-dashed border-purple-800/40'} flex items-center justify-center`}>
+          <div ref={discardRef} className={`w-20 h-28 rounded-xl overflow-hidden transition-all duration-300 ${topDiscard ? 'shadow-lg' : 'border-2 border-dashed border-purple-800/40'} flex items-center justify-center`}>
             {topDiscard
-              ? <img src={getCardImage(topDiscard.value)} alt="Défausse" className="w-full h-full object-cover"/>
+              ? <img src={getCardImage(topDiscard.value)} alt="" className="w-full h-full object-cover"/>
               : <span className="text-slate-600 text-xs text-center px-2">Défausse</span>
             }
           </div>
@@ -580,25 +666,21 @@ export default function GameView({ tableId, user, onLeave }: Props) {
       <div className="flex-shrink-0 px-4 pb-3">
         <div className="flex items-center gap-2 mb-2">
           <span className="text-xs text-slate-400 font-medium">{user.firstName} (moi)</span>
-          {phase === 'memorization' && memoRevealed.size > 0 && (
-            <span className="text-xs text-cyan-400">· {memoRevealed.size} carte(s) visible(s)</span>
-          )}
-          {powerMode && <span className="text-xs text-yellow-400 font-bold">· Pouvoir actif</span>}
+          {phase === 'memorization' && <span className="text-xs text-cyan-400">· {memoRevealed.size}/2 vues</span>}
           {!gs?.drawPhase && drawnCard && myTurn && !powerMode && (
-            <span className="text-xs text-emerald-400 font-bold">← Cliquez pour remplacer</span>
+            <span className="text-xs text-emerald-400 font-bold animate-pulse">← Cliquez une carte pour remplacer</span>
           )}
         </div>
-        <div className="flex gap-2 justify-center">
+        <div ref={myHandRef} className="flex gap-2 justify-center">
           {myHand.map((card, idx) => {
             const isPowerClickable = powerMode === 'jack' || powerMode === 'king'
             const isReplaceMode = !gs?.drawPhase && drawnCard && myTurn && !powerMode
-            const isHighlighted = (isPowerClickable || isReplaceMode) && phase === 'playing'
+            const isHighlighted = (isPowerClickable || !!isReplaceMode) && phase === 'playing'
             const isKingSelected = powerMode === 'king' && kingStep?.userId === user._id && kingStep.idx === idx
             const isMemoClickable = phase === 'memorization'
             const isNew = newCardIdxs.has(idx)
-
             return (
-              <div key={card.id || idx} className={`relative ${isNew ? 'card-pop-anim' : ''}`}>
+              <div key={card.id || idx} className={`relative transition-transform duration-200 ${isNew ? 'card-pop-anim' : ''}`}>
                 <GameCard
                   card={card}
                   size="md"
@@ -606,7 +688,6 @@ export default function GameView({ tableId, user, onLeave }: Props) {
                   highlight={isHighlighted || isMemoClickable}
                   selected={isKingSelected}
                   glowing={isNew}
-                  disabled={false}
                 />
                 {isNew && (
                   <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-white text-xs font-bold">+</div>
@@ -617,9 +698,9 @@ export default function GameView({ tableId, user, onLeave }: Props) {
         </div>
       </div>
 
-      {/* ── Quit button ── */}
+      {/* ── Quit ── */}
       <button onClick={quitGame}
-        className="absolute top-2 right-4 z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-red-400 border border-red-800/40 bg-red-900/20 hover:bg-red-900/50 hover:text-red-300 transition-all">
+        className="absolute top-2 right-4 z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-red-400 border border-red-800/40 bg-red-900/20 hover:bg-red-900/50 transition-all">
         🚪 Quitter
       </button>
     </div>
