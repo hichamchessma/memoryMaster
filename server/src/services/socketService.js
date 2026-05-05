@@ -41,13 +41,22 @@ module.exports = function initSocket(io) {
         const table = await Table.findById(tableId);
         if (!table) return;
 
+        // ── Dédupliquer : supprimer tout doublon du même userId avant traitement ──
+        const beforeLen = table.players.length;
+        table.players = table.players.filter(
+          (p, i, arr) => arr.findIndex(x => x.userId === p.userId) === i
+        );
+        if (table.players.length !== beforeLen) table.markModified('players');
+
         const slot = table.players.find(p => p.userId === socket.userId);
         if (!slot) {
-          // New player joining
+          // Compter uniquement les vrais joueurs (≤ maxPlayers)
           if (table.players.length >= table.maxPlayers || table.status !== 'waiting')
             return socket.emit('error', { message: 'Table pleine ou partie en cours' });
 
           const user = await User.findById(socket.userId);
+          if (!user) return socket.emit('error', { message: 'Utilisateur introuvable' });
+
           table.players.push({
             userId: socket.userId,
             firstName: user.firstName,
@@ -59,7 +68,7 @@ module.exports = function initSocket(io) {
             elo: user.elo,
           });
         } else {
-          slot.socketId = socket.id;
+          slot.socketId = socket.id; // Reconnexion : juste mettre à jour le socket
         }
 
         // Si table avec bot → marquer le joueur humain comme prêt automatiquement
@@ -73,12 +82,15 @@ module.exports = function initSocket(io) {
         socket.join(tableId);
         io.to(tableId).emit('table:updated', table);
 
-        // Démarrer si tous prêts (cas bot) — guard en mémoire
+        // Démarrer si tous les slots maxPlayers sont prêts
         const tid = table._id.toString();
-        if (hasBot && table.status === 'waiting' && table.players.every(p => p.isReady) && !starting.has(tid)) {
+        const activePlayers = table.players.filter(p => p.userId !== BOT_ID || hasBot);
+        const allReady = table.players.length >= table.maxPlayers && table.players.every(p => p.isReady);
+        if (hasBot && table.status === 'waiting' && allReady && !starting.has(tid)) {
           starting.add(tid);
           setTimeout(() => startGame(io, table), 1500);
         }
+        void activePlayers;
       } catch (err) {
         socket.emit('error', { message: err.message });
       }
@@ -111,6 +123,12 @@ module.exports = function initSocket(io) {
       try {
         const table = await Table.findById(tableId);
         if (!table || table.status !== 'waiting') return;
+
+        // Dédupliquer avant de traiter
+        table.players = table.players.filter(
+          (p, i, arr) => arr.findIndex(x => x.userId === p.userId) === i
+        );
+
         const slot = table.players.find(p => p.userId === socket.userId);
         if (!slot) return;
         slot.isReady = !slot.isReady;
@@ -118,7 +136,9 @@ module.exports = function initSocket(io) {
         io.to(tableId).emit('table:updated', table);
 
         const tid2 = table._id.toString();
-        const allReady = table.players.length >= 2 && table.players.every(p => p.isReady);
+        // Démarrer seulement quand on a exactement maxPlayers joueurs tous prêts
+        const allReady = table.players.length >= table.maxPlayers
+          && table.players.every(p => p.isReady);
         if (allReady && !starting.has(tid2)) {
           starting.add(tid2);
           startGame(io, table);

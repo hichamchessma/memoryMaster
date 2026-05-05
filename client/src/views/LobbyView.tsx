@@ -23,6 +23,7 @@ export default function LobbyView({ onJoinGame, user }: Props) {
   const qc = useQueryClient()
 
   const [vsBot, setVsBot] = useState(false)
+  const [cleaning, setCleaning] = useState(false)
 
   const { data: tables = [], isLoading } = useQuery<Table[]>({
     queryKey: ['tables'],
@@ -39,6 +40,16 @@ export default function LobbyView({ onJoinGame, user }: Props) {
     } catch {
       toast.error('Impossible de créer la partie')
     } finally { setVsBot(false) }
+  }
+
+  const cleanupMyTables = async () => {
+    setCleaning(true)
+    try {
+      const { data } = await api.delete('/tables/cleanup/mine')
+      qc.invalidateQueries({ queryKey: ['tables'] })
+      toast.success(`${data.deleted} table(s) nettoyée(s)`)
+    } catch { toast.error('Erreur lors du nettoyage') }
+    finally { setCleaning(false) }
   }
 
   const createTable = async (max: 2|3|4) => {
@@ -100,6 +111,12 @@ export default function LobbyView({ onJoinGame, user }: Props) {
           ))}
         </div>
         <p className="text-xs text-slate-500 mt-3">🤖 Le bot joue automatiquement — parfait pour s'entraîner seul</p>
+        <div className="mt-3 pt-3 border-t border-purple-900/30 flex items-center gap-2">
+          <button onClick={cleanupMyTables} disabled={cleaning}
+            className="text-xs text-slate-500 hover:text-red-400 transition-colors flex items-center gap-1">
+            {cleaning ? '⏳ Nettoyage...' : '🗑 Nettoyer mes vieilles tables'}
+          </button>
+        </div>
       </div>
 
       {/* Tables en attente */}

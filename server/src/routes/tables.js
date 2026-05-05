@@ -4,6 +4,7 @@ const { protect } = require('../middleware/auth');
 
 router.use(protect);
 router.post('/vs-bot', ctrl.createVsBot);
+router.delete('/cleanup/mine', ctrl.cleanupMyTables);
 router.post('/', ctrl.createTable);
 router.get('/', ctrl.getTables);
 router.get('/:id', ctrl.getTable);

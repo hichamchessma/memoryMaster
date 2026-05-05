@@ -87,6 +87,17 @@ exports.createVsBot = async (req, res) => {
   }
 };
 
+exports.cleanupMyTables = async (req, res) => {
+  try {
+    const userId = req.user._id.toString();
+    // Supprimer toutes les tables en attente où cet utilisateur est hôte
+    const result = await Table.deleteMany({ hostId: userId, status: 'waiting' });
+    res.json({ success: true, deleted: result.deletedCount });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
 exports.deleteTable = async (req, res) => {
   try {
     const table = await Table.findById(req.params.id);
