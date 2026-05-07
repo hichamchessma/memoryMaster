@@ -101,6 +101,10 @@ module.exports = function initSocket(io) {
       try {
         const table = await Table.findById(tableId);
         if (!table) return;
+        // Notify others if a game was in progress
+        if (table.status === 'playing') {
+          io.to(tableId).emit('game:playerLeft', { userId: socket.userId });
+        }
         table.players = table.players.filter(p => p.userId !== socket.userId);
         if (table.players.length === 0) {
           await table.deleteOne();
@@ -169,6 +173,8 @@ module.exports = function initSocket(io) {
         // Notify current player of the drawn card
         const currentSocket = getSocket(io, gs, socket.userId, table);
         if (currentSocket) currentSocket.emit('game:drawn', { card });
+        // Notify opponents: a card flew from deck to center (face-down for them)
+        io.to(tableId).emit('game:playerAction', { userId: socket.userId, action: 'draw' });
         io.to(tableId).emit('game:state', sanitizeState(gs, table.players));
         startChoiceTimer(io, table, tableId);
       } catch (err) {
@@ -197,6 +203,8 @@ module.exports = function initSocket(io) {
         table.markModified('gameState');
         await table.save();
 
+        // Opponents see: new card flying to player's hand, old card flying to discard
+        io.to(tableId).emit('game:playerAction', { userId: socket.userId, action: 'replace', discardedCard: replaced });
         io.to(tableId).emit('game:state', sanitizeState(gs, table.players));
         checkBombomTrigger(io, table, tableId);
         startDrawTimer(io, table, tableId);
@@ -216,13 +224,16 @@ module.exports = function initSocket(io) {
 
         stopTimers(tableId);
 
-        gs.discardPile.unshift(gs.drawnCard);
+        const discarded = gs.drawnCard;
+        gs.discardPile.unshift(discarded);
         gs.drawnCard = null;
         gs.drawPhase = true;
         advanceTurn(gs);
         table.markModified('gameState');
         await table.save();
 
+        // Opponents see: drawn card (now public) flying from center to discard
+        io.to(tableId).emit('game:playerAction', { userId: socket.userId, action: 'discard', card: discarded });
         io.to(tableId).emit('game:state', sanitizeState(gs, table.players));
         checkBombomTrigger(io, table, tableId);
         startDrawTimer(io, table, tableId);
@@ -539,10 +550,13 @@ module.exports = function initSocket(io) {
     });
 
     socket.on('disconnect', async () => {
-      // Update socketId to null for this player in any table
       try {
         const table = await Table.findOne({ 'players.userId': socket.userId });
         if (!table) return;
+        // Notify others if a game was in progress
+        if (table.status === 'playing') {
+          io.to(table._id.toString()).emit('game:playerLeft', { userId: socket.userId });
+        }
         const slot = table.players.find(p => p.userId === socket.userId);
         if (slot) { slot.socketId = null; await table.save(); }
         io.to(table._id.toString()).emit('table:updated', table);
@@ -693,7 +707,7 @@ module.exports = function initSocket(io) {
         t.markModified('gameState');
         await t.save();
         // Notifier le client que le bot pioche (pour animation)
-        io.to(tableId).emit('game:botAction', { action: 'draw', card: { value: card.value } });
+        io.to(tableId).emit('game:playerAction', { userId: BOT_ID, action: 'draw' });
         io.to(tableId).emit('game:state', sanitizeState(botGs, t.players));
 
         // Bot decide after BOT_DECIDE_DELAY
@@ -705,11 +719,14 @@ module.exports = function initSocket(io) {
           const replaceIdx = botDecideReplace(hand, gs2.drawnCard);
           const action = replaceIdx !== null ? 'replace' : 'discard';
 
+          let discardedCard = null;
           if (replaceIdx !== null) {
             const old = hand[replaceIdx];
+            discardedCard = old;
             hand[replaceIdx] = gs2.drawnCard;
             gs2.discardPile.unshift(old);
           } else {
+            discardedCard = gs2.drawnCard;
             gs2.discardPile.unshift(gs2.drawnCard);
           }
           gs2.drawnCard = null;
@@ -717,7 +734,7 @@ module.exports = function initSocket(io) {
           advanceTurn(gs2);
           t2.markModified('gameState');
           await t2.save();
-          io.to(tableId).emit('game:botAction', { action });
+          io.to(tableId).emit('game:playerAction', { userId: BOT_ID, action, discardedCard });
           io.to(tableId).emit('game:state', sanitizeState(gs2, t2.players));
           checkBombomTrigger(io, t2, tableId);
           startDrawTimer(io, t2, tableId);

@@ -87,7 +87,11 @@ function GameCard({ card, onClick, size = 'md', highlight = false, selected = fa
 export default function GameView({ tableId, user, onLeave }: Props) {
   const socket = useSocket()
   const [players, setPlayers] = useState<Player[]>([])
+  const playersRef = useRef<Player[]>([])
+  playersRef.current = players
   const [myHand, setMyHand] = useState<Card[]>([])
+  const myHandDataRef = useRef<Card[]>([])
+  myHandDataRef.current = myHand
   const [gs, setGs] = useState<GameState | null>(null)
   const [timer, setTimer] = useState<{ phase: TimerPhase; remaining: number; max: number }>({ phase: null, remaining: 0, max: 10 })
   const [drawnCard, setDrawnCard] = useState<Card | null>(null)
@@ -204,6 +208,8 @@ export default function GameView({ tableId, user, onLeave }: Props) {
         setMyHand(prev => prev.map(c => ({ ...c, isFlipped: false })))
         setMemoRevealed(new Set())
       }
+      // Fermer le prompt BomBom si ce n'est plus notre tour
+      if (state.turnOrder[state.currentTurnIndex] !== user._id) setBombomPrompt(false)
     })
 
     socket.on('game:timer', ({ phase: p, remaining }: { phase: string; remaining: number }) => {
@@ -260,17 +266,19 @@ export default function GameView({ tableId, user, onLeave }: Props) {
     })
 
     socket.on('game:quickDiscarded', ({ userId, card }: { userId: string; card: Card }) => {
-      const name = userId === BOT_ID ? '🤖 Bot' : players.find(p => p.userId === userId)?.firstName || ''
+      const name = userId === BOT_ID ? '🤖 Bot' : playersRef.current.find(p => p.userId === userId)?.firstName || ''
       toast(`${name} défausse ${getRankLabel(card.value)} !`, { icon: '💨', duration: 1200 })
       if (userId === user._id) {
-        // Animer la carte vers la défausse puis la retirer de la main
-        // (la position vient de myHandRef — la carte a déjà disparu visuellement grâce au fly)
-        setMyHand(prev => prev.filter(c => c.id !== card.id))
+        // Retrouver la position de la carte dans la main, l'animer vers la défausse puis la retirer
+        const hand = myHandDataRef.current
+        const idx = hand.findIndex(c => c.id === card.id)
+        const from = idx >= 0 ? getMyHandCardPos(idx) : getDiscardPos()
+        flyToDiscard(card.value, from)
+        setTimeout(() => setMyHand(prev => prev.filter(c => c.id !== card.id)), 50)
       } else {
-        // Pour un adversaire : faire voler une carte cachée depuis sa main vers la défausse
+        // Pour un adversaire : faire voler la carte depuis sa main vers la défausse
         const from = getOppHandPos()
-        const to   = getDiscardPos()
-        addFlyCard(card.value, from, to)
+        addFlyCard(card.value, from, getDiscardPos())
       }
     })
 
@@ -292,14 +300,14 @@ export default function GameView({ tableId, user, onLeave }: Props) {
     })
 
     socket.on('game:powerActivated', ({ userId, power }: { userId: string; power: string }) => {
-      const name = userId === BOT_ID ? '🤖 Bot' : players.find(p => p.userId === userId)?.firstName || ''
+      const name = userId === BOT_ID ? '🤖 Bot' : playersRef.current.find(p => p.userId === userId)?.firstName || ''
       const labels: Record<string, string> = { jack: 'Valet 👁', queen: 'Dame 👁', king: 'Roi ↔' }
       toast(`${name} : ${labels[power] || power}`, { icon: '✨', duration: 2000 })
       if (userId === user._id) { setPowerMode(null); setKingStep(null) }
     })
 
     socket.on('game:bombomDeclared', ({ userId }: { userId: string }) => {
-      const name = userId === BOT_ID ? '🤖 Bot' : players.find(p => p.userId === userId)?.firstName || ''
+      const name = userId === BOT_ID ? '🤖 Bot' : playersRef.current.find(p => p.userId === userId)?.firstName || ''
       toast.error(`💣 ${name} déclare BomBom !`, { duration: 3000 })
     })
 
@@ -312,20 +320,38 @@ export default function GameView({ tableId, user, onLeave }: Props) {
       setShowtimeData(data); setDrawnCard(null)
     })
 
-    // ── BOT animations ──────────────────────────────────────────────────────
-    socket.on('game:botAction', ({ action }: { action: string }) => {
-      const deckPos    = getDeckPos()
-      const discardPos = getDiscardPos()
-      const drawnPos   = getDrawnAreaPos()
-      const oppPos     = getOppHandPos()
+    socket.on('game:playerLeft', ({ userId }: { userId: string }) => {
+      if (userId === user._id) return
+      const name = playersRef.current.find(p => p.userId === userId)?.firstName || 'Un joueur'
+      toast.error(`${name} a quitté la partie !`, { duration: 4000, icon: '🚪' })
+      setTimeout(() => { resetGame(); onLeave() }, 3500)
+    })
+
+    // ── Animations adversaires (humains + bot) ──────────────────────────────
+    socket.on('game:playerAction', ({ userId, action, discardedCard, card }: {
+      userId: string
+      action: string
+      discardedCard?: { value: number } | null
+      card?: { value: number } | null
+    }) => {
+      // Self: already animated locally, skip
+      if (userId === user._id) return
+
+      const deckPos  = getDeckPos()
+      const drawnPos = getDrawnAreaPos()
+      const oppPos   = getOppHandPos()
 
       if (action === 'draw') {
+        // Carte cachée vole du deck vers le centre
         addFlyCard(null, deckPos, drawnPos)
       } else if (action === 'discard') {
-        flyToDiscard(null, drawnPos)
+        // Carte (maintenant publique) vole du centre vers la défausse
+        flyToDiscard(card?.value ?? null, drawnPos)
       } else if (action === 'replace') {
+        // Nouvelle carte (cachée) vole vers la main adverse
         addFlyCard(null, drawnPos, oppPos, 0)
-        flyToDiscard(null, oppPos, 250) // l'ancienne carte du bot part vers la défausse
+        // Ancienne carte (publique, va à la défausse) vole depuis la main adverse
+        flyToDiscard(discardedCard?.value ?? null, oppPos, 250)
       }
     })
 
@@ -358,7 +384,7 @@ export default function GameView({ tableId, user, onLeave }: Props) {
       ['table:updated','game:started','game:dealt','game:state','game:timer','game:phaseChange',
        'game:drawn','game:revealCard','game:penaltyCards','game:penalty','game:penaltyReveal',
        'game:quickDiscarded','game:powerActivated','game:bombomDeclared','game:bombomPrompt',
-       'game:showtime','game:botAction','error',
+       'game:showtime','game:playerAction','game:playerLeft','error',
        'debug:allHands','debug:cardForced','debug:handUpdated','debug:scoresResult']
         .forEach(ev => socket.off(ev))
       if (revealTimeout.current) clearTimeout(revealTimeout.current)
@@ -402,6 +428,9 @@ export default function GameView({ tableId, user, onLeave }: Props) {
   }
 
   const quitGame = async () => {
+    if (gameStarted && gs?.phase === 'playing') {
+      if (!window.confirm('Quitter la partie en cours ? Vos adversaires seront notifiés.')) return
+    }
     socket?.emit('table:leave', { tableId })
     try { await api.delete(`/tables/${tableId}`) } catch {}
     resetGame(); onLeave()
@@ -457,9 +486,9 @@ export default function GameView({ tableId, user, onLeave }: Props) {
       return
     }
 
-    // Défausse rapide
+    // Défausse rapide — animation déclenchée par la confirmation serveur (game:quickDiscarded)
+    // pour éviter le glitch visuel si la défausse est invalide
     if (gs.phase === 'playing') {
-      flyToDiscard(card.value, getMyHandCardPos(idx))
       socket.emit('game:quickDiscard', { tableId, cardIndex: idx })
     }
   }, [socket, gs, phase, powerMode, kingStep, drawnCard, myTurn, tableId, user._id, memoRevealed, addFlyCard, getDrawnAreaPos, getMyHandCardPos, getDiscardPos])
@@ -512,7 +541,7 @@ export default function GameView({ tableId, user, onLeave }: Props) {
             })}
           </div>
           <div className="flex gap-3">
-            <button onClick={resetGame} className="btn-primary flex-1 py-3">🔄 Rejouer</button>
+            <button onClick={() => { resetGame(); onLeave() }} className="btn-primary flex-1 py-3">🔄 Nouvelle partie</button>
             <button onClick={() => { resetGame(); onLeave() }} className="btn-outline flex-1 py-3">← Salon</button>
           </div>
         </div>
