@@ -583,6 +583,19 @@ export default function GameView({ tableId, user, onLeave }: Props) {
             </button>
             <button onClick={quitGame} className="btn-outline px-4 py-3">←</button>
           </div>
+
+          {/* Bouton magique : remplir les slots vides avec un bot et démarrer */}
+          {!hasBot && (
+            <div className="pt-2 border-t border-purple-900/40">
+              <button
+                onClick={() => socket?.emit('table:addBot', { tableId })}
+                className="w-full py-2.5 rounded-xl font-bold text-sm text-emerald-300 border border-emerald-700/50 bg-emerald-900/20 hover:bg-emerald-900/40 transition-all flex items-center justify-center gap-2"
+              >
+                🧪 Tester maintenant — remplir avec le Bot
+              </button>
+              <p className="text-xs text-slate-500 mt-1.5">Lance la partie immédiatement avec un bot IA</p>
+            </div>
+          )}
         </div>
       </div>
     )

@@ -450,6 +450,43 @@ module.exports = function initSocket(io) {
       }
     });
 
+    // ── Ajouter un bot à la table (bouton test 2 joueurs) ──────────────────
+    socket.on('table:addBot', async ({ tableId }) => {
+      try {
+        const table = await Table.findById(tableId);
+        if (!table || table.status !== 'waiting') return;
+        if (table.players.some(p => p.userId === BOT_ID)) return;
+        if (table.players.length >= table.maxPlayers) return;
+
+        // Ajouter le bot
+        table.players.push({
+          userId:    BOT_ID,
+          firstName: BOT_NAME.firstName,
+          lastName:  BOT_NAME.lastName,
+          socketId:  null,
+          isHost:    false,
+          isReady:   true,
+          position:  table.players.length,
+          elo:       1000,
+        });
+        // Auto-ready tous les joueurs humains présents
+        table.players.forEach(p => { if (p.userId !== BOT_ID) p.isReady = true; });
+        table.markModified('players');
+        await table.save();
+
+        io.to(tableId).emit('table:updated', table);
+
+        const tid = table._id.toString();
+        const allReady = table.players.length >= table.maxPlayers && table.players.every(p => p.isReady);
+        if (allReady && !starting.has(tid)) {
+          starting.add(tid);
+          setTimeout(() => startGame(io, table), 1200);
+        }
+      } catch (err) {
+        socket.emit('error', { message: err.message });
+      }
+    });
+
     // ── Resync state (reconnexion / bot) ────────────────────────────────────
     socket.on('game:requestState', async ({ tableId }) => {
       try {
