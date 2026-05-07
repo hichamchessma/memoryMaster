@@ -320,6 +320,32 @@ export default function GameView({ tableId, user, onLeave }: Props) {
       setShowtimeData(data); setDrawnCard(null)
     })
 
+    // ── King swap animation + hand refresh ─────────────────────────────────
+    socket.on('game:kingSwap', ({ userId1, idx1, userId2, idx2 }: {
+      userId1: string; idx1: number; userId2: string; idx2: number
+    }) => {
+      const oppPos   = getOppHandPos()
+      const isMe1    = userId1 === user._id
+      const isMe2    = userId2 === user._id
+      const myIdx    = isMe1 ? idx1 : isMe2 ? idx2 : -1
+
+      if (myIdx >= 0) {
+        // Ma carte vole vers la main adverse, leur carte vole vers ma main
+        const myCardPos = getMyHandCardPos(myIdx)
+        addFlyCard(null, myCardPos, oppPos, 0)   // ma carte monte
+        addFlyCard(null, oppPos, myCardPos, 100) // leur carte descend (légèrement décalé)
+      } else {
+        // Spectateur (3+ joueurs) : deux cartes s'échangent dans la zone adverse
+        addFlyCard(null, oppPos, { x: oppPos.x + 60, y: oppPos.y }, 0)
+        addFlyCard(null, { x: oppPos.x + 60, y: oppPos.y }, oppPos, 100)
+      }
+    })
+
+    socket.on('game:handUpdate', ({ hand }: { hand: Card[] }) => {
+      // Main mise à jour après échange King — montrer les nouvelles cartes face cachée
+      setMyHand(hand.map(c => ({ ...c, isFlipped: false })))
+    })
+
     socket.on('game:playerLeft', ({ userId }: { userId: string }) => {
       if (userId === user._id) return
       const name = playersRef.current.find(p => p.userId === userId)?.firstName || 'Un joueur'
@@ -384,7 +410,7 @@ export default function GameView({ tableId, user, onLeave }: Props) {
       ['table:updated','game:started','game:dealt','game:state','game:timer','game:phaseChange',
        'game:drawn','game:revealCard','game:penaltyCards','game:penalty','game:penaltyReveal',
        'game:quickDiscarded','game:powerActivated','game:bombomDeclared','game:bombomPrompt',
-       'game:showtime','game:playerAction','game:playerLeft','error',
+       'game:showtime','game:playerAction','game:playerLeft','game:kingSwap','game:handUpdate','error',
        'debug:allHands','debug:cardForced','debug:handUpdated','debug:scoresResult']
         .forEach(ev => socket.off(ev))
       if (revealTimeout.current) clearTimeout(revealTimeout.current)
@@ -701,8 +727,8 @@ export default function GameView({ tableId, user, onLeave }: Props) {
       {/* ── Opponents ── */}
       <div ref={oppHandRef} className="flex-shrink-0 px-4 py-2 flex justify-center gap-8">
         {opponents.map(opp => {
-          const handSize = gs?.handSizes?.[opp.userId] ?? 4
-          const isOppTurn = gs ? gs.turnOrder[gs.currentTurnIndex] === opp.userId : false
+          const handSize    = gs?.handSizes?.[opp.userId] ?? 4
+          const isOppTurn   = gs ? gs.turnOrder[gs.currentTurnIndex] === opp.userId : false
           const isPowerTarget = powerMode === 'queen' || powerMode === 'king'
           return (
             <div key={opp.userId} className="text-center">
@@ -710,12 +736,33 @@ export default function GameView({ tableId, user, onLeave }: Props) {
                 {isOppTurn && '▶ '}{opp.firstName} · {handSize} cartes
               </div>
               <div className="flex gap-1.5 justify-center">
-                {[...Array(handSize)].map((_, i) => (
-                  <button key={i} onClick={() => clickOpponentCard(opp.userId, i)}
-                    className={`w-12 h-16 rounded-xl overflow-hidden transition-all duration-200 ${isPowerTarget ? 'ring-2 ring-yellow-400 hover:scale-110 hover:-translate-y-1 cursor-crosshair' : 'cursor-default opacity-80'}`}>
-                    <img src={getCardBack()} alt="" className="w-full h-full object-cover"/>
-                  </button>
-                ))}
+                {[...Array(handSize)].map((_, i) => {
+                  const isOppKingSelected = powerMode === 'king' && kingStep?.userId === opp.userId && kingStep.idx === i
+                  return (
+                    // Le ring est sur le wrapper (pas sur l'élément overflow-hidden) → toujours visible
+                    <div
+                      key={i}
+                      onClick={() => clickOpponentCard(opp.userId, i)}
+                      className={`relative transition-all duration-200 rounded-xl cursor-pointer ${
+                        isOppKingSelected
+                          ? 'ring-4 ring-yellow-400 scale-110 -translate-y-2 shadow-[0_0_20px_rgba(251,191,36,0.7)]'
+                          : isPowerTarget
+                            ? 'ring-2 ring-yellow-400 hover:scale-110 hover:-translate-y-1 shadow-[0_0_10px_rgba(251,191,36,0.3)]'
+                            : 'cursor-default opacity-80'
+                      }`}
+                    >
+                      <div className="w-12 h-16 rounded-xl overflow-hidden">
+                        <img src={getCardBack()} alt="" className="w-full h-full object-cover"/>
+                      </div>
+                      {/* Numéro de position visible uniquement en mode King */}
+                      {powerMode === 'king' && (
+                        <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[10px] font-black text-yellow-300 bg-black/70 rounded px-1">
+                          {i + 1}
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             </div>
           )
@@ -808,20 +855,36 @@ export default function GameView({ tableId, user, onLeave }: Props) {
           {myHand.map((card, idx) => {
             const isPowerClickable = powerMode === 'jack' || powerMode === 'king'
             const isReplaceMode = !gs?.drawPhase && drawnCard && myTurn && !powerMode
-            const isHighlighted = (isPowerClickable || !!isReplaceMode) && phase === 'playing'
+            const isHighlighted = (isPowerClickable && powerMode !== 'king' || !!isReplaceMode) && phase === 'playing'
             const isKingSelected = powerMode === 'king' && kingStep?.userId === user._id && kingStep.idx === idx
+            const isKingReady    = powerMode === 'king' && !isKingSelected && phase === 'playing'
             const isMemoClickable = phase === 'memorization'
             const isNew = newCardIdxs.has(idx)
             return (
-              <div key={card.id || idx} className={`relative transition-transform duration-200 ${isNew ? 'card-pop-anim' : ''}`}>
+              <div
+                key={card.id || idx}
+                className={`relative transition-all duration-200 rounded-xl ${isNew ? 'card-pop-anim' : ''} ${
+                  isKingSelected
+                    ? 'ring-4 ring-yellow-400 scale-110 -translate-y-2 shadow-[0_0_20px_rgba(251,191,36,0.7)]'
+                    : isKingReady
+                      ? 'ring-2 ring-yellow-400/70 shadow-[0_0_10px_rgba(251,191,36,0.25)]'
+                      : ''
+                }`}
+              >
                 <GameCard
                   card={card}
                   size="md"
                   onClick={() => clickMyCard(card, idx)}
                   highlight={isHighlighted || isMemoClickable}
-                  selected={isKingSelected}
+                  selected={false}
                   glowing={isNew}
                 />
+                {/* Numéro de position en mode King */}
+                {powerMode === 'king' && (
+                  <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[10px] font-black text-yellow-300 bg-black/70 rounded px-1">
+                    {idx + 1}
+                  </span>
+                )}
                 {isNew && (
                   <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-white text-xs font-bold">+</div>
                 )}

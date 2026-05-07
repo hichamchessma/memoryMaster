@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken');
 const {
   createGameState, getCardScore, calcScore, canQuickDiscard, shuffle, buildDeck
 } = require('./gameService');
-const { BOT_ID, botDecideReplace, botShouldBombom, botQuickDiscard } = require('./botService');
+const { BOT_ID, BOT_NAME, botDecideReplace, botShouldBombom, botQuickDiscard } = require('./botService');
 
 const timers = {};       // tableId -> { tick, decide }
 const starting = new Set(); // guard contre double startGame
@@ -405,6 +405,16 @@ module.exports = function initSocket(io) {
 
         table.markModified('gameState');
         await table.save();
+
+        // Animation de l'échange (sans révéler les valeurs)
+        io.to(tableId).emit('game:kingSwap', { userId1, idx1, userId2, idx2 });
+        // Envoyer la main mise à jour à chaque joueur concerné
+        const kSock1 = getSocketById(io, table.players.find(p => p.userId === userId1)?.socketId);
+        if (kSock1) kSock1.emit('game:handUpdate', { hand: gs.hands[userId1] });
+        if (userId2 !== userId1) {
+          const kSock2 = getSocketById(io, table.players.find(p => p.userId === userId2)?.socketId);
+          if (kSock2) kSock2.emit('game:handUpdate', { hand: gs.hands[userId2] });
+        }
 
         io.to(tableId).emit('game:powerActivated', { userId: socket.userId, power: 'king' });
         io.to(tableId).emit('game:state', sanitizeState(gs, table.players));
