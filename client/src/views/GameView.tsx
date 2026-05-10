@@ -139,6 +139,57 @@ export default function GameView({ tableId, user, onLeave }: Props) {
   const myPowers = gs?.powers?.[user._id] ?? {}
   const opponents = players.filter(p => p.userId !== user._id)
 
+  // Disposition triangle selon le nombre d'adversaires
+  // 1 adv → haut   |  2 adv → gauche + droite   |  3 adv → gauche + haut + droite
+  const topOpp   = opponents.length === 1 ? opponents[0]
+                 : opponents.length === 3 ? opponents[1]
+                 : null
+  const leftOpp  = opponents.length >= 2 ? opponents[0] : null
+  const rightOpp = opponents.length === 2 ? opponents[1]
+                 : opponents.length === 3 ? opponents[2]
+                 : null
+
+  // Rendu d'une carte d'adversaire (rotated=true pour les panneaux gauche/droite)
+  const renderOppCard = (opp: Player, i: number, rotated: boolean) => {
+    const isPT = powerMode === 'queen' || powerMode === 'king'
+    const isKingSel = powerMode === 'king' && kingStep?.userId === opp.userId && kingStep.idx === i
+    const hlClass = isKingSel
+      ? 'ring-4 ring-yellow-400 shadow-[0_0_20px_rgba(251,191,36,0.7)]'
+      : isPT ? 'ring-2 ring-yellow-400 shadow-[0_0_10px_rgba(251,191,36,0.3)]'
+      : 'opacity-80'
+    const cursor = isPT || isKingSel ? 'cursor-crosshair' : 'cursor-default'
+
+    if (rotated) {
+      return (
+        <div key={i} onClick={() => clickOpponentCard(opp.userId, i)}
+          className={`relative transition-all duration-200 rounded-lg ${hlClass} ${cursor}`}
+          style={{ width: 58, height: 42, flexShrink: 0 }}>
+          <img src={getCardBack()} alt=""
+            style={{ width: 42, height: 58, position: 'absolute', top: '50%', left: '50%',
+              transform: 'translate(-50%,-50%) rotate(90deg)', borderRadius: 10, objectFit: 'cover' }}/>
+          {powerMode === 'king' && (
+            <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 text-[9px] font-black text-yellow-300 bg-black/70 rounded px-0.5">
+              {i + 1}
+            </span>
+          )}
+        </div>
+      )
+    }
+    return (
+      <div key={i} onClick={() => clickOpponentCard(opp.userId, i)}
+        className={`relative transition-all duration-200 rounded-xl ${hlClass} ${cursor} ${isPT || isKingSel ? 'hover:scale-110 hover:-translate-y-1' : ''}`}>
+        <div className="w-12 h-16 rounded-xl overflow-hidden">
+          <img src={getCardBack()} alt="" className="w-full h-full object-cover"/>
+        </div>
+        {powerMode === 'king' && (
+          <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[10px] font-black text-yellow-300 bg-black/70 rounded px-1">
+            {i + 1}
+          </span>
+        )}
+      </div>
+    )
+  }
+
   // ── Flying card helpers ───────────────────────────────────────────────────
   const getPos = (ref: React.RefObject<HTMLElement | null>) => {
     const r = ref.current?.getBoundingClientRect()
@@ -724,122 +775,138 @@ export default function GameView({ tableId, user, onLeave }: Props) {
         ) : null}
       </div>
 
-      {/* ── Opponents ── */}
-      <div ref={oppHandRef} className="flex-shrink-0 px-4 py-2 flex justify-center gap-8">
-        {opponents.map(opp => {
-          const handSize    = gs?.handSizes?.[opp.userId] ?? 4
-          const isOppTurn   = gs ? gs.turnOrder[gs.currentTurnIndex] === opp.userId : false
-          const isPowerTarget = powerMode === 'queen' || powerMode === 'king'
+      {/* ── Middle section: disposition triangle ── */}
+      <div className="flex-1 flex min-h-0">
+
+        {/* ── Panneau gauche (adversaire 1, 3–4 joueurs) ── */}
+        {leftOpp && (() => {
+          const handSize  = gs?.handSizes?.[leftOpp.userId] ?? 4
+          const isOppTurn = gs ? gs.turnOrder[gs.currentTurnIndex] === leftOpp.userId : false
           return (
-            <div key={opp.userId} className="text-center">
-              <div className={`text-xs mb-1.5 font-medium ${isOppTurn ? 'text-yellow-400 font-bold' : 'text-slate-400'}`}>
-                {isOppTurn && '▶ '}{opp.firstName} · {handSize} cartes
-              </div>
-              <div className="flex gap-1.5 justify-center">
-                {[...Array(handSize)].map((_, i) => {
-                  const isOppKingSelected = powerMode === 'king' && kingStep?.userId === opp.userId && kingStep.idx === i
-                  return (
-                    // Le ring est sur le wrapper (pas sur l'élément overflow-hidden) → toujours visible
-                    <div
-                      key={i}
-                      onClick={() => clickOpponentCard(opp.userId, i)}
-                      className={`relative transition-all duration-200 rounded-xl cursor-pointer ${
-                        isOppKingSelected
-                          ? 'ring-4 ring-yellow-400 scale-110 -translate-y-2 shadow-[0_0_20px_rgba(251,191,36,0.7)]'
-                          : isPowerTarget
-                            ? 'ring-2 ring-yellow-400 hover:scale-110 hover:-translate-y-1 shadow-[0_0_10px_rgba(251,191,36,0.3)]'
-                            : 'cursor-default opacity-80'
-                      }`}
-                    >
-                      <div className="w-12 h-16 rounded-xl overflow-hidden">
-                        <img src={getCardBack()} alt="" className="w-full h-full object-cover"/>
-                      </div>
-                      {/* Numéro de position visible uniquement en mode King */}
-                      {powerMode === 'king' && (
-                        <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[10px] font-black text-yellow-300 bg-black/70 rounded px-1">
-                          {i + 1}
-                        </span>
-                      )}
-                    </div>
-                  )
-                })}
+            <div className="flex-shrink-0 flex flex-col items-center justify-center gap-3 w-[72px] py-3"
+              style={{ borderRight: '1px solid rgba(124,58,237,0.15)' }}>
+              <span className={`text-[10px] font-bold text-center leading-snug px-1 ${isOppTurn ? 'text-yellow-400' : 'text-slate-400'}`}>
+                {isOppTurn ? '▶ ' : ''}{leftOpp.firstName}<br/>
+                <span className="opacity-50 font-normal">{handSize} 🃏</span>
+              </span>
+              <div className="flex flex-col gap-2 items-center">
+                {[...Array(handSize)].map((_, i) => renderOppCard(leftOpp, i, true))}
               </div>
             </div>
           )
-        })}
-      </div>
+        })()}
 
-      {/* ── CENTER: Deck · Drawn · Discard ── */}
-      <div className="flex-1 flex items-center justify-center gap-6 px-4 min-h-0">
+        {/* ── Colonne centrale ── */}
+        <div className="flex-1 flex flex-col min-w-0">
 
-        {/* Deck */}
-        <div className="flex flex-col items-center gap-1">
-          <button ref={deckRef} onClick={drawCard}
-            className={`w-20 h-28 rounded-xl overflow-hidden relative transition-all duration-300 ${
-              deckPulse
-                ? 'scale-110 cursor-pointer shadow-[0_0_32px_rgba(251,191,36,0.8)] ring-4 ring-yellow-400'
-                : myTurn && gs?.drawPhase && phase === 'playing'
-                  ? 'cursor-pointer ring-2 ring-purple-400 hover:scale-105 hover:-translate-y-1 shadow-[0_0_16px_rgba(124,58,237,0.4)]'
-                  : 'opacity-60 cursor-default'
-            }`}>
-            <img src={getCardBack()} alt="Deck" className="w-full h-full object-cover"/>
-            {deckPulse && <div className="absolute inset-0 rounded-xl animate-ping bg-yellow-400/20 pointer-events-none"/>}
-          </button>
-          <span className="text-xs text-slate-400">{gs?.deckCount ?? 0}</span>
-          {deckPulse && <span className="text-xs text-yellow-400 font-bold animate-pulse">Piocher !</span>}
-        </div>
-
-        {/* Drawn card zone (center) */}
-        <div ref={drawnAreaRef} className="flex flex-col items-center gap-2" style={{ minWidth: 140 }}>
-          {drawnCard && myTurn ? (
-            <div className="flex flex-col items-center gap-2 card-draw-anim">
-              <div className="w-28 h-40 rounded-xl overflow-hidden shadow-2xl" style={{ boxShadow: '0 0 32px rgba(251,191,36,0.5)', border: '2px solid rgba(251,191,36,0.4)' }}>
-                <img src={getCardImage(drawnCard.value)} alt="" className="w-full h-full object-cover"/>
+          {/* Adversaire du haut (2 joueurs ou position haute en 4 joueurs) */}
+          {topOpp ? (() => {
+            const handSize  = gs?.handSizes?.[topOpp.userId] ?? 4
+            const isOppTurn = gs ? gs.turnOrder[gs.currentTurnIndex] === topOpp.userId : false
+            return (
+              <div ref={oppHandRef} className="flex-shrink-0 flex flex-col items-center py-2 px-4 gap-1.5">
+                <span className={`text-xs font-medium ${isOppTurn ? 'text-yellow-400 font-bold' : 'text-slate-400'}`}>
+                  {isOppTurn && '▶ '}{topOpp.firstName} · {handSize} cartes
+                </span>
+                <div className="flex gap-1.5 justify-center">
+                  {[...Array(handSize)].map((_, i) => renderOppCard(topOpp, i, false))}
+                </div>
               </div>
-              <p className="text-white font-bold text-xs">{getRankLabel(drawnCard.value)} · {getCardScore(drawnCard.value)} pts</p>
-              <div className="flex gap-1.5 flex-wrap justify-center">
-                <button onClick={discardDrawn} className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-300 border border-slate-600 bg-slate-800/80 hover:bg-slate-700 transition-all hover:scale-105">
-                  ↩ Défausser
-                </button>
-                {isJack(drawnCard.value) && !myPowers.j && (
-                  <button onClick={() => activatePower('jack')} className="px-3 py-1.5 rounded-lg text-xs font-bold text-blue-300 border border-blue-600/60 bg-blue-900/40 hover:bg-blue-800/60 transition-all hover:scale-105">👁 J</button>
-                )}
-                {isQueen(drawnCard.value) && !myPowers.q && (
-                  <button onClick={() => activatePower('queen')} className="px-3 py-1.5 rounded-lg text-xs font-bold text-purple-300 border border-purple-600/60 bg-purple-900/40 hover:bg-purple-800/60 transition-all hover:scale-105">👁 Q</button>
-                )}
-                {isKing(drawnCard.value) && !myPowers.k && (
-                  <button onClick={() => activatePower('king')} className="px-3 py-1.5 rounded-lg text-xs font-bold text-yellow-300 border border-yellow-600/60 bg-yellow-900/40 hover:bg-yellow-800/60 transition-all hover:scale-105">↔ K</button>
-                )}
-              </div>
-              <p className="text-xs text-slate-500">ou cliquez votre main pour remplacer</p>
-            </div>
-          ) : (
-            /* BomBom or indicator */
-            myTurn && gs?.drawPhase && !gs.bombomBy && phase === 'playing' ? (
-              <button onClick={declareBombom} className="w-14 h-14 rounded-full bg-gradient-to-br from-red-600 to-orange-500 text-2xl flex items-center justify-center shadow-xl hover:scale-110 transition-all border-2 border-red-400/50">
-                💣
-              </button>
-            ) : gs?.bombomBy && gs.bombomBy !== user._id ? (
-              <div className="text-center">
-                <div className="text-4xl animate-bounce">💣</div>
-                <span className="text-xs text-red-400 font-bold">BomBom!</span>
-              </div>
-            ) : (
-              <div className="w-14 h-20 rounded-xl border-2 border-dashed border-purple-800/30 opacity-40"/>
             )
+          })() : (
+            <div ref={oppHandRef} className="flex-shrink-0 h-1"/>
           )}
+
+          {/* ── Deck · Carte piochée · Défausse ── */}
+          <div className="flex-1 flex items-center justify-center gap-6 px-4 min-h-0">
+
+            {/* Deck */}
+            <div className="flex flex-col items-center gap-1">
+              <button ref={deckRef} onClick={drawCard}
+                className={`w-20 h-28 rounded-xl overflow-hidden relative transition-all duration-300 ${
+                  deckPulse
+                    ? 'scale-110 cursor-pointer shadow-[0_0_32px_rgba(251,191,36,0.8)] ring-4 ring-yellow-400'
+                    : myTurn && gs?.drawPhase && phase === 'playing'
+                      ? 'cursor-pointer ring-2 ring-purple-400 hover:scale-105 hover:-translate-y-1 shadow-[0_0_16px_rgba(124,58,237,0.4)]'
+                      : 'opacity-60 cursor-default'
+                }`}>
+                <img src={getCardBack()} alt="Deck" className="w-full h-full object-cover"/>
+                {deckPulse && <div className="absolute inset-0 rounded-xl animate-ping bg-yellow-400/20 pointer-events-none"/>}
+              </button>
+              <span className="text-xs text-slate-400">{gs?.deckCount ?? 0}</span>
+              {deckPulse && <span className="text-xs text-yellow-400 font-bold animate-pulse">Piocher !</span>}
+            </div>
+
+            {/* Carte piochée */}
+            <div ref={drawnAreaRef} className="flex flex-col items-center gap-2" style={{ minWidth: 140 }}>
+              {drawnCard && myTurn ? (
+                <div className="flex flex-col items-center gap-2 card-draw-anim">
+                  <div className="w-28 h-40 rounded-xl overflow-hidden shadow-2xl" style={{ boxShadow: '0 0 32px rgba(251,191,36,0.5)', border: '2px solid rgba(251,191,36,0.4)' }}>
+                    <img src={getCardImage(drawnCard.value)} alt="" className="w-full h-full object-cover"/>
+                  </div>
+                  <p className="text-white font-bold text-xs">{getRankLabel(drawnCard.value)} · {getCardScore(drawnCard.value)} pts</p>
+                  <div className="flex gap-1.5 flex-wrap justify-center">
+                    <button onClick={discardDrawn} className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-300 border border-slate-600 bg-slate-800/80 hover:bg-slate-700 transition-all hover:scale-105">
+                      ↩ Défausser
+                    </button>
+                    {isJack(drawnCard.value) && !myPowers.j && (
+                      <button onClick={() => activatePower('jack')} className="px-3 py-1.5 rounded-lg text-xs font-bold text-blue-300 border border-blue-600/60 bg-blue-900/40 hover:bg-blue-800/60 transition-all hover:scale-105">👁 J</button>
+                    )}
+                    {isQueen(drawnCard.value) && !myPowers.q && (
+                      <button onClick={() => activatePower('queen')} className="px-3 py-1.5 rounded-lg text-xs font-bold text-purple-300 border border-purple-600/60 bg-purple-900/40 hover:bg-purple-800/60 transition-all hover:scale-105">👁 Q</button>
+                    )}
+                    {isKing(drawnCard.value) && !myPowers.k && (
+                      <button onClick={() => activatePower('king')} className="px-3 py-1.5 rounded-lg text-xs font-bold text-yellow-300 border border-yellow-600/60 bg-yellow-900/40 hover:bg-yellow-800/60 transition-all hover:scale-105">↔ K</button>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500">ou cliquez votre main pour remplacer</p>
+                </div>
+              ) : (
+                myTurn && gs?.drawPhase && !gs.bombomBy && phase === 'playing' ? (
+                  <button onClick={declareBombom} className="w-14 h-14 rounded-full bg-gradient-to-br from-red-600 to-orange-500 text-2xl flex items-center justify-center shadow-xl hover:scale-110 transition-all border-2 border-red-400/50">
+                    💣
+                  </button>
+                ) : gs?.bombomBy && gs.bombomBy !== user._id ? (
+                  <div className="text-center">
+                    <div className="text-4xl animate-bounce">💣</div>
+                    <span className="text-xs text-red-400 font-bold">BomBom!</span>
+                  </div>
+                ) : (
+                  <div className="w-14 h-20 rounded-xl border-2 border-dashed border-purple-800/30 opacity-40"/>
+                )
+              )}
+            </div>
+
+            {/* Défausse */}
+            <div className="flex flex-col items-center gap-1">
+              <div ref={discardRef} className={`w-20 h-28 rounded-xl overflow-hidden transition-all duration-300 ${topDiscard ? 'shadow-lg' : 'border-2 border-dashed border-purple-800/40'} flex items-center justify-center`}>
+                {topDiscard
+                  ? <img src={getCardImage(topDiscard.value)} alt="" className="w-full h-full object-cover"/>
+                  : <span className="text-slate-600 text-xs text-center px-2">Défausse</span>
+                }
+              </div>
+              <span className="text-xs text-slate-400">Défausse</span>
+            </div>
+          </div>
         </div>
 
-        {/* Discard */}
-        <div className="flex flex-col items-center gap-1">
-          <div ref={discardRef} className={`w-20 h-28 rounded-xl overflow-hidden transition-all duration-300 ${topDiscard ? 'shadow-lg' : 'border-2 border-dashed border-purple-800/40'} flex items-center justify-center`}>
-            {topDiscard
-              ? <img src={getCardImage(topDiscard.value)} alt="" className="w-full h-full object-cover"/>
-              : <span className="text-slate-600 text-xs text-center px-2">Défausse</span>
-            }
-          </div>
-          <span className="text-xs text-slate-400">Défausse</span>
-        </div>
+        {/* ── Panneau droite (adversaire 2, 3–4 joueurs) ── */}
+        {rightOpp && (() => {
+          const handSize  = gs?.handSizes?.[rightOpp.userId] ?? 4
+          const isOppTurn = gs ? gs.turnOrder[gs.currentTurnIndex] === rightOpp.userId : false
+          return (
+            <div className="flex-shrink-0 flex flex-col items-center justify-center gap-3 w-[72px] py-3"
+              style={{ borderLeft: '1px solid rgba(124,58,237,0.15)' }}>
+              <span className={`text-[10px] font-bold text-center leading-snug px-1 ${isOppTurn ? 'text-yellow-400' : 'text-slate-400'}`}>
+                {isOppTurn ? '▶ ' : ''}{rightOpp.firstName}<br/>
+                <span className="opacity-50 font-normal">{handSize} 🃏</span>
+              </span>
+              <div className="flex flex-col gap-2 items-center">
+                {[...Array(handSize)].map((_, i) => renderOppCard(rightOpp, i, true))}
+              </div>
+            </div>
+          )
+        })()}
       </div>
 
       {/* ── My hand ── */}
