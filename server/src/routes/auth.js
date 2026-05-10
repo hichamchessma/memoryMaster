@@ -4,6 +4,7 @@ const { protect } = require('../middleware/auth');
 
 router.post('/register', ctrl.register);
 router.post('/login', ctrl.login);
+router.post('/guest', ctrl.createGuest);
 router.get('/me', protect, ctrl.me);
 router.patch('/profile', protect, ctrl.updateProfile);
 router.get('/leaderboard', ctrl.leaderboard);

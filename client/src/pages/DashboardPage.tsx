@@ -38,6 +38,7 @@ export default function DashboardPage() {
           onToggle={() => setCollapsed(c => !c)}
           onLogout={handleLogout}
           elo={user.elo}
+          isGuest={!!user.isGuest}
         />
       </div>
 

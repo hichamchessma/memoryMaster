@@ -599,14 +599,18 @@ module.exports = function initSocket(io) {
     socket.on('disconnect', async () => {
       try {
         const table = await Table.findOne({ 'players.userId': socket.userId });
-        if (!table) return;
-        // Notify others if a game was in progress
-        if (table.status === 'playing') {
-          io.to(table._id.toString()).emit('game:playerLeft', { userId: socket.userId });
+        if (table) {
+          if (table.status === 'playing') {
+            io.to(table._id.toString()).emit('game:playerLeft', { userId: socket.userId });
+          }
+          const slot = table.players.find(p => p.userId === socket.userId);
+          if (slot) { slot.socketId = null; await table.save(); }
+          io.to(table._id.toString()).emit('table:updated', table);
         }
-        const slot = table.players.find(p => p.userId === socket.userId);
-        if (slot) { slot.socketId = null; await table.save(); }
-        io.to(table._id.toString()).emit('table:updated', table);
+        // Supprimer le compte guest dès qu'il n'est plus en partie active
+        if (!table || table.status !== 'playing') {
+          await User.deleteOne({ _id: socket.userId, isGuest: true });
+        }
       } catch {}
     });
   });
@@ -654,13 +658,15 @@ module.exports = function initSocket(io) {
     table.markModified('gameState');
     await table.save();
 
-    // Update user stats
+    // Update user stats — skip bots and guests
     for (const uid of gs.turnOrder) {
+      if (uid === BOT_ID) continue;
       try {
         const win = uid === gs.winner;
-        await User.findByIdAndUpdate(uid, {
-          $inc: { gamesPlayed: 1, gamesWon: win ? 1 : 0 },
-        });
+        await User.findOneAndUpdate(
+          { _id: uid, isGuest: { $ne: true } },
+          { $inc: { gamesPlayed: 1, gamesWon: win ? 1 : 0 } }
+        );
       } catch {}
     }
 

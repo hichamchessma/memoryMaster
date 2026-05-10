@@ -8,12 +8,27 @@ import Logo from '../components/Logo'
 export default function AuthPage() {
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [loading, setLoading] = useState(false)
+  const [guestLoading, setGuestLoading] = useState(false)
   const [form, setForm] = useState({ firstName: '', lastName: '', email: '', password: '', confirm: '' })
-  const { login } = useAuth()
+  const { login, loginAsGuest } = useAuth()
   const navigate = useNavigate()
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }))
+
+  const handleGuest = async () => {
+    setGuestLoading(true)
+    try {
+      const { data } = await api.post('/auth/guest')
+      loginAsGuest(data.user, data.token)
+      toast.success(`Bienvenue ${data.user.firstName} ${data.user.lastName} !`, { icon: '👻' })
+      navigate('/dashboard')
+    } catch {
+      toast.error('Impossible de créer une session invité')
+    } finally {
+      setGuestLoading(false)
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -165,6 +180,29 @@ export default function AuthPage() {
               className="text-purple-400 hover:text-purple-300 font-semibold transition-colors">
               {mode === 'login' ? 'S\'inscrire' : 'Se connecter'}
             </button>
+          </p>
+
+          {/* Séparateur */}
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-purple-900/50"/>
+            <span className="text-xs text-slate-500 font-medium">ou</span>
+            <div className="flex-1 h-px bg-purple-900/50"/>
+          </div>
+
+          {/* Bouton invité */}
+          <button
+            onClick={handleGuest}
+            disabled={guestLoading}
+            className="w-full py-3.5 rounded-xl font-bold text-sm border border-slate-600/50 bg-slate-800/50 hover:bg-slate-700/60 text-slate-300 hover:text-white transition-all flex items-center justify-center gap-2"
+          >
+            {guestLoading ? (
+              <><div className="w-4 h-4 border-2 border-slate-400/30 border-t-slate-300 rounded-full animate-spin"/>Création...</>
+            ) : (
+              <>👻 Jouer en invité — sans inscription</>
+            )}
+          </button>
+          <p className="text-center text-xs text-slate-600">
+            Session limitée à cet onglet · pas de stats · pas de classement
           </p>
         </div>
       </div>
