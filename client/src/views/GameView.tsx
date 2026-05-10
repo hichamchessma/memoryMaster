@@ -121,8 +121,13 @@ export default function GameView({ tableId, user, onLeave }: Props) {
   const deckRef = useRef<HTMLButtonElement>(null)
   const discardRef = useRef<HTMLDivElement>(null)
   const drawnAreaRef = useRef<HTMLDivElement>(null)
-  const myHandRef = useRef<HTMLDivElement>(null)
-  const oppHandRef = useRef<HTMLDivElement>(null)
+  const myHandRef   = useRef<HTMLDivElement>(null)
+  const oppHandRef  = useRef<HTMLDivElement>(null)
+  const leftOppRef  = useRef<HTMLDivElement>(null)
+  const rightOppRef = useRef<HTMLDivElement>(null)
+  // IDs des adversaires dans chaque panneau — mis à jour à chaque render
+  const leftOppIdRef  = useRef<string | null>(null)
+  const rightOppIdRef = useRef<string | null>(null)
 
   const revealTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const penaltyTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -148,6 +153,10 @@ export default function GameView({ tableId, user, onLeave }: Props) {
   const rightOpp = opponents.length === 2 ? opponents[1]
                  : opponents.length === 3 ? opponents[2]
                  : null
+
+  // Sync : toujours à jour entre les rendus (utilisé dans les callbacks socket)
+  leftOppIdRef.current  = leftOpp?.userId  ?? null
+  rightOppIdRef.current = rightOpp?.userId ?? null
 
   // Rendu d'une carte d'adversaire (rotated=true pour les panneaux gauche/droite)
   const renderOppCard = (opp: Player, i: number, rotated: boolean) => {
@@ -213,6 +222,14 @@ export default function GameView({ tableId, user, onLeave }: Props) {
   const getDiscardPos  = useCallback(() => getPos(discardRef)  ?? { x: window.innerWidth / 2 + 120, y: window.innerHeight * 0.52 }, [])
   const getDrawnAreaPos= useCallback(() => getPos(drawnAreaRef)?? { x: window.innerWidth / 2,       y: window.innerHeight * 0.45 }, [])
   const getOppHandPos  = useCallback(() => getPos(oppHandRef)  ?? { x: window.innerWidth / 2,       y: window.innerHeight * 0.22 }, [])
+  // Retourne la position du panneau de l'adversaire selon son userId
+  const getOppPosById = useCallback((userId: string): { x: number; y: number } => {
+    if (userId === leftOppIdRef.current)
+      return getPos(leftOppRef)  ?? { x: 50,                          y: window.innerHeight * 0.5 }
+    if (userId === rightOppIdRef.current)
+      return getPos(rightOppRef) ?? { x: window.innerWidth - 50,      y: window.innerHeight * 0.5 }
+    return getPos(oppHandRef)    ?? { x: window.innerWidth / 2,       y: window.innerHeight * 0.22 }
+  }, [])
   const getMyHandCardPos = useCallback((idx: number) => {
     const r = myHandRef.current?.getBoundingClientRect()
     if (!r) return { x: window.innerWidth / 2, y: window.innerHeight * 0.82 }
@@ -320,15 +337,14 @@ export default function GameView({ tableId, user, onLeave }: Props) {
       const name = userId === BOT_ID ? '🤖 Bot' : playersRef.current.find(p => p.userId === userId)?.firstName || ''
       toast(`${name} défausse ${getRankLabel(card.value)} !`, { icon: '💨', duration: 1200 })
       if (userId === user._id) {
-        // Retrouver la position de la carte dans la main, l'animer vers la défausse puis la retirer
         const hand = myHandDataRef.current
         const idx = hand.findIndex(c => c.id === card.id)
         const from = idx >= 0 ? getMyHandCardPos(idx) : getDiscardPos()
         flyToDiscard(card.value, from)
         setTimeout(() => setMyHand(prev => prev.filter(c => c.id !== card.id)), 50)
       } else {
-        // Pour un adversaire : faire voler la carte depuis sa main vers la défausse
-        const from = getOppHandPos()
+        // Carte vole depuis la position réelle de l'adversaire (gauche/droite/haut)
+        const from = getOppPosById(userId)
         addFlyCard(card.value, from, getDiscardPos())
       }
     })
@@ -375,20 +391,23 @@ export default function GameView({ tableId, user, onLeave }: Props) {
     socket.on('game:kingSwap', ({ userId1, idx1, userId2, idx2 }: {
       userId1: string; idx1: number; userId2: string; idx2: number
     }) => {
-      const oppPos   = getOppHandPos()
-      const isMe1    = userId1 === user._id
-      const isMe2    = userId2 === user._id
-      const myIdx    = isMe1 ? idx1 : isMe2 ? idx2 : -1
+      const isMe1 = userId1 === user._id
+      const isMe2 = userId2 === user._id
+      const myIdx = isMe1 ? idx1 : isMe2 ? idx2 : -1
 
       if (myIdx >= 0) {
-        // Ma carte vole vers la main adverse, leur carte vole vers ma main
-        const myCardPos = getMyHandCardPos(myIdx)
-        addFlyCard(null, myCardPos, oppPos, 0)   // ma carte monte
-        addFlyCard(null, oppPos, myCardPos, 100) // leur carte descend (légèrement décalé)
+        // L'adversaire impliqué dans le swap (l'autre joueur)
+        const oppUserId  = isMe1 ? userId2 : userId1
+        const oppPos     = getOppPosById(oppUserId) // position réelle (gauche/droite/haut)
+        const myCardPos  = getMyHandCardPos(myIdx)
+        addFlyCard(null, myCardPos, oppPos, 0)    // ma carte va vers l'adversaire
+        addFlyCard(null, oppPos, myCardPos, 100)  // sa carte vient vers moi
       } else {
-        // Spectateur (3+ joueurs) : deux cartes s'échangent dans la zone adverse
-        addFlyCard(null, oppPos, { x: oppPos.x + 60, y: oppPos.y }, 0)
-        addFlyCard(null, { x: oppPos.x + 60, y: oppPos.y }, oppPos, 100)
+        // Spectateur : échange entre deux adversaires
+        const pos1 = getOppPosById(userId1)
+        const pos2 = getOppPosById(userId2)
+        addFlyCard(null, pos1, pos2, 0)
+        addFlyCard(null, pos2, pos1, 100)
       }
     })
 
@@ -411,23 +430,18 @@ export default function GameView({ tableId, user, onLeave }: Props) {
       discardedCard?: { value: number } | null
       card?: { value: number } | null
     }) => {
-      // Self: already animated locally, skip
       if (userId === user._id) return
 
       const deckPos  = getDeckPos()
       const drawnPos = getDrawnAreaPos()
-      const oppPos   = getOppHandPos()
+      const oppPos   = getOppPosById(userId) // position réelle du joueur (gauche/droite/haut)
 
       if (action === 'draw') {
-        // Carte cachée vole du deck vers le centre
         addFlyCard(null, deckPos, drawnPos)
       } else if (action === 'discard') {
-        // Carte (maintenant publique) vole du centre vers la défausse
         flyToDiscard(card?.value ?? null, drawnPos)
       } else if (action === 'replace') {
-        // Nouvelle carte (cachée) vole vers la main adverse
         addFlyCard(null, drawnPos, oppPos, 0)
-        // Ancienne carte (publique, va à la défausse) vole depuis la main adverse
         flyToDiscard(discardedCard?.value ?? null, oppPos, 250)
       }
     })
@@ -783,7 +797,7 @@ export default function GameView({ tableId, user, onLeave }: Props) {
           const handSize  = gs?.handSizes?.[leftOpp.userId] ?? 4
           const isOppTurn = gs ? gs.turnOrder[gs.currentTurnIndex] === leftOpp.userId : false
           return (
-            <div className="flex-shrink-0 flex flex-col items-center justify-center gap-3 w-[72px] py-3"
+            <div ref={leftOppRef} className="flex-shrink-0 flex flex-col items-center justify-center gap-3 w-[72px] py-3"
               style={{ borderRight: '1px solid rgba(124,58,237,0.15)' }}>
               <span className={`text-[10px] font-bold text-center leading-snug px-1 ${isOppTurn ? 'text-yellow-400' : 'text-slate-400'}`}>
                 {isOppTurn ? '▶ ' : ''}{leftOpp.firstName}<br/>
@@ -895,7 +909,7 @@ export default function GameView({ tableId, user, onLeave }: Props) {
           const handSize  = gs?.handSizes?.[rightOpp.userId] ?? 4
           const isOppTurn = gs ? gs.turnOrder[gs.currentTurnIndex] === rightOpp.userId : false
           return (
-            <div className="flex-shrink-0 flex flex-col items-center justify-center gap-3 w-[72px] py-3"
+            <div ref={rightOppRef} className="flex-shrink-0 flex flex-col items-center justify-center gap-3 w-[72px] py-3"
               style={{ borderLeft: '1px solid rgba(124,58,237,0.15)' }}>
               <span className={`text-[10px] font-bold text-center leading-snug px-1 ${isOppTurn ? 'text-yellow-400' : 'text-slate-400'}`}>
                 {isOppTurn ? '▶ ' : ''}{rightOpp.firstName}<br/>
