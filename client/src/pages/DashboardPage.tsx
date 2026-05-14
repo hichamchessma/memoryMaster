@@ -48,6 +48,7 @@ export default function DashboardPage() {
           view={view}
           user={user}
           onProfileClick={() => setView('profile')}
+          isAdmin={!!user.isAdmin}
         />
 
         <main className="flex-1 overflow-y-auto">

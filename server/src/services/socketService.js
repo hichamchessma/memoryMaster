@@ -18,7 +18,10 @@ function stopTimers(tableId) {
   }
 }
 
+const socketInstance = require('./socketInstance');
+
 module.exports = function initSocket(io) {
+  socketInstance.set(io);
 
   // ── Auth middleware ───────────────────────────────────────────────────────
   io.use((socket, next) => {

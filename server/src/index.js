@@ -1,9 +1,10 @@
 require('dotenv').config();
-const express = require('express');
-const http = require('http');
+const express   = require('express');
+const http      = require('http');
 const { Server } = require('socket.io');
-const cors = require('cors');
-const mongoose = require('mongoose');
+const cors      = require('cors');
+const mongoose  = require('mongoose');
+const bcrypt    = require('bcryptjs');
 
 const app = express();
 const server = http.createServer(app);
@@ -16,17 +17,36 @@ app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173', creden
 app.use(express.json());
 
 // Routes
-app.use('/api/auth', require('./routes/auth'));
+app.use('/api/auth',   require('./routes/auth'));
 app.use('/api/tables', require('./routes/tables'));
+app.use('/api/admin',  require('./routes/admin'));
 app.get('/api/health', (_, res) => res.json({ status: 'ok' }));
 
 // Socket
 require('./services/socketService')(io);
 
+// Seed du compte admin au démarrage
+async function seedAdmin() {
+  const User = require('./models/User');
+  const existing = await User.findOne({ email: 'admin@mm.local' });
+  if (!existing) {
+    const hashed = await bcrypt.hash('admin', 12);
+    await User.collection.insertOne({
+      firstName: 'Admin', lastName: 'Master',
+      email: 'admin@mm.local', password: hashed,
+      isAdmin: true, isGuest: false,
+      elo: 9999, gamesPlayed: 0, gamesWon: 0, totalPoints: 0,
+      lastLogin: new Date(), createdAt: new Date(), updatedAt: new Date(),
+    });
+    console.log('👑 Compte admin créé  →  login: admin  |  pwd: admin');
+  }
+}
+
 // DB + Start
 mongoose.connect(process.env.MONGO_URI)
-  .then(() => {
+  .then(async () => {
     console.log('✅ MongoDB connecté');
+    await seedAdmin();
     server.listen(process.env.PORT || 5001, () =>
       console.log(`🚀 Serveur MemoryMaster Pro sur le port ${process.env.PORT || 5001}`)
     );

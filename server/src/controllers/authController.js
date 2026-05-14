@@ -29,7 +29,9 @@ exports.login = async (req, res) => {
     if (!email || !password)
       return res.status(400).json({ success: false, error: 'Email et mot de passe requis' });
 
-    const user = await User.findOne({ email });
+    // Alias "admin" → compte admin
+    const lookupEmail = email.toLowerCase().trim() === 'admin' ? 'admin@mm.local' : email;
+    const user = await User.findOne({ email: lookupEmail });
     if (!user || !(await user.comparePassword(password)))
       return res.status(401).json({ success: false, error: 'Identifiants incorrects' });
 

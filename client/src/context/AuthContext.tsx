@@ -11,6 +11,7 @@ interface User {
   totalPoints: number
   avatar?: string | null
   isGuest?: boolean
+  isAdmin?: boolean
   token?: string
 }
 
