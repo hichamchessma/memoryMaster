@@ -14,9 +14,11 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    const s = io('http://localhost:5001', {
+    // En production, Express et le client sont sur le même serveur → même origine
+    const serverUrl = import.meta.env.DEV ? 'http://localhost:5001' : window.location.origin
+    const s = io(serverUrl, {
       auth: { token },
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'],
     })
 
     s.on('connect', () => setSocket(s))

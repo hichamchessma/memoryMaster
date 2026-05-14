@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express   = require('express');
 const http      = require('http');
+const path      = require('path');
 const { Server } = require('socket.io');
 const cors      = require('cors');
 const mongoose  = require('mongoose');
@@ -16,11 +17,22 @@ const io = new Server(server, {
 app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173', credentials: true }));
 app.use(express.json());
 
-// Routes
+// Routes API
 app.use('/api/auth',   require('./routes/auth'));
 app.use('/api/tables', require('./routes/tables'));
 app.use('/api/admin',  require('./routes/admin'));
 app.get('/api/health', (_, res) => res.json({ status: 'ok' }));
+
+// En production : servir le build React
+if (process.env.NODE_ENV === 'production') {
+  const clientBuild = path.join(__dirname, '../../client/dist');
+  app.use(express.static(clientBuild));
+  app.get('*', (req, res) => {
+    if (!req.path.startsWith('/api') && !req.path.startsWith('/socket.io')) {
+      res.sendFile(path.join(clientBuild, 'index.html'));
+    }
+  });
+}
 
 // Socket
 require('./services/socketService')(io);
