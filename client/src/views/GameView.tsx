@@ -3,6 +3,7 @@ import { useSocket } from '../context/SocketContext'
 import { getCardImage, getCardBack, getCardScore, getRankLabel, isJack, isQueen, isKing } from '../utils/cards'
 import toast from 'react-hot-toast'
 import api from '../lib/api'
+import ChatPanel, { type ChatMessage } from '../components/game/ChatPanel'
 
 interface Card { id: string; value: number; isFlipped: boolean }
 interface Player { userId: string; firstName: string; lastName: string; elo: number; isHost: boolean; isReady: boolean }
@@ -109,6 +110,12 @@ export default function GameView({ tableId, user, onLeave }: Props) {
   const [penaltyReveal, setPenaltyReveal] = useState<{ userId: string; cardValue: number; cardIndex: number } | null>(null)
   const [discardFrozen, setDiscardFrozen] = useState(false)
   const [frozenDiscard, setFrozenDiscard] = useState<Card | null>(null)
+  // ── Chat ─────────────────────────────────────────────────────────────────
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
+  const [chatBubbles,  setChatBubbles]  = useState<{ id: string; userId: string; message: string; expiring: boolean }[]>([])
+  const [unreadChat,   setUnreadChat]   = useState(0)
+  const chatOpenRef = useRef(false) // ref pour savoir si le panel est ouvert dans les closures
+
   // ── Debug panel ──────────────────────────────────────────────────────────
   const [showDebug, setShowDebug] = useState(false)
   const [powerfulMode, setPowerfulMode] = useState(false)
@@ -423,6 +430,26 @@ export default function GameView({ tableId, user, onLeave }: Props) {
       setTimeout(() => { resetGame(); onLeave() }, 3500)
     })
 
+    // ── Chat ─────────────────────────────────────────────────────────────────
+    socket.on('game:chatMessage', (msg: ChatMessage) => {
+      setChatMessages(prev => [...prev.slice(-49), msg]) // garder 50 messages max
+      if (!chatOpenRef.current) setUnreadChat(n => n + 1)
+
+      // Bulle flottante : remplace la bulle existante du même joueur
+      const bubbleId = `${msg.userId}-${msg.timestamp}`
+      setChatBubbles(prev => {
+        const filtered = prev.filter(b => b.userId !== msg.userId)
+        return [...filtered, { id: bubbleId, userId: msg.userId, message: msg.message, expiring: false }]
+      })
+      // Marquer expiring après 3.2s, supprimer à 3.7s
+      setTimeout(() => {
+        setChatBubbles(prev => prev.map(b => b.id === bubbleId ? { ...b, expiring: true } : b))
+      }, 3200)
+      setTimeout(() => {
+        setChatBubbles(prev => prev.filter(b => b.id !== bubbleId))
+      }, 3700)
+    })
+
     // ── Animations adversaires (humains + bot) ──────────────────────────────
     socket.on('game:playerAction', ({ userId, action, discardedCard, card }: {
       userId: string
@@ -475,7 +502,8 @@ export default function GameView({ tableId, user, onLeave }: Props) {
       ['table:updated','game:started','game:dealt','game:state','game:timer','game:phaseChange',
        'game:drawn','game:revealCard','game:penaltyCards','game:penalty','game:penaltyReveal',
        'game:quickDiscarded','game:powerActivated','game:bombomDeclared','game:bombomPrompt',
-       'game:showtime','game:playerAction','game:playerLeft','game:kingSwap','game:handUpdate','error',
+       'game:showtime','game:playerAction','game:playerLeft','game:kingSwap','game:handUpdate',
+       'game:chatMessage','error',
        'debug:allHands','debug:cardForced','debug:handUpdated','debug:scoresResult']
         .forEach(ev => socket.off(ev))
       if (revealTimeout.current) clearTimeout(revealTimeout.current)
@@ -506,6 +534,8 @@ export default function GameView({ tableId, user, onLeave }: Props) {
   const activatePower = (type: 'jack' | 'queen' | 'king') => {
     setPowerMode(type); setKingStep(null)
   }
+
+  const sendChat = (msg: string) => socket?.emit('game:chat', { tableId, message: msg })
 
   const declareBombom = () => socket?.emit('game:bombom', { tableId })
   const confirmShowtime = () => { setBombomPrompt(false); socket?.emit('game:showtime', { tableId }) }
@@ -974,6 +1004,52 @@ export default function GameView({ tableId, user, onLeave }: Props) {
           })}
         </div>
       </div>
+
+      {/* ── Bulles de chat flottantes ── */}
+      {chatBubbles.map(bubble => {
+        // Position selon la place du joueur dans le layout
+        const isMe     = bubble.userId === user._id
+        const isTop    = bubble.userId === topOpp?.userId
+        const isLeft   = bubble.userId === leftOpp?.userId
+        const isRight  = bubble.userId === rightOpp?.userId
+
+        const posStyle: React.CSSProperties = isMe
+          ? { bottom: 116, left: '50%', transform: 'translateX(-50%)' }
+          : isTop
+          ? { top: 170, left: '50%', transform: 'translateX(-50%)' }
+          : isLeft
+          ? { top: '45%', left: 84, transform: 'translateY(-50%)' }
+          : isRight
+          ? { top: '45%', right: 84, transform: 'translateY(-50%)' }
+          : { top: '50%', left: '50%', transform: 'translate(-50%,-50%)' }
+
+        return (
+          <div key={bubble.id}
+            className={`absolute z-25 pointer-events-none transition-opacity duration-500 ${bubble.expiring ? 'opacity-0' : 'opacity-100 animate-fade-in'}`}
+            style={posStyle}>
+            <div className={`px-3 py-1.5 rounded-2xl text-xs font-semibold shadow-2xl max-w-[160px] break-words text-center ${
+              isMe ? 'bg-purple-700/95 text-white rounded-bl-sm' : 'bg-slate-800/95 text-white rounded-br-sm'
+            }`}
+              style={{ border: '1px solid rgba(124,58,237,0.3)', backdropFilter: 'blur(8px)' }}>
+              {!isMe && <span className="text-purple-400 text-[10px] font-bold block mb-0.5">{playersRef.current.find(p => p.userId === bubble.userId)?.firstName}</span>}
+              {bubble.message}
+            </div>
+            {/* Petite queue de bulle */}
+            <div className={`w-2 h-2 rotate-45 mx-auto ${isMe ? 'bg-purple-700/95 -mt-1' : 'bg-slate-800/95 -mt-1'}`}/>
+          </div>
+        )
+      })}
+
+      {/* ── Chat panel (bas-gauche, visible uniquement en partie) ── */}
+      {gameStarted && (
+        <ChatPanel
+          messages={chatMessages}
+          onSend={sendChat}
+          currentUserId={user._id}
+          unreadCount={unreadChat}
+          onRead={() => { setUnreadChat(0); chatOpenRef.current = true }}
+        />
+      )}
 
       {/* ── Quit ── */}
       <button onClick={quitGame}

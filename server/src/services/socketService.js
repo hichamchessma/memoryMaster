@@ -463,6 +463,23 @@ module.exports = function initSocket(io) {
       }
     });
 
+    // ── Chat en jeu ────────────────────────────────────────────────────────
+    socket.on('game:chat', async ({ tableId, message }) => {
+      if (!message?.trim() || message.length > 120) return;
+      try {
+        const table = await Table.findById(tableId);
+        if (!table) return;
+        const player = table.players.find(p => p.userId === socket.userId);
+        if (!player) return;
+        io.to(tableId).emit('game:chatMessage', {
+          userId:    socket.userId,
+          firstName: player.firstName,
+          message:   message.trim(),
+          timestamp: Date.now(),
+        });
+      } catch {}
+    });
+
     // ── Ajouter un bot à la table (bouton test 2 joueurs) ──────────────────
     socket.on('table:addBot', async ({ tableId }) => {
       try {
