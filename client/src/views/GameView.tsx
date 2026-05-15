@@ -160,7 +160,6 @@ export default function GameView({ tableId, user, onLeave }: Props) {
   const maxMemoVisible = Math.floor((gs?.cardsPerPlayer || 4) / 2)
   // Affichage gelé pendant l'animation d'une carte qui vole vers la défausse
   const topDiscard = discardFrozen ? frozenDiscard : (gs?.discardPile?.[0] ?? null)
-  const myPowers = gs?.powers?.[user._id] ?? {}
   const opponents = players.filter(p => p.userId !== user._id)
 
   // Disposition triangle selon le nombre d'adversaires
@@ -982,13 +981,13 @@ export default function GameView({ tableId, user, onLeave }: Props) {
                     <button onClick={discardDrawn} className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-300 border border-slate-600 bg-slate-800/80 hover:bg-slate-700 transition-all hover:scale-105">
                       ↩ Défausser
                     </button>
-                    {isJack(drawnCard.value) && !myPowers.j && (
+                    {isJack(drawnCard.value) && (
                       <button onClick={() => activatePower('jack')} className="px-3 py-1.5 rounded-lg text-xs font-bold text-blue-300 border border-blue-600/60 bg-blue-900/40 hover:bg-blue-800/60 transition-all hover:scale-105">👁 J</button>
                     )}
-                    {isQueen(drawnCard.value) && !myPowers.q && (
+                    {isQueen(drawnCard.value) && (
                       <button onClick={() => activatePower('queen')} className="px-3 py-1.5 rounded-lg text-xs font-bold text-purple-300 border border-purple-600/60 bg-purple-900/40 hover:bg-purple-800/60 transition-all hover:scale-105">👁 Q</button>
                     )}
-                    {isKing(drawnCard.value) && !myPowers.k && (
+                    {isKing(drawnCard.value) && (
                       <button onClick={() => activatePower('king')} className="px-3 py-1.5 rounded-lg text-xs font-bold text-yellow-300 border border-yellow-600/60 bg-yellow-900/40 hover:bg-yellow-800/60 transition-all hover:scale-105">↔ K</button>
                     )}
                   </div>

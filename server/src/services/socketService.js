@@ -304,11 +304,9 @@ module.exports = function initSocket(io) {
         if (!table?.gameState) return;
         const gs = table.gameState;
         if (!gs.powers) gs.powers = {};
-        if (gs.activePower || gs.powers[socket.userId]?.j) return;
+        if (gs.activePower) return;
 
         stopTimers(tableId);
-        if (!gs.powers[socket.userId]) gs.powers[socket.userId] = {};
-        gs.powers[socket.userId].j = true;
         gs.activePower = { type: 'jack', userId: socket.userId };
 
         const card = gs.hands[socket.userId][cardIndex];
@@ -347,11 +345,9 @@ module.exports = function initSocket(io) {
         if (!table?.gameState) return;
         const gs = table.gameState;
         if (!gs.powers) gs.powers = {};
-        if (gs.activePower || gs.powers[socket.userId]?.q) return;
+        if (gs.activePower) return;
 
         stopTimers(tableId);
-        if (!gs.powers[socket.userId]) gs.powers[socket.userId] = {};
-        gs.powers[socket.userId].q = true;
         gs.activePower = { type: 'queen', userId: socket.userId };
 
         const card = gs.hands[targetUserId]?.[cardIndex];
@@ -389,11 +385,9 @@ module.exports = function initSocket(io) {
         if (!table?.gameState) return;
         const gs = table.gameState;
         if (!gs.powers) gs.powers = {};
-        if (gs.activePower || gs.powers[socket.userId]?.k) return;
+        if (gs.activePower) return;
 
         stopTimers(tableId);
-        if (!gs.powers[socket.userId]) gs.powers[socket.userId] = {};
-        gs.powers[socket.userId].k = true;
 
         const hand1 = gs.hands[userId1];
         const hand2 = gs.hands[userId2];
@@ -670,6 +664,13 @@ module.exports = function initSocket(io) {
     if (!gs.bombomBy) return;
     const currentId = gs.turnOrder[gs.currentTurnIndex];
     if (currentId !== gs.bombomBy) return;
+
+    // Bot always validates BomBom immediately
+    if (gs.bombomBy === BOT_ID) {
+      io.to(tableId).emit('game:bombomResult', { validatedBy: BOT_ID });
+      triggerShowtime(io, table, tableId);
+      return;
+    }
 
     // BomBom player's turn again
     const cancelUsed = gs.bombomCancelUsed?.[gs.bombomBy];
