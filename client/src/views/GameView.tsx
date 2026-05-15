@@ -20,6 +20,13 @@ interface GameState {
   bombomCancelUsed: Record<string, boolean>; activePower: { type: string; userId: string } | null
   powers: Record<string, { j?: boolean; q?: boolean; k?: boolean }>
   scores: Record<string, number>; winner: string | null; handSizes: Record<string, number>
+  cardsPerPlayer: number
+}
+interface TableConfig {
+  cardsPerPlayer: 4 | 6 | 8
+  memoDuration: number
+  drawTime: number
+  choiceTime: number
 }
 interface ShowtimeData {
   hands: Record<string, Card[]>; scores: Record<string, number>; winner: string; players: Player[]
@@ -110,6 +117,10 @@ export default function GameView({ tableId, user, onLeave }: Props) {
   const [penaltyReveal, setPenaltyReveal] = useState<{ userId: string; cardValue: number; cardIndex: number } | null>(null)
   const [discardFrozen, setDiscardFrozen] = useState(false)
   const [frozenDiscard, setFrozenDiscard] = useState<Card | null>(null)
+  // ── Config de la partie ───────────────────────────────────────────────────
+  const [tableConfig, setTableConfig] = useState<TableConfig>({
+    cardsPerPlayer: 4, memoDuration: 7, drawTime: 10, choiceTime: 15,
+  })
   // ── Chat ─────────────────────────────────────────────────────────────────
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [chatBubbles,  setChatBubbles]  = useState<{ id: string; userId: string; message: string; expiring: boolean }[]>([])
@@ -145,7 +156,8 @@ export default function GameView({ tableId, user, onLeave }: Props) {
   gsRef.current = gs
 
   const myTurn = gs ? gs.turnOrder[gs.currentTurnIndex] === user._id : false
-  const phase = gs?.phase ?? 'waiting'
+  const phase  = gs?.phase ?? 'waiting'
+  const maxMemoVisible = Math.floor((gs?.cardsPerPlayer || 4) / 2)
   // Affichage gelé pendant l'animation d'une carte qui vole vers la défausse
   const topDiscard = discardFrozen ? frozenDiscard : (gs?.discardPile?.[0] ?? null)
   const myPowers = gs?.powers?.[user._id] ?? {}
@@ -264,7 +276,10 @@ export default function GameView({ tableId, user, onLeave }: Props) {
     socket.emit('table:join', { tableId })
     socket.emit('game:requestState', { tableId })
 
-    socket.on('table:updated', (t: { players: Player[] }) => setPlayers(t.players))
+    socket.on('table:updated', (t: { players: Player[]; gameConfig?: TableConfig }) => {
+      setPlayers(t.players)
+      if (t.gameConfig) setTableConfig(t.gameConfig)
+    })
 
     socket.on('game:started', ({ players: p }: { players: Player[] }) => {
       setPlayers(p); setGameStarted(true)
@@ -560,16 +575,17 @@ export default function GameView({ tableId, user, onLeave }: Props) {
   const clickMyCard = useCallback((card: Card, idx: number) => {
     if (!socket) return
 
-    // Mémorisation : révéler jusqu'à 2 cartes
+    // Mémorisation : révéler jusqu'à cardsPerPlayer/2 cartes
     if (phase === 'memorization') {
+      const maxVisible = Math.floor((gs?.cardsPerPlayer || 4) / 2)
       if (memoRevealed.has(idx)) {
         setMemoRevealed(prev => { const s = new Set(prev); s.delete(idx); return s })
         setMyHand(prev => prev.map((c, i) => i === idx ? { ...c, isFlipped: false } : c))
-      } else if (memoRevealed.size < 2) {
+      } else if (memoRevealed.size < maxVisible) {
         setMemoRevealed(prev => new Set([...prev, idx]))
         setMyHand(prev => prev.map((c, i) => i === idx ? { ...c, isFlipped: true } : c))
       } else {
-        toast('Maximum 2 cartes visibles', { icon: '👀', duration: 1200 })
+        toast(`Maximum ${maxVisible} carte${maxVisible > 1 ? 's' : ''} visible${maxVisible > 1 ? 's' : ''}`, { icon: '👀', duration: 1200 })
       }
       return
     }
@@ -673,8 +689,22 @@ export default function GameView({ tableId, user, onLeave }: Props) {
   // ── Waiting room ──────────────────────────────────────────────────────────
   if (!gameStarted) {
     const me = players.find(p => p.userId === user._id)
+    const isHost = me?.isHost ?? false
     const hasBot = players.some(p => p.userId === BOT_ID)
     const allReady = players.length >= 2 && players.every(p => p.isReady)
+
+    const updateCfg = (patch: Partial<TableConfig>) => {
+      const next = { ...tableConfig, ...patch }
+      setTableConfig(next as TableConfig)
+      socket?.emit('table:updateConfig', { tableId, gameConfig: next })
+    }
+
+    const CARD_OPTIONS: { value: 4 | 6 | 8; label: string; sublabel: string }[] = [
+      { value: 4, label: '4 cartes', sublabel: 'Facile' },
+      { value: 6, label: '6 cartes', sublabel: 'Moyen'  },
+      { value: 8, label: '8 cartes', sublabel: 'Difficile' },
+    ]
+
     if (hasBot && allReady) return (
       <div className="flex items-center justify-center h-full">
         <div className="glass rounded-2xl p-10 text-center space-y-4">
@@ -683,21 +713,82 @@ export default function GameView({ tableId, user, onLeave }: Props) {
         </div>
       </div>
     )
+
     return (
-      <div className="flex items-center justify-center h-full p-6 animate-fade-in">
-        <div className="glass rounded-2xl p-8 max-w-md w-full text-center space-y-6">
+      <div className="flex items-center justify-center h-full p-4 animate-fade-in overflow-y-auto">
+        <div className="glass rounded-2xl p-6 max-w-md w-full text-center space-y-5">
           <h2 className="text-2xl font-gaming font-black text-white">Salle d'attente</h2>
-          <div className="space-y-3">
+
+          {/* Joueurs */}
+          <div className="space-y-2">
             {players.map(p => (
               <div key={p.userId} className="flex items-center gap-3 glass-2 px-4 py-3 rounded-xl">
-                <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white" style={{ background: 'linear-gradient(135deg,#7c3aed,#4f46e5)' }}>{p.firstName[0]}</div>
-                <span className="flex-1 text-white text-left">{p.firstName} {p.isHost ? '👑' : ''}</span>
-                <span className={`text-xs font-bold px-2 py-1 rounded-full ${p.isReady ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-slate-700 text-slate-400'}`}>
+                <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
+                  style={{ background: 'linear-gradient(135deg,#7c3aed,#4f46e5)' }}>{p.firstName[0]}</div>
+                <span className="flex-1 text-white text-left text-sm">{p.firstName} {p.isHost ? '👑' : ''}</span>
+                <span className={`text-xs font-bold px-2 py-1 rounded-full flex-shrink-0 ${p.isReady ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-slate-700 text-slate-400'}`}>
                   {p.isReady ? 'Prêt ✓' : 'En attente...'}
                 </span>
               </div>
             ))}
           </div>
+
+          {/* ── Configuration ── */}
+          <div className="rounded-xl border border-purple-900/40 bg-slate-800/30 p-4 text-left space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-white font-bold text-sm">⚙️ Paramètres</h3>
+              {!isHost && <span className="text-slate-500 text-[10px]">modifiable par l'hôte</span>}
+            </div>
+
+            {/* Cartes par joueur */}
+            <div>
+              <p className="text-slate-400 text-xs mb-2">Cartes par joueur</p>
+              <div className="flex gap-2">
+                {CARD_OPTIONS.map(opt => (
+                  <button key={opt.value}
+                    disabled={!isHost}
+                    onClick={() => updateCfg({ cardsPerPlayer: opt.value })}
+                    className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
+                      tableConfig.cardsPerPlayer === opt.value
+                        ? 'bg-purple-600 text-white ring-2 ring-purple-400'
+                        : isHost
+                          ? 'bg-slate-700/60 text-slate-300 hover:bg-slate-600/60'
+                          : 'bg-slate-700/40 text-slate-500 cursor-default'
+                    }`}>
+                    <div>{opt.label}</div>
+                    <div className="text-[10px] opacity-70">{opt.sublabel}</div>
+                  </button>
+                ))}
+              </div>
+              <p className="text-slate-500 text-[10px] mt-1.5">
+                Mémorisation : {tableConfig.cardsPerPlayer / 2} carte{tableConfig.cardsPerPlayer > 2 ? 's' : ''} visibles au départ
+              </p>
+            </div>
+
+            {/* Timers */}
+            <div className="grid grid-cols-3 gap-3">
+              {([
+                { key: 'memoDuration', label: '🧠 Mémo',   min: 3,  max: 30, unit: 's' },
+                { key: 'drawTime',     label: '🃏 Pioche',  min: 5,  max: 60, unit: 's' },
+                { key: 'choiceTime',   label: '🎯 Décision',min: 5,  max: 60, unit: 's' },
+              ] as const).map(({ key, label, min, max }) => (
+                <div key={key} className="flex flex-col items-center gap-1">
+                  <p className="text-slate-400 text-[10px] text-center leading-tight">{label}</p>
+                  <div className="flex items-center gap-1">
+                    <button disabled={!isHost || tableConfig[key] <= min}
+                      onClick={() => updateCfg({ [key]: Math.max(min, tableConfig[key] - 1) } as Partial<TableConfig>)}
+                      className="w-6 h-6 rounded-md bg-slate-700 text-slate-300 text-sm font-bold hover:bg-slate-600 disabled:opacity-30 transition-all">−</button>
+                    <span className="text-white font-bold text-sm w-8 text-center">{tableConfig[key]}s</span>
+                    <button disabled={!isHost || tableConfig[key] >= max}
+                      onClick={() => updateCfg({ [key]: Math.min(max, tableConfig[key] + 1) } as Partial<TableConfig>)}
+                      className="w-6 h-6 rounded-md bg-slate-700 text-slate-300 text-sm font-bold hover:bg-slate-600 disabled:opacity-30 transition-all">+</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Boutons ready / retour */}
           <div className="flex gap-3">
             <button onClick={toggleReady} className={`flex-1 py-3 font-bold rounded-xl ${me?.isReady ? 'btn-danger' : 'btn-primary'}`}>
               {me?.isReady ? '✗ Annuler' : '✓ Je suis prêt !'}
@@ -705,16 +796,14 @@ export default function GameView({ tableId, user, onLeave }: Props) {
             <button onClick={quitGame} className="btn-outline px-4 py-3">←</button>
           </div>
 
-          {/* Bouton magique : remplir les slots vides avec un bot et démarrer */}
+          {/* Bouton test bot */}
           {!hasBot && (
-            <div className="pt-2 border-t border-purple-900/40">
-              <button
-                onClick={() => socket?.emit('table:addBot', { tableId })}
-                className="w-full py-2.5 rounded-xl font-bold text-sm text-emerald-300 border border-emerald-700/50 bg-emerald-900/20 hover:bg-emerald-900/40 transition-all flex items-center justify-center gap-2"
-              >
+            <div className="pt-1 border-t border-purple-900/40">
+              <button onClick={() => socket?.emit('table:addBot', { tableId })}
+                className="w-full py-2.5 rounded-xl font-bold text-sm text-emerald-300 border border-emerald-700/50 bg-emerald-900/20 hover:bg-emerald-900/40 transition-all flex items-center justify-center gap-2">
                 🧪 Tester maintenant — remplir avec le Bot
               </button>
-              <p className="text-xs text-slate-500 mt-1.5">Lance la partie immédiatement avec un bot IA</p>
+              <p className="text-xs text-slate-500 mt-1">Lance la partie immédiatement avec un bot IA</p>
             </div>
           )}
         </div>
@@ -807,8 +896,8 @@ export default function GameView({ tableId, user, onLeave }: Props) {
       <div className="flex-shrink-0 px-4 py-1">
         {phase === 'memorization' ? (
           <div className="flex items-center justify-between px-4 py-1.5 rounded-lg bg-cyan-900/30 border border-cyan-500/30">
-            <span className="text-xs font-bold text-cyan-300">🧠 Cliquez jusqu'à 2 de vos cartes pour les mémoriser</span>
-            <span className="text-xs text-cyan-400 font-bold">{memoRevealed.size}/2</span>
+            <span className="text-xs font-bold text-cyan-300">🧠 Mémorisez jusqu'à {maxMemoVisible} de vos cartes</span>
+            <span className="text-xs text-cyan-400 font-bold">{memoRevealed.size}/{maxMemoVisible}</span>
           </div>
         ) : phase === 'playing' ? (
           <div className={`text-center text-xs font-bold py-1.5 rounded-lg ${myTurn ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-slate-800/50 text-slate-400'}`}>
@@ -957,7 +1046,7 @@ export default function GameView({ tableId, user, onLeave }: Props) {
       <div className="flex-shrink-0 px-4 pb-3">
         <div className="flex items-center gap-2 mb-2">
           <span className="text-xs text-slate-400 font-medium">{user.firstName} (moi)</span>
-          {phase === 'memorization' && <span className="text-xs text-cyan-400">· {memoRevealed.size}/2 vues</span>}
+          {phase === 'memorization' && <span className="text-xs text-cyan-400">· {memoRevealed.size}/{maxMemoVisible} vues</span>}
           {!gs?.drawPhase && drawnCard && myTurn && !powerMode && (
             <span className="text-xs text-emerald-400 font-bold animate-pulse">← Cliquez une carte pour remplacer</span>
           )}

@@ -46,36 +46,39 @@ function calcScore(cards) {
 
 // ─── Game State Factory ───────────────────────────────────────────────────────
 
-function createGameState(players) {
+function createGameState(players, config = {}) {
+  const CARDS_PER_PLAYER = [4, 6, 8].includes(config.cardsPerPlayer) ? config.cardsPerPlayer : 4;
+  const memoDuration     = Math.round(
+    Math.min(Math.max(Number(config.memoDuration) || 7, 3), 30)
+  ) * 1000;
+
   const deck = buildDeck();
-  const CARDS_PER_PLAYER = 4;
   const hands = {};
-  const dealtCards = [];
 
   for (const p of players) {
     hands[p.userId] = deck.splice(0, CARDS_PER_PLAYER);
-    dealtCards.push(...hands[p.userId]);
   }
 
   const turnOrder = players.map(p => p.userId);
 
   return {
-    phase: 'memorization',       // memorization | playing | showtime | finished
+    phase: 'memorization',
     deck,
     discardPile: [],
-    hands,                        // { userId: Card[] }
-    turnOrder,                    // [userId, ...]
+    hands,
+    turnOrder,
     currentTurnIndex: 0,
     drawnCard: null,
-    drawPhase: true,              // true = must draw; false = must decide
-    bombomBy: null,               // userId who declared bombom
-    bombomCancelUsed: {},         // { userId: boolean }
-    powers: {},                   // { userId: { j,q,k: boolean } }
+    drawPhase: true,
+    bombomBy: null,
+    bombomCancelUsed: {},
+    powers: {},
     activePower: null,
     scores: {},
     winner: null,
     memoStartTime: Date.now(),
-    memoDuration: 7000,
+    memoDuration,
+    cardsPerPlayer: CARDS_PER_PLAYER,  // exposé pour le client
   };
 }
 

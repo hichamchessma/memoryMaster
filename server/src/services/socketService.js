@@ -463,6 +463,30 @@ module.exports = function initSocket(io) {
       }
     });
 
+    // ── Mise à jour de la config par l'hôte (salle d'attente) ─────────────
+    socket.on('table:updateConfig', async ({ tableId, gameConfig }) => {
+      try {
+        const table = await Table.findById(tableId);
+        if (!table || table.status !== 'waiting' || table.hostId !== socket.userId) return;
+
+        const cfg = gameConfig || {};
+        if ([4, 6, 8].includes(cfg.cardsPerPlayer))
+          table.gameConfig.cardsPerPlayer = cfg.cardsPerPlayer;
+        if (Number.isFinite(cfg.memoDuration) && cfg.memoDuration >= 3 && cfg.memoDuration <= 30)
+          table.gameConfig.memoDuration = Math.round(cfg.memoDuration);
+        if (Number.isFinite(cfg.drawTime) && cfg.drawTime >= 5 && cfg.drawTime <= 60)
+          table.gameConfig.drawTime = Math.round(cfg.drawTime);
+        if (Number.isFinite(cfg.choiceTime) && cfg.choiceTime >= 5 && cfg.choiceTime <= 60)
+          table.gameConfig.choiceTime = Math.round(cfg.choiceTime);
+
+        table.markModified('gameConfig');
+        await table.save();
+        io.to(tableId).emit('table:updated', table);
+      } catch (err) {
+        socket.emit('error', { message: err.message });
+      }
+    });
+
     // ── Chat en jeu ────────────────────────────────────────────────────────
     socket.on('game:chat', async ({ tableId, message }) => {
       if (!message?.trim() || message.length > 120) return;
@@ -700,8 +724,8 @@ module.exports = function initSocket(io) {
 
   function startGame(io, table) {
     const tableId = table._id.toString();
-    starting.delete(tableId); // libérer le guard
-    const gs = createGameState(table.players);
+    starting.delete(tableId);
+    const gs = createGameState(table.players, table.gameConfig || {});
     table.gameState = gs;
     table.status = 'playing';
 
@@ -742,10 +766,8 @@ module.exports = function initSocket(io) {
     });
   }
 
-  const DRAW_TIME = 10;
-  const CHOICE_TIME = 15;
-  const BOT_DRAW_DELAY   = 2500;  // délai avant que le bot pioche
-  const BOT_DECIDE_DELAY = 2000;  // délai avant que le bot décide
+  const BOT_DRAW_DELAY   = 2500;
+  const BOT_DECIDE_DELAY = 2000;
 
   function startDrawTimer(io, table, tableId) {
     stopTimers(tableId);
@@ -753,6 +775,7 @@ module.exports = function initSocket(io) {
 
     const gs = table.gameState;
     const currentPlayerId = gs.turnOrder[gs.currentTurnIndex];
+    const DRAW_TIME = table.gameConfig?.drawTime || 10;
     let remaining = DRAW_TIME;
 
     io.to(tableId).emit('game:timer', { phase: 'draw', remaining, currentTurn: currentPlayerId });
@@ -849,6 +872,7 @@ module.exports = function initSocket(io) {
 
   function startChoiceTimer(io, table, tableId) {
     stopTimers(tableId);
+    const CHOICE_TIME = table.gameConfig?.choiceTime || 15;
     let remaining = CHOICE_TIME;
     const gs = table.gameState;
 
@@ -892,10 +916,12 @@ module.exports = function initSocket(io) {
       powers: gs.powers || {},
       scores: gs.scores || {},
       winner: gs.winner || null,
+      cardsPerPlayer: gs.cardsPerPlayer || 4,
       handSizes: Object.fromEntries(
         Object.entries(gs.hands || {}).map(([uid, h]) => [uid, Array.isArray(h) ? h.length : 0])
       ),
     };
+    void players;
   }
 
   function getSocketById(io, socketId) {

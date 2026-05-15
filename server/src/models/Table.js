@@ -11,6 +11,13 @@ const playerSlotSchema = new mongoose.Schema({
   elo:       { type: Number, default: 1000 },
 }, { _id: false });
 
+const gameConfigSchema = new mongoose.Schema({
+  cardsPerPlayer: { type: Number, enum: [4, 6, 8], default: 4 },
+  memoDuration:   { type: Number, default: 7,  min: 3,  max: 30 },  // secondes
+  drawTime:       { type: Number, default: 10, min: 5,  max: 60 },  // secondes
+  choiceTime:     { type: Number, default: 15, min: 5,  max: 60 },  // secondes
+}, { _id: false });
+
 const tableSchema = new mongoose.Schema({
   code:       { type: String, required: true, unique: true, uppercase: true },
   maxPlayers: { type: Number, enum: [2, 3, 4], default: 2 },
@@ -18,6 +25,7 @@ const tableSchema = new mongoose.Schema({
   hostId:     { type: String, required: true },
   status:     { type: String, enum: ['waiting', 'playing', 'finished'], default: 'waiting' },
   gameState:  { type: mongoose.Schema.Types.Mixed, default: null },
+  gameConfig: { type: gameConfigSchema, default: () => ({}) },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Table', tableSchema);
