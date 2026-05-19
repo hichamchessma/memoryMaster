@@ -46,6 +46,27 @@ exports.deleteUser = async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 };
 
+// ── Reset ELO à 1000 ──────────────────────────────────────────────────────────
+exports.resetUserElo = async (req, res) => {
+  try {
+    const user = await User.findByIdAndUpdate(req.params.id, { elo: 1000 }, { new: true });
+    if (!user) return res.status(404).json({ success: false, error: 'Introuvable' });
+    res.json({ success: true, data: user.toPublic() });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+};
+
+// ── Bannir / débannir un joueur ───────────────────────────────────────────────
+exports.toggleBan = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ success: false, error: 'Introuvable' });
+    if (user.isAdmin) return res.status(403).json({ success: false, error: 'Impossible de bannir un admin' });
+    user.isBanned = !user.isBanned;
+    await user.save();
+    res.json({ success: true, isBanned: user.isBanned });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+};
+
 // ── Modifier l'ELO d'un joueur ────────────────────────────────────────────────
 exports.updateUserElo = async (req, res) => {
   try {

@@ -7,13 +7,17 @@ const userSchema = new mongoose.Schema({
   email:     { type: String, required: true, unique: true, lowercase: true, trim: true },
   password:  { type: String, required: true, minlength: 6 },
   avatar:    { type: String, default: null },
+  googleId:  { type: String, default: null },
   isGuest:   { type: Boolean, default: false },
+  isBanned:  { type: Boolean, default: false },
   isAdmin:   { type: Boolean, default: false },
   elo:         { type: Number, default: 1000 },
   gamesPlayed: { type: Number, default: 0 },
   gamesWon:    { type: Number, default: 0 },
   totalPoints: { type: Number, default: 0 },
-  lastLogin:   { type: Date, default: Date.now },
+  lastLogin:            { type: Date, default: Date.now },
+  resetPasswordToken:   { type: String, default: null },
+  resetPasswordExpires: { type: Date,   default: null },
 }, { timestamps: true });
 
 userSchema.pre('save', async function (next) {
