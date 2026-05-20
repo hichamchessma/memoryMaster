@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useGoogleLogin } from '@react-oauth/google'
 import { useAuth } from '../context/AuthContext'
 import api from '../lib/api'
 import toast from 'react-hot-toast'
@@ -8,6 +9,7 @@ import Logo from '../components/Logo'
 export default function AuthPage() {
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [loading, setLoading] = useState(false)
+  const [googleLoading, setGoogleLoading] = useState(false)
   const [guestLoading, setGuestLoading] = useState(false)
   const [form, setForm] = useState({ firstName: '', lastName: '', email: '', password: '', confirm: '' })
   const { login, loginAsGuest } = useAuth()
@@ -15,6 +17,24 @@ export default function AuthPage() {
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }))
+
+  // Google OAuth — flow implicit gives access_token, serveur vérifie via userinfo
+  const googleLogin = useGoogleLogin({
+    onSuccess: async (tokenResponse) => {
+      setGoogleLoading(true)
+      try {
+        const { data } = await api.post('/auth/google', { accessToken: tokenResponse.access_token })
+        login(data.user, data.token)
+        toast.success(`Bienvenue ${data.user.firstName} !`, { icon: '🔵' })
+        navigate('/dashboard')
+      } catch (err: any) {
+        toast.error(err.response?.data?.error || 'Connexion Google échouée, réessaie')
+      } finally {
+        setGoogleLoading(false)
+      }
+    },
+    onError: () => toast.error('Connexion Google annulée'),
+  })
 
   const handleGuest = async () => {
     setGuestLoading(true)
@@ -84,7 +104,6 @@ export default function AuthPage() {
             </p>
           </div>
 
-          {/* Stats */}
           <div className="flex gap-8">
             {[['2-4', 'Joueurs'], ['4', 'Cartes/joueur'], ['∞', 'Tactiques']].map(([v, l]) => (
               <div key={l}>
@@ -94,7 +113,6 @@ export default function AuthPage() {
             ))}
           </div>
 
-          {/* Features */}
           <div className="space-y-3">
             {['Pouvoirs spéciaux (Valet, Dame, Roi)', 'BomBom & ShowTime — la tension ultime', 'Classement ELO en temps réel'].map(f => (
               <div key={f} className="flex items-center gap-3 text-slate-300">
@@ -113,11 +131,39 @@ export default function AuthPage() {
       {/* ── Right: Form ─────────────────────────────────────────────────── */}
       <div className="flex-1 lg:max-w-[480px] flex items-center justify-center p-8"
         style={{ background: 'rgba(8,8,20,0.97)', backdropFilter: 'blur(20px)' }}>
-        <div className="w-full max-w-md space-y-8 animate-slide-up">
+        <div className="w-full max-w-md space-y-6 animate-slide-up">
 
           {/* Logo (mobile) */}
           <div className="lg:hidden flex justify-center">
             <Logo size="md" />
+          </div>
+
+          {/* Bouton Google */}
+          <button
+            onClick={() => googleLogin()}
+            disabled={googleLoading}
+            className="w-full py-3.5 rounded-xl font-bold text-sm border border-slate-600/60 bg-white hover:bg-gray-50 text-gray-700 transition-all flex items-center justify-center gap-3 shadow-md"
+          >
+            {googleLoading ? (
+              <><div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin"/>Connexion...</>
+            ) : (
+              <>
+                <svg width="18" height="18" viewBox="0 0 18 18">
+                  <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/>
+                  <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/>
+                  <path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/>
+                  <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/>
+                </svg>
+                Continuer avec Google
+              </>
+            )}
+          </button>
+
+          {/* Séparateur */}
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-purple-900/50"/>
+            <span className="text-xs text-slate-500 font-medium">ou continuer avec email</span>
+            <div className="flex-1 h-px bg-purple-900/50"/>
           </div>
 
           {/* Tab switcher */}
@@ -174,15 +220,7 @@ export default function AuthPage() {
             </button>
           </form>
 
-          <p className="text-center text-sm text-slate-500">
-            {mode === 'login' ? 'Pas encore de compte ?' : 'Déjà un compte ?'}{' '}
-            <button onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
-              className="text-purple-400 hover:text-purple-300 font-semibold transition-colors">
-              {mode === 'login' ? 'S\'inscrire' : 'Se connecter'}
-            </button>
-          </p>
-
-          {/* Séparateur */}
+          {/* Séparateur invité */}
           <div className="flex items-center gap-3">
             <div className="flex-1 h-px bg-purple-900/50"/>
             <span className="text-xs text-slate-500 font-medium">ou</span>
