@@ -17,6 +17,10 @@ const io = new Server(server, {
 app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173', credentials: true }));
 app.use(express.json());
 
+// Assets statiques (cartes) — servis en dev ET prod
+app.use('/assets', express.static(path.join(__dirname, '../../client/public/assets')));
+app.use(express.static(path.join(__dirname, '../../client/public')));
+
 // Routes API
 app.use('/api/auth',   require('./routes/auth'));
 app.use('/api/tables', require('./routes/tables'));
@@ -59,8 +63,8 @@ mongoose.connect(process.env.MONGO_URI)
   .then(async () => {
     console.log('✅ MongoDB connecté');
     await seedAdmin();
-    server.listen(process.env.PORT || 5001, () =>
-      console.log(`🚀 Serveur MemoryMaster Pro sur le port ${process.env.PORT || 5001}`)
+    server.listen(process.env.PORT || 5000, () =>
+      console.log(`🚀 Serveur MemoryMaster Pro sur le port ${process.env.PORT || 5000}`)
     );
   })
   .catch(err => {

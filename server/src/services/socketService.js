@@ -790,6 +790,12 @@ module.exports = function initSocket(io) {
         if (!t?.gameState || t.gameState.phase !== 'playing') return;
         const botGs = t.gameState;
 
+        // Bot declared BomBom and it's its turn again → mandatory showtime
+        if (botGs.bombomBy === BOT_ID) {
+          await triggerShowtime(io, t, tableId);
+          return;
+        }
+
         if (!botGs.bombomBy && botShouldBombom(botGs.hands[BOT_ID] || [])) {
           botGs.bombomBy = BOT_ID;
           t.markModified('gameState');
